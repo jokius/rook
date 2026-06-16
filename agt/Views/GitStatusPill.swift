@@ -18,38 +18,44 @@ struct GitStatusPill: View {
     }
 
     private func pill(for status: GitStatus) -> some View {
+        // explicit Image + Text (not Label) so the glyph and text center-align in the
+        // status bar; flat (no background) — the bottom status bar is the container.
         HStack(spacing: 6) {
-            Label(status.branchDisplay, systemImage: "arrow.triangle.branch")
-                .labelStyle(.titleAndIcon)
-                .foregroundStyle(.secondary)
-
+            Image(systemName: "arrow.triangle.branch")
+                .imageScale(.small)
+                .foregroundStyle(branchColor(status))
+            Text(status.branchDisplay)
+                .foregroundStyle(branchColor(status))
             if status.ahead > 0 {
-                Text("↑\(status.ahead)").foregroundStyle(.secondary)
+                Text("↑\(status.ahead)").foregroundStyle(.cyan)
             }
             if status.behind > 0 {
-                Text("↓\(status.behind)").foregroundStyle(.secondary)
+                Text("↓\(status.behind)").foregroundStyle(.pink)
             }
             if let worktree = status.worktree {
                 worktreeChip(worktree)
             }
             if status.dirty > 0 {
-                Text("*\(status.dirty)").foregroundStyle(.secondary)
+                Text("*\(status.dirty)").foregroundStyle(.orange)
             }
         }
-        .font(.caption)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(.quaternary, in: Capsule())
+        .font(.callout)
         .accessibilityIdentifier("git-pill")
         .accessibilityValue(status.branchDisplay)
     }
 
-    /// A small capsule chip naming a linked worktree.
+    /// Green for the default branch (`main`/`master`), yellow for any other branch or
+    /// a detached HEAD.
+    private func branchColor(_ status: GitStatus) -> Color {
+        status.branch == "main" || status.branch == "master" ? .green : .yellow
+    }
+
+    /// A small rectangular chip naming a linked worktree.
     private func worktreeChip(_ name: String) -> some View {
         Text(name)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 5)
             .padding(.vertical, 1)
-            .background(.quaternary, in: Capsule())
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 3))
     }
 }

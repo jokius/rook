@@ -9,11 +9,12 @@ import XCTest
 /// - workspace headers expose their name as a StaticText `label`;
 /// - the inline rename field is a StaticText with identifier `edit-field` and is
 ///   keyboard-focused on appear, so typing goes straight to it.
+@MainActor
 final class SidebarUITests: XCTestCase {
     private var app: XCUIApplication!
     private var stateDir: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         continueAfterFailure = false
         // hermetic state: a fresh temp dir per test so the app seeds exactly one
         // "workspace 1" + one session, and we never touch the real workspaces.json.
@@ -24,7 +25,7 @@ final class SidebarUITests: XCTestCase {
         app.launch()
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         app?.terminate()
         if let stateDir { try? FileManager.default.removeItem(at: stateDir) }
     }

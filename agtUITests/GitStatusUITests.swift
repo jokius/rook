@@ -13,12 +13,13 @@ import XCTest
 ///
 /// Every test is gated with `XCTSkipUnless(gitAvailable())` so it skips cleanly
 /// where git is absent rather than failing.
+@MainActor
 final class GitStatusUITests: XCTestCase {
     private var app: XCUIApplication!
     private var stateDir: URL!
     private var repos: [URL] = []
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         continueAfterFailure = false
         try XCTSkipUnless(gitAvailable(), "no usable git binary found; skipping git e2e tests")
         // hermetic state: a fresh temp dir per test so the seeded workspaces.json is
@@ -27,7 +28,7 @@ final class GitStatusUITests: XCTestCase {
             .appendingPathComponent("agt-gituitest-\(UUID().uuidString)", isDirectory: true)
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         app?.terminate()
         app = nil
         if let stateDir { try? FileManager.default.removeItem(at: stateDir) }
@@ -76,6 +77,8 @@ final class GitStatusUITests: XCTestCase {
         // the pill, by contrast, exists for any git repo — confirm the integration ran.
         let pill = gitPill()
         XCTAssertTrue(pill.waitForExistence(timeout: 15), "clean repo should still show the branch pill")
+        let pillVisible = pill.isHittable
+        XCTAssertTrue(pillVisible, "the git pill must be visible (non-zero frame), not only present in the a11y tree")
         XCTAssertTrue(waitForValue(pill, contains: "main", timeout: 10),
                       "pill should show the branch name, got \(String(describing: pill.value))")
     }
@@ -120,6 +123,8 @@ final class GitStatusUITests: XCTestCase {
 
         let pill = gitPill()
         XCTAssertTrue(pill.waitForExistence(timeout: 30), "detached repo should show the pill")
+        let pillVisible = pill.isHittable
+        XCTAssertTrue(pillVisible, "the git pill must be visible (non-zero frame), not only present in the a11y tree")
         XCTAssertTrue(waitForValue(pill, contains: "detached @", timeout: 15),
                       "detached HEAD should show 'detached @ <sha>', got \(String(describing: pill.value))")
     }

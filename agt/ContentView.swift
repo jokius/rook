@@ -20,24 +20,45 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220)
                 .safeAreaInset(edge: .bottom) { bottomBar }
         } detail: {
-            if let active = store.activeSession {
-                TerminalView(session: active, makeSurface: makeSurface)
-                    .id(active.id)
-            } else {
-                Text("No session selected")
-                    .foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                detailPane
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Divider()
+                statusBar
             }
         }
-        // window title is driven via NSWindow.title (the scene's "agt" literal owns
-        // the titlebar, so .navigationTitle alone doesn't reliably override it).
+        // keep the system title bar showing the active session's name (NSWindow.title)
+        // and surface the window un-minimized on launch.
         .background(WindowAccessor(title: windowTitle))
-        // toolbar is attached on the split view itself so the pill is present in
-        // both detail branches (active session and "No session selected").
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                GitStatusPill(status: store.activeSession?.gitStatus)
-            }
+    }
+
+    /// The active session's terminal, or a placeholder when nothing is selected.
+    @ViewBuilder private var detailPane: some View {
+        if let active = store.activeSession {
+            TerminalView(session: active, makeSurface: makeSurface)
+                .id(active.id)
+        } else {
+            Text("No session selected")
+                .foregroundStyle(.secondary)
         }
+    }
+
+    /// A slim bottom status bar. Holds the active session's git status now and is the
+    /// place for other info elements (the trailing area is intentionally left open).
+    private var statusBar: some View {
+        HStack(spacing: 10) {
+            Spacer(minLength: 0)
+            GitStatusPill(status: store.activeSession?.gitStatus)
+        }
+        // symmetric vertical padding centers the content by construction (no reliance
+        // on frame alignment); minHeight keeps the bar a consistent height when empty.
+        // extra trailing inset keeps the right-aligned content clear of the window's
+        // rounded bottom-right corner.
+        .padding(.leading, 12)
+        .padding(.trailing, 20)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, minHeight: 22)
+        .background(.bar)
     }
 
     /// The titlebar text: the active session's display name, or "agt" when nothing
