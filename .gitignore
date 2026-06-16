@@ -8,5 +8,6 @@ agt/Resources/terminfo/
 build/
 .build/
 agt.xcodeproj/
+.swiftpm/
 
 .DS_Store

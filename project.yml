@@ -69,6 +69,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.umputun.agt
         PRODUCT_NAME: agt
         INFOPLIST_FILE: agt/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: agt/agt.entitlements
         MARKETING_VERSION: "0.0.0"
         CURRENT_PROJECT_VERSION: "0.0.0"

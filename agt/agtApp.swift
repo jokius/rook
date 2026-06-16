@@ -76,6 +76,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// persist it on terminate.
     var store: AppStore?
 
+    func applicationWillFinishLaunching(_: Notification) {
+        // a Debug app launched from DerivedData (ad-hoc signed) never hands the Dock a
+        // non-default tile icon via the usual runtime path. set it explicitly. load the
+        // artwork straight from the compiled asset catalog rather than via
+        // NSWorkspace.icon(forFile:), whose Icon Services cache is keyed by bundle path
+        // and the DerivedData path is reused across rebuilds, so it serves a stale tile.
+        if let icon = NSImage(named: "AppIcon") {
+            NSApp.applicationIconImage = icon
+        }
+    }
+
     func applicationDidFinishLaunching(_: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate()
