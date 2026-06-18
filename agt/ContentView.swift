@@ -14,6 +14,7 @@ struct ContentView: View {
     @Bindable var store: AppStore
     let makeSurface: (Session) -> GhosttySurfaceView
     let makeSplitSurface: (Session) -> GhosttySurfaceView
+    let quickTerminal: QuickTerminalController
 
     var body: some View {
         NavigationSplitView {
@@ -45,6 +46,14 @@ struct ContentView: View {
         .navigationSubtitle(windowSubtitle)
         .toolbar {
             ToolbarItem(placement: .primaryAction) { splitButton }
+            ToolbarItem(placement: .primaryAction) { quickTerminalButton }
+        }
+        // the quick terminal: an in-app overlay above the whole split view (sidebar + terminal),
+        // so it covers everything but the title bar (the toolbar button stays reachable to toggle).
+        .overlay { quickTerminalOverlay }
+        // when the quick terminal hides, return focus to the active session's terminal.
+        .onChange(of: quickTerminal.isVisible) { _, visible in
+            if !visible { focusActiveSession() }
         }
         // blend the title bar with the terminal; surface the window un-minimized on launch.
         // the title token makes updateNSView re-run the blend on a session switch.
@@ -139,6 +148,52 @@ struct ContentView: View {
         .help(isSplit ? "Hide split" : "Split right")
         .disabled(store.activeSession == nil)
         .accessibilityIdentifier("split-toggle")
+    }
+
+    /// Toolbar button (next to the split toggle) that toggles the quick terminal: a single
+    /// scratch terminal overlaid at 90% of the window, on top of the sidebar and terminal.
+    /// Click the button again or the dimmed margin to hide; the shell stays alive until quit.
+    private var quickTerminalButton: some View {
+        Button {
+            quickTerminal.toggle()
+        } label: {
+            Image(systemName: "terminal")
+        }
+        .help("Quick Terminal")
+        .accessibilityIdentifier("quick-terminal-toggle")
+    }
+
+    /// The quick-terminal overlay: a dim over the whole window (tap to dismiss) with the scratch
+    /// terminal centered at 90% of the window. Rendered only while visible; the surface it hosts
+    /// is owned by the controller, so hiding keeps the shell alive.
+    @ViewBuilder private var quickTerminalOverlay: some View {
+        if quickTerminal.isVisible {
+            GeometryReader { geo in
+                ZStack {
+                    Color.black.opacity(0.35)
+                        .contentShape(Rectangle())
+                        .onTapGesture { quickTerminal.hide() }
+                    QuickTerminalPane()
+                        .frame(width: geo.size.width * 0.9, height: geo.size.height * 0.9)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .shadow(radius: 24)
+                        .accessibilityIdentifier("quick-terminal")
+                }
+                .frame(width: geo.size.width, height: geo.size.height)
+            }
+        }
+    }
+
+    /// Re-assert first responder on the active session's terminal for a short window, so focus
+    /// returns to it after the quick terminal hides (a one-shot would race the overlay teardown).
+    @MainActor private func focusActiveSession(attempt: Int = 0) {
+        if let view = store.activeSession?.surface as? GhosttySurfaceView, let window = view.window {
+            window.makeFirstResponder(view)
+        }
+        guard attempt < 12 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            focusActiveSession(attempt: attempt + 1)
+        }
     }
 
     /// Make the target split pane first responder. Re-asserts on the run loop for a short

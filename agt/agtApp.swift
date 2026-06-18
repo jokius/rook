@@ -21,11 +21,17 @@ struct agtApp: App {
             ContentView(
                 store: store,
                 makeSurface: { Self.makeSurface(for: $0, store: store, service: gitStatusService) },
-                makeSplitSurface: { Self.makeSplitSurface(for: $0, store: store) }
+                makeSplitSurface: { Self.makeSplitSurface(for: $0, store: store) },
+                quickTerminal: QuickTerminalController.shared
             )
                 .frame(minWidth: 640, minHeight: 400)
                 .task {
                     appDelegate.store = store
+                    // the quick terminal spawns its shell in the active session's directory
+                    // (home when nothing is selected).
+                    QuickTerminalController.shared.cwdProvider = {
+                        store.activeSession?.effectiveCwd ?? FileManager.default.homeDirectoryForCurrentUser.path
+                    }
                     // start the active-session refresh loop + focus observers once
                     // the scene appears (idempotent if the task re-runs).
                     gitStatusService.start()

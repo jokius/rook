@@ -48,6 +48,7 @@ xcodebuild test -project agt.xcodeproj -scheme agt -destination 'platform=macOS'
 - Move a session between workspaces by dragging it onto another workspace (native `NSOutlineView` drag-and-drop) or via the row's `Move to` menu. The same session instance is kept either way, so its surface and live shell survive the move.
 - Compact git status in each sidebar session row: ahead/behind arrows and a dirty marker (for example `↑5 ↓2 *3`, where `*3` is the conventional git dirty marker plus the changed-file count), shown only when the session's working directory is a git work tree and there is something to report. The name truncates before the tokens.
 - A detailed git pill in the window title bar for the active session, alongside the session name: branch (or `detached @ <shortsha>`), ahead/behind, a linked-worktree chip, and a dimmed `*N` dirty marker. No pill when the directory is not a git work tree.
+- A quick terminal: a single scratch terminal overlaid at 90% of the window (toolbar button next to the split toggle), opening in the active session's directory. Click the button again or the dimmed margin to dismiss; hiding keeps its shell alive. It is not persisted across launches.
 - Auto-persist on every change and on quit; restore the tree, names, selection, each session's working directory and font size, the split state, and the status-bar visibility on the next launch.
 
 ## Restore limitations
