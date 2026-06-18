@@ -2,6 +2,10 @@
 
 `agt` is a native macOS SwiftUI terminal on libghostty, with a two-level workspace -> session vertical sidebar. Read `README.md` for the overview and `ARCHITECTURE.md` for the module split, surface ownership, and the C-boundary concurrency contract before changing the bridge.
 
+## Working norms
+
+- The maintainer and most expected contributors are NOT SwiftUI / macOS UI-UX experts. When a UI request is non-standard, risky, or trickier than it sounds (custom window chrome, fighting `NavigationSplitView`, reaching into private AppKit views, layout-direction hacks, etc.), push back gently FIRST: explain what it actually takes and the trade-offs, and offer the simpler/standard alternative. If the user still wants it after that, do it — the user is the boss.
+
 ## Toolchain
 
 - The app target is generated with `xcodegen` and built with `xcodebuild` (Xcode 26). `mise` is not used; call `xcodegen`, `xcodebuild`, and `swift` directly through the scripts.
@@ -46,6 +50,7 @@ The app must build and `swift test` must stay green after every change.
 
 - `agtUITests/` is an XCUITest target that launches the real app and drives the sidebar (rename, close, move, drag, add-session) through the accessibility API — the coverage the host-free `agtCore` unit tests can't provide. Run with `xcodebuild test -project agt.xcodeproj -scheme agt -destination 'platform=macOS'`.
 - Tests pass `AGT_STATE_DIR` (a temp dir) via launch environment to isolate persistence; the app honors it in `agtApp.restoredStore()`. The native `Open Directory…` panel is system UI, verified manually rather than in XCUITest.
+- **Add a UI test when you add UI functionality** — don't ship UI behavior with only `agtCore` model-level unit tests. For behavior the accessibility tree can't observe (the Metal `GhosttySurfaceView`, transient non-persisted state), drive it through an observable side effect: e.g. the split test types `tty > <file>` into the focused pane and compares the written tty to verify which shell received the keystrokes and that focus follows.
 - **Test cadence**: during iteration run only the relevant target/case (e.g. `xcodebuild test … -only-testing:agtUITests/GitStatusUITests`, or a single method like `…/GitStatusUITests/testCleanShowsNoToken`) — the full suite is ~75 s and needlessly re-runs unaffected tests (the sidebar tests don't change when only the status bar does). Run the complete suite (`cd agtCore && swift test` + all `agtUITests`) only as the pre-commit gate.
 
 ## libghostty gotchas
