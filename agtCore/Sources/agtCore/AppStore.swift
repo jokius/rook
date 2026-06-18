@@ -170,6 +170,21 @@ public final class AppStore {
         save()
     }
 
+    /// Clears every session's per-session font-size override (back to the app default). Called
+    /// when an appearance change is applied: the shared ghostty `update_config` resets all live
+    /// surfaces to the default size, so the persisted overrides are cleared to match. No-ops (no
+    /// write) when nothing was overridden.
+    public func resetSessionFontSizes() {
+        var changed = false
+        for workspace in workspaces {
+            for session in workspace.sessions where session.fontSize != nil {
+                session.fontSize = nil
+                changed = true
+            }
+        }
+        if changed { save() }
+    }
+
     /// Sets whether the bottom status bar is hidden and persists. No-ops when the
     /// value is unchanged so a redundant menu toggle doesn't write.
     public func setStatusBarHidden(_ hidden: Bool) {

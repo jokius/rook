@@ -32,6 +32,10 @@ final class QuickTerminalController {
 
     func hide() { isVisible = false }
 
+    /// The existing quick-terminal surface, or nil — does NOT create one (unlike `surface()`), so
+    /// a settings broadcast can reach it without spawning a shell.
+    func currentSurface() -> GhosttySurfaceView? { surfaceView }
+
     /// The surface to render in the overlay, created on first use in the active cwd and reused
     /// afterwards. Recreated after the shell exits.
     func surface() -> GhosttySurfaceView {

@@ -120,6 +120,14 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
         _ = ghostty_surface_binding_action(surface, action, UInt(action.utf8.count))
     }
 
+    /// Applies a rebuilt ghostty config to this live surface (font/theme change from Settings).
+    /// `update_config` re-applies the whole config including font-size, so any runtime cmd-+/-
+    /// zoom resets to the config default — the caller clears the per-session overrides to match.
+    func applyConfig(_ config: ghostty_config_t) {
+        guard let surface else { return }
+        ghostty_surface_update_config(surface, config)
+    }
+
     func reportFontSize() {
         // Already on the main actor (the CELL_SIZE callback hops via DispatchQueue.main.async).
         // inherited_config carries the surface's live font size (post cmd +/-); a zero means

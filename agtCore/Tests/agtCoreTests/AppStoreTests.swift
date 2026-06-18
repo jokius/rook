@@ -228,6 +228,18 @@ struct AppStoreTests {
         #expect(session.fontSize == 13)
     }
 
+    @Test func resetSessionFontSizesClearsAllOverrides() {
+        let store = Self.makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let a = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let b = store.addSession(toWorkspace: ws.id, cwd: "/b")!
+        store.setFontSize(a.id, 16)
+        store.setFontSize(b.id, 18)
+        store.resetSessionFontSizes()
+        #expect(a.fontSize == nil)
+        #expect(b.fontSize == nil)
+    }
+
     @Test func setFontSizeUnknownSessionIsIgnored() {
         let store = Self.makeStore()
         let ws = store.addWorkspace(name: "work")

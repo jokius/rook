@@ -48,7 +48,7 @@
 
 ## Technical Details
 - `AppSettings` (agtCore): `Codable, Equatable, Sendable`. Fields: `var fontFamily: String?`, `var fontSize: Double?`, `var theme: String?` (nil = ghostty default). All fields optional, so an older `settings.json` (missing a field added later) still decodes — that IS the forward-compat mechanism. No `version` field: with all-optional fields a version bump would only add a discard-on-mismatch path that wipes the user's settings, the opposite of what optional fields buy.
-- `AppSettings.ghosttyConfigLines() -> [String]` (agtCore, pure): the ghostty config lines for the set fields (`font-family = …`, `font-size = …`, `theme = …`), with values containing spaces quoted (theme/font names like `3024 Night`). Host-free and unit-tested; the app target writes these lines to the conf file.
+- `AppSettings.ghosttyConfigLines() -> [String]` (agtCore, pure): the ghostty config lines for the set fields (`font-family = …`, `font-size = …`, `theme = …`). Values are written RAW (no quotes) — ghostty takes the whole line remainder as the value, confirmed against the bundled conf + theme files (`palette = 0=#…`), so names with spaces (`3024 Night`) must NOT be quoted. Host-free and unit-tested; the app target writes these lines to the conf file.
 - `SettingsStore` (agtCore): mirrors `PersistenceStore` — `init(directory:)`, `load() -> AppSettings` (missing/corrupt → `AppSettings()`), `save(_:) throws`. File: `<directory>/settings.json`.
 - Settings file location: same directory as `workspaces.json` (the `AGT_STATE_DIR` override applies, so XCUITests are hermetic).
 - ghostty settings file: `<directory>/ghostty-settings.conf`, written from `AppSettings` (only lines for set fields). `GhosttyApp.loadConfig` loads it after the user config (UI wins). Quote values containing spaces per ghostty config syntax (theme/font names have spaces).
@@ -75,12 +75,12 @@
 - Create: `agtCore/Tests/agtCoreTests/AppSettingsTests.swift`
 - Create: `agtCore/Tests/agtCoreTests/SettingsStoreTests.swift`
 
-- [ ] add `AppSettings` value type (`Codable, Equatable, Sendable`): optional `fontFamily`, `fontSize`, `theme` (all optional so old files decode — no `version` field; see Technical Details).
-- [ ] add `AppSettings.ghosttyConfigLines() -> [String]` (pure): one line per set field (`font-family = …`, `font-size = …`, `theme = …`), values with spaces quoted; unset fields omitted.
-- [ ] add `SettingsStore(directory:)` with `load()` (missing/corrupt → `AppSettings()`) and `save(_:) throws`, writing `<directory>/settings.json` (mirror `PersistenceStore`).
-- [ ] write `AppSettingsTests`: JSON round-trip; a file missing a later field still decodes (optional fields); `ghosttyConfigLines()` — set vs unset fields produce/omit lines, and values with spaces (e.g. theme `3024 Night`) are quoted.
-- [ ] write `SettingsStoreTests`: save→load round-trip; missing file → default; corrupt file → default; creates directory when missing.
-- [ ] run `cd agtCore && swift test` — must pass before Task 2.
+- [x] add `AppSettings` value type (`Codable, Equatable, Sendable`): optional `fontFamily`, `fontSize`, `theme` (all optional so old files decode — no `version` field; see Technical Details).
+- [x] add `AppSettings.ghosttyConfigLines() -> [String]` (pure): one line per set field (`font-family = …`, `font-size = …`, `theme = …`), values written raw (no quotes); unset fields omitted.
+- [x] add `SettingsStore(directory:)` with `load()` (missing/corrupt → `AppSettings()`) and `save(_:) throws`, writing `<directory>/settings.json` (mirror `PersistenceStore`).
+- [x] write `AppSettingsTests`: JSON round-trip; a file missing a later field still decodes (optional fields); `ghosttyConfigLines()` — set vs unset fields produce/omit lines, and values with spaces (e.g. theme `3024 Night`) pass through raw (no quotes).
+- [x] write `SettingsStoreTests`: save→load round-trip; missing file → default; corrupt file → default; creates directory when missing.
+- [x] run `cd agtCore && swift test` — must pass before Task 2. (127 tests green.)
 
 ### Task 2: Settings persistence wiring + observable SettingsModel (app)
 

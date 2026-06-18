@@ -12,6 +12,7 @@ struct agtApp: App {
     @State private var actions: AppActions
     @State private var palette = PaletteController()
     @State private var sessionSwitcher: SessionSwitcher
+    @State private var settingsModel: SettingsModel
 
     init() {
         let store = agtApp.restoredStore()
@@ -19,6 +20,10 @@ struct agtApp: App {
         _gitStatusService = State(initialValue: GitStatusService(store: store))
         _actions = State(initialValue: AppActions(store: store))
         _sessionSwitcher = State(initialValue: SessionSwitcher(store: store))
+        // settings persist alongside the workspace snapshot (same AGT_STATE_DIR override).
+        let settingsStore = ProcessInfo.processInfo.environment["AGT_STATE_DIR"]
+            .map { SettingsStore(directory: URL(fileURLWithPath: $0, isDirectory: true)) } ?? SettingsStore()
+        _settingsModel = State(initialValue: SettingsModel(store: store, settingsStore: settingsStore))
     }
 
     var body: some Scene {
@@ -106,6 +111,10 @@ struct agtApp: App {
                 }
                 .keyboardShortcut("/", modifiers: .command)
             }
+        }
+
+        Settings {
+            SettingsView(model: settingsModel)
         }
     }
 

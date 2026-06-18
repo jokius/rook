@@ -18,6 +18,10 @@ struct ContentView: View {
     let actions: AppActions
     let palette: PaletteController
     let sessionSwitcher: SessionSwitcher
+    /// The terminal background color, mirrored from the (non-observable) `GhosttyApp` into view
+    /// state and read by the status bar, so a settings theme change (posting `.agtAppearanceChanged`)
+    /// re-renders it live.
+    @State private var terminalColor: Color = ContentView.resolvedTerminalColor()
 
     var body: some View {
         NavigationSplitView {
@@ -76,6 +80,11 @@ struct ContentView: View {
         // when a palette closes, return focus to the active session's terminal.
         .onChange(of: palette.mode == nil) { _, closed in
             if closed { actions.focusActiveSession() }
+        }
+        // a settings appearance change isn't observable through GhosttyApp, so re-render on the
+        // notification to pick up the new terminal color in the status bar.
+        .onReceive(NotificationCenter.default.publisher(for: .agtAppearanceChanged)) { _ in
+            terminalColor = ContentView.resolvedTerminalColor()
         }
         // blend the title bar with the terminal; surface the window un-minimized on launch.
         // the title token makes updateNSView re-run the blend on a session switch.
@@ -137,9 +146,10 @@ struct ContentView: View {
         .background(terminalColor)
     }
 
-    /// The terminal background color (from the ghostty config), used to blend the status
-    /// bar with the terminal; a dark fallback if libghostty hasn't reported it.
-    private var terminalColor: Color {
+    /// The terminal background color from the ghostty config (a dark fallback if libghostty hasn't
+    /// reported one), used to blend the status bar with the terminal. Read into the `terminalColor`
+    /// view state so the status bar re-renders when the theme changes.
+    private static func resolvedTerminalColor() -> Color {
         Color(nsColor: GhosttyApp.shared.terminalBackgroundColor
             ?? NSColor(srgbRed: 0.157, green: 0.173, blue: 0.204, alpha: 1))
     }
@@ -312,6 +322,16 @@ private struct WindowAccessor: NSViewRepresentable {
                 }
                 titlebarObservers.append(token)
             }
+            // a settings theme change updates GhosttyApp.terminalBackgroundColor; re-apply the
+            // blend so the title bar and the (transparent) sidebar pick up the new window color
+            // live, not just when the window next re-keys.
+            let appearanceToken = NotificationCenter.default.addObserver(forName: .agtAppearanceChanged, object: nil, queue: .main) { _ in
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, let window = self.window else { return }
+                    self.applyTitlebarBlend(window)
+                }
+            }
+            titlebarObservers.append(appearanceToken)
             // a window restored in a miniaturized state isn't on-screen, so a fresh
             // launch shows nothing and UI-test automation has nothing to hit. bring it
             // forward un-minimized; re-assert next tick because state restoration can

@@ -1,5 +1,6 @@
 // adapted from thdxg/macterm (MIT)
 
+import agtCore
 import AppKit
 import Foundation
 import GhosttyKit
@@ -73,6 +74,27 @@ final class GhosttyApp {
 
     // MARK: - Config
 
+    /// Path to agt's generated ghostty config (font/size/theme from the Settings window), in the
+    /// same state directory as the workspace snapshot (honors `AGT_STATE_DIR` for tests).
+    static var settingsConfigURL: URL {
+        let dir = ProcessInfo.processInfo.environment["AGT_STATE_DIR"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) } ?? PersistenceStore.defaultDirectory
+        return dir.appendingPathComponent("ghostty-settings.conf")
+    }
+
+    /// Rebuilds the config (re-reading the agt settings file) and broadcasts it to the app and the
+    /// given live surfaces — a live appearance change. Keeps the new config as `self.config`; the
+    /// previous config is intentionally NOT freed: settings changes are rare and `update_config`
+    /// has no documented ownership contract, so this matches the existing never-free pattern over
+    /// risking a use-after-free.
+    func reloadConfig(surfaces: [GhosttySurfaceView]) {
+        guard let app, let newConfig = loadConfig() else { return }
+        ghostty_app_update_config(app, newConfig)
+        for surface in surfaces { surface.applyConfig(newConfig) }
+        config = newConfig
+        terminalBackgroundColor = Self.backgroundColor(from: newConfig)
+    }
+
     private func loadConfig() -> ghostty_config_t? {
         guard let cfg = ghostty_config_new() else { return nil }
 
@@ -91,6 +113,14 @@ final class GhosttyApp {
         } else {
             logger.info("no user ghostty config at \(userPath, privacy: .public); using defaults")
         }
+
+        // agt's own appearance settings (Settings window: font / size / theme), loaded last so
+        // they win over the user's ghostty config for the keys the UI manages.
+        let settingsConf = Self.settingsConfigURL.path
+        if FileManager.default.fileExists(atPath: settingsConf) {
+            settingsConf.withCString { ghostty_config_load_file(cfg, $0) }
+        }
+
         ghostty_config_load_recursive_files(cfg)
         ghostty_config_finalize(cfg)
 
@@ -155,4 +185,12 @@ final class GhosttyApp {
         resourcesDir = dir
         setenv("GHOSTTY_RESOURCES_DIR", dir, 1)
     }
+}
+
+extension Notification.Name {
+    /// Posted after the ghostty config is reloaded from a settings change, so the SwiftUI chrome
+    /// (status bar) and the AppKit window appearance (title bar + window background → sidebar)
+    /// re-read the new `GhosttyApp.terminalBackgroundColor` immediately instead of waiting for the
+    /// window to re-key.
+    static let agtAppearanceChanged = Notification.Name("agt.appearanceChanged")
 }
