@@ -35,6 +35,20 @@ final class SidebarUITests: XCTestCase {
     /// usual identifier/label lookups don't match.
     private func sessionRow() -> XCUIElement { app.staticTexts["session-row"] }
 
+    /// The on-screen (hittable) menu item with `title`. macOS always exposes the full menu-bar
+    /// hierarchy to accessibility, so the File-menu items (New Session, Open Directory…, Close
+    /// Session) collide by title with the same-named bottom-bar / context-menu items. The
+    /// presented popup/context item is hittable; the closed menu-bar one is not — filter on that.
+    private func presentedMenuItem(_ title: String, timeout: TimeInterval = 5) -> XCUIElement {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let matches = app.menuItems.matching(identifier: title).allElementsBoundByIndex
+            if let hit = matches.first(where: { $0.exists && $0.isHittable }) { return hit }
+            usleep(150_000)
+        }
+        return app.menuItems[title].firstMatch
+    }
+
     /// Polls an element's `value` until it equals `expected`.
     private func waitForValue(_ element: XCUIElement, _ expected: String, timeout: TimeInterval) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
@@ -80,7 +94,7 @@ final class SidebarUITests: XCTestCase {
         let row = sessionRow()
         XCTAssertTrue(row.waitForExistence(timeout: 20))
         row.rightClick()
-        let close = app.menuItems["Close Session"]
+        let close = presentedMenuItem("Close Session")
         XCTAssertTrue(close.waitForExistence(timeout: 5))
         close.click()
         XCTAssertTrue(row.waitForNonExistence(timeout: 5),
@@ -121,7 +135,7 @@ final class SidebarUITests: XCTestCase {
         let add = app.descendants(matching: .any).matching(identifier: "add-session").firstMatch
         XCTAssertTrue(add.waitForExistence(timeout: 5), "bottom-bar add-session menu should exist")
         add.click()
-        let newItem = app.menuItems["New Session"]
+        let newItem = presentedMenuItem("New Session")
         XCTAssertTrue(newItem.waitForExistence(timeout: 5), "New Session menu item should appear")
         newItem.click()
         XCTAssertTrue(pollSessionCount(workspace: "workspace 1", expected: 2, timeout: 5),
@@ -135,7 +149,7 @@ final class SidebarUITests: XCTestCase {
         let add = app.descendants(matching: .any).matching(identifier: "add-session").firstMatch
         XCTAssertTrue(add.waitForExistence(timeout: 20), "bottom-bar add-session menu should exist")
         add.click()
-        let open = app.menuItems["Open Directory…"]
+        let open = presentedMenuItem("Open Directory…")
         XCTAssertTrue(open.waitForExistence(timeout: 5), "Open Directory… menu item should appear")
         open.click()
         // the native folder picker appears (app-modal); confirm via its Cancel button, then

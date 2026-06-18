@@ -112,6 +112,14 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
         onExit?()
     }
 
+    /// Triggers a libghostty keybind action on this surface (e.g. `increase_font_size:1`,
+    /// `decrease_font_size:1`, `reset_font_size`), so a menu item can drive the same behavior
+    /// as the built-in keybind. A font change rides the usual CELL_SIZE → persist path.
+    func performBindingAction(_ action: String) {
+        guard let surface else { return }
+        _ = ghostty_surface_binding_action(surface, action, UInt(action.utf8.count))
+    }
+
     func reportFontSize() {
         // Already on the main actor (the CELL_SIZE callback hops via DispatchQueue.main.async).
         // inherited_config carries the surface's live font size (post cmd +/-); a zero means

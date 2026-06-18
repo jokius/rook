@@ -19,6 +19,29 @@ struct AppStoreTests {
         #expect(store.activeSession == nil)
     }
 
+    @Test func defaultWorkspaceNameCountsUp() {
+        let store = Self.makeStore()
+        #expect(store.defaultWorkspaceName == "workspace 1")
+        store.addWorkspace(name: "work")
+        #expect(store.defaultWorkspaceName == "workspace 2")
+    }
+
+    @Test func currentWorkspaceFollowsSelectionThenFallsBackToLast() {
+        let store = Self.makeStore()
+        #expect(store.currentWorkspaceID == nil)
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+        // no selection -> last workspace.
+        #expect(store.currentWorkspaceID == personal.id)
+        // a selected session pins its owning workspace.
+        let session = try! #require(store.addSession(toWorkspace: work.id, cwd: "/a"))
+        store.selectSession(session.id)
+        #expect(store.currentWorkspaceID == work.id)
+        // deselecting falls back to the last workspace again.
+        store.selectSession(nil)
+        #expect(store.currentWorkspaceID == personal.id)
+    }
+
     @Test func addWorkspaceAppends() {
         let store = Self.makeStore()
         let work = store.addWorkspace(name: "work")

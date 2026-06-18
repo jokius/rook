@@ -9,11 +9,13 @@ struct agtApp: App {
 
     @State private var store: AppStore
     @State private var gitStatusService: GitStatusService
+    @State private var actions: AppActions
 
     init() {
         let store = agtApp.restoredStore()
         _store = State(initialValue: store)
         _gitStatusService = State(initialValue: GitStatusService(store: store))
+        _actions = State(initialValue: AppActions(store: store))
     }
 
     var body: some Scene {
@@ -22,7 +24,8 @@ struct agtApp: App {
                 store: store,
                 makeSurface: { Self.makeSurface(for: $0, store: store, service: gitStatusService) },
                 makeSplitSurface: { Self.makeSplitSurface(for: $0, store: store) },
-                quickTerminal: QuickTerminalController.shared
+                quickTerminal: QuickTerminalController.shared,
+                actions: actions
             )
                 .frame(minWidth: 640, minHeight: 400)
                 .task {
@@ -45,9 +48,44 @@ struct agtApp: App {
         .defaultSize(width: 900, height: 600)
         .windowResizability(.contentMinSize)
         .commands {
-            // standard View > Hide/Show Status Bar item, toggling the bottom status
-            // bar. the choice is persisted via the store so it survives relaunch.
+            // File: replace the default "New" with session/workspace/directory creation, and
+            // add Close Session (terminal-style ⌘W — closes the active session, or the window
+            // when none is open).
+            CommandGroup(replacing: .newItem) {
+                Button("New Session") { actions.newSession() }
+                    .keyboardShortcut("n", modifiers: .command)
+                Button("New Workspace") { actions.newWorkspace() }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                Button("Open Directory…") { actions.openDirectory() }
+                    .keyboardShortcut("o", modifiers: .command)
+            }
+            CommandGroup(after: .newItem) {
+                Divider()
+                Button("Close Session") {
+                    if store.activeSession != nil { actions.closeActiveSession() }
+                    else { NSApp.keyWindow?.performClose(nil) }
+                }
+                .keyboardShortcut("w", modifiers: .command)
+            }
+            // View: split + quick terminal, near the sidebar toggle.
+            CommandGroup(after: .sidebar) {
+                Button(store.activeSession?.isSplit == true ? "Hide Split" : "Split Right") {
+                    actions.toggleSplit()
+                }
+                .keyboardShortcut("d", modifiers: .command)
+                .disabled(store.activeSession == nil)
+                Button("Quick Terminal") { QuickTerminalController.shared.toggle() }
+                    .keyboardShortcut("`", modifiers: .control)
+            }
+            // View: font zoom (drives ghostty on the focused terminal) + the status-bar toggle.
             CommandGroup(after: .toolbar) {
+                Button("Increase Font Size") { actions.increaseFontSize() }
+                    .keyboardShortcut("+", modifiers: .command)
+                Button("Decrease Font Size") { actions.decreaseFontSize() }
+                    .keyboardShortcut("-", modifiers: .command)
+                Button("Actual Size") { actions.resetFontSize() }
+                    .keyboardShortcut("0", modifiers: .command)
+                Divider()
                 Button(store.statusBarHidden ? "Show Status Bar" : "Hide Status Bar") {
                     store.setStatusBarHidden(!store.statusBarHidden)
                 }

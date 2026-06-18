@@ -39,6 +39,12 @@ The app must build and `swift test` must stay green after every change.
 - Add affordances live in a bottom bar in `ContentView`: a workspace button and a session menu (New Session / Open Directory…). The two session actions are also on each workspace row's right-click menu.
 - Accessibility identifiers `session-row`, `workspace-row`, `edit-field`, and `add-session` back the XCUITests. Note the rename field surfaces as a `TextField` for sessions and a `StaticText` for workspaces, so UI tests match `edit-field` by identifier across element types.
 
+## Menu bar and actions
+
+- User actions live in `AppActions` (app target, `@MainActor`), shared by the toolbar/bottom-bar buttons (`ContentView`) and the menu bar (`agtApp`'s `.commands`) so the two never drift. Trivial one-liners (quick-terminal toggle, status-bar toggle) call the controller/store directly; `AppActions` owns the ones with real logic — new-session placement, the directory picker, split + focus, and font.
+- Font menu items (⌘+/⌘−/⌘0) drive libghostty on the *focused* surface via `GhosttySurfaceView.performBindingAction("increase_font_size:1"/"decrease_font_size:1"/"reset_font_size")`. `focusedSurface()` is the key window's first responder (main pane, split pane, or quick terminal), else the active session's surface. A menu-driven font change still rides the CELL_SIZE → persist path, like the keybind.
+- `Close Session` is ⌘W (terminal-style): closes the active session, falling back to closing the window when none is open. `AppStore.currentWorkspaceID`/`defaultWorkspaceName` are the host-free placement/naming helpers behind New Session / New Workspace.
+
 ## Git integration
 
 - Two git calls per refresh, shelled out (no libgit2): `git -C <cwd> status --porcelain=v2 --branch` (branch, upstream, ahead/behind, dirty entries) and `git -C <cwd> rev-parse --git-dir` (linked-worktree name). A non-zero status exit means the cwd is not a git work tree → `gitStatus = nil` (no sidebar tokens, no title pill).

@@ -33,6 +33,21 @@ public final class AppStore {
         return session(withID: selectedSessionID)
     }
 
+    /// The workspace a new session should land in: the selected session's workspace, else the
+    /// last workspace (nil when there are no workspaces). Drives both the bottom bar's add
+    /// actions and the File menu's New Session / Open Directory.
+    public var currentWorkspaceID: UUID? {
+        if let selectedSessionID, let workspace = workspace(forSession: selectedSessionID) {
+            return workspace.id
+        }
+        return workspaces.last?.id
+    }
+
+    /// The auto-generated name for the next new workspace (`workspace 1`, `workspace 2`, …).
+    public var defaultWorkspaceName: String {
+        "workspace \(workspaces.count + 1)"
+    }
+
     @discardableResult
     public func addWorkspace(name: String) -> Workspace {
         let workspace = Workspace(name: name)

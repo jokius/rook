@@ -15,6 +15,7 @@ struct ContentView: View {
     let makeSurface: (Session) -> GhosttySurfaceView
     let makeSplitSurface: (Session) -> GhosttySurfaceView
     let quickTerminal: QuickTerminalController
+    let actions: AppActions
 
     var body: some View {
         NavigationSplitView {
@@ -53,7 +54,7 @@ struct ContentView: View {
         .overlay { quickTerminalOverlay }
         // when the quick terminal hides, return focus to the active session's terminal.
         .onChange(of: quickTerminal.isVisible) { _, visible in
-            if !visible { focusActiveSession() }
+            if !visible { actions.focusActiveSession() }
         }
         // blend the title bar with the terminal; surface the window un-minimized on launch.
         // the title token makes updateNSView re-run the blend on a session switch.
@@ -137,11 +138,7 @@ struct ContentView: View {
     private var splitButton: some View {
         let isSplit = store.activeSession?.isSplit ?? false
         return Button {
-            guard let session = store.activeSession else { return }
-            store.toggleSplit(session.id)
-            // move focus to the pane that should now be active: the split (right) pane on
-            // open, the primary on close.
-            focusSplitPane(session, wantSplit: session.isSplit)
+            actions.toggleSplit()
         } label: {
             Image(systemName: "rectangle.split.2x1")
         }
@@ -184,39 +181,12 @@ struct ContentView: View {
         }
     }
 
-    /// Re-assert first responder on the active session's terminal for a short window, so focus
-    /// returns to it after the quick terminal hides (a one-shot would race the overlay teardown).
-    @MainActor private func focusActiveSession(attempt: Int = 0) {
-        if let view = store.activeSession?.surface as? GhosttySurfaceView, let window = view.window {
-            window.makeFirstResponder(view)
-        }
-        guard attempt < 12 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            focusActiveSession(attempt: attempt + 1)
-        }
-    }
-
-    /// Make the target split pane first responder. Re-asserts on the run loop for a short
-    /// window (not just once): on open the split surface materializes a beat after the
-    /// toggle, and on close the HSplitView collapse churns the primary view and would drop
-    /// a one-shot focus — re-asserting survives both.
-    @MainActor private func focusSplitPane(_ session: Session, wantSplit: Bool, attempt: Int = 0) {
-        if let view = (wantSplit ? session.splitSurface : session.surface) as? GhosttySurfaceView,
-           let window = view.window {
-            window.makeFirstResponder(view)
-        }
-        guard attempt < 12 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            focusSplitPane(session, wantSplit: wantSplit, attempt: attempt + 1)
-        }
-    }
-
     /// Two distinct add controls, source-list style: add a workspace, and a menu
     /// to add a session to the current workspace (default cwd) or a picked directory.
     private var bottomBar: some View {
         HStack(spacing: 2) {
             Button {
-                store.addWorkspace(name: defaultWorkspaceName)
+                actions.newWorkspace()
             } label: {
                 Image(systemName: "rectangle.stack.badge.plus")
                     .frame(width: 24, height: 22)
@@ -227,8 +197,8 @@ struct ContentView: View {
             .accessibilityLabel("New Workspace")
 
             Menu {
-                Button("New Session") { addSessionToCurrentWorkspace() }
-                Button("Open Directory…") { openDirectoryThenAddSession() }
+                Button("New Session") { actions.newSession() }
+                Button("Open Directory…") { actions.openDirectory() }
             } label: {
                 Image(systemName: "plus.rectangle")
                     .frame(width: 24, height: 22)
@@ -248,40 +218,6 @@ struct ContentView: View {
         .background(.bar)
     }
 
-    private var defaultWorkspaceName: String {
-        "workspace \(store.workspaces.count + 1)"
-    }
-
-    /// The workspace a new session should land in: the selected session's
-    /// workspace, else the last workspace. (Empty/specific workspaces can still be
-    /// targeted via the workspace row's right-click menu.)
-    private var currentWorkspaceID: UUID? {
-        if let selected = store.selectedSessionID, let workspace = store.workspace(forSession: selected) {
-            return workspace.id
-        }
-        return store.workspaces.last?.id
-    }
-
-    private func addSessionToCurrentWorkspace() {
-        guard let workspaceID = currentWorkspaceID,
-              let session = store.addSession(toWorkspace: workspaceID, cwd: FileManager.default.homeDirectoryForCurrentUser.path)
-        else { return }
-        store.selectSession(session.id)
-    }
-
-    private func openDirectoryThenAddSession() {
-        guard let workspaceID = currentWorkspaceID else { return }
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Open"
-        panel.message = "Choose a directory for the new session"
-        guard panel.runModal() == .OK, let url = panel.url,
-              let session = store.addSession(toWorkspace: workspaceID, cwd: url.path)
-        else { return }
-        store.selectSession(session.id)
-    }
 }
 
 /// Blends the window title bar with the terminal (the title text itself is set by
