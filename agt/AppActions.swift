@@ -189,27 +189,28 @@ final class AppActions {
     /// The app's commands as palette items, sharing the same logic as the menu/buttons. Includes a
     /// "Move Session to …" item per other workspace (when there's an active session to move).
     func paletteActions() -> [PaletteItem] {
+        // shortcut glyphs are kept in sync by hand with the `.commands` keyboard shortcuts in `agtApp`.
         var items: [PaletteItem] = [
-            PaletteItem(title: "New Session") { [weak self] in self?.newSession() },
-            PaletteItem(title: "New Workspace") { [weak self] in self?.newWorkspace() },
-            PaletteItem(title: "Open Directory…") { [weak self] in self?.openDirectory() },
+            PaletteItem(title: "New Session", shortcut: "⌘N") { [weak self] in self?.newSession() },
+            PaletteItem(title: "New Workspace", shortcut: "⌘⇧N") { [weak self] in self?.newWorkspace() },
+            PaletteItem(title: "Open Directory…", shortcut: "⌘O") { [weak self] in self?.openDirectory() },
             PaletteItem(title: "Rename Session") { [weak self] in self?.renameActiveSession() },
             PaletteItem(title: "Rename Workspace") { [weak self] in self?.renameActiveWorkspace() },
-            PaletteItem(title: "Close Session") { [weak self] in self?.closeActiveSession() },
-            PaletteItem(title: "Toggle Split") { [weak self] in self?.toggleSplit() },
-            PaletteItem(title: "Quick Terminal") { [weak self] in self?.toggleQuickTerminal() },
-            PaletteItem(title: "Increase Font Size") { [weak self] in self?.increaseFontSize() },
-            PaletteItem(title: "Decrease Font Size") { [weak self] in self?.decreaseFontSize() },
-            PaletteItem(title: "Actual Font Size") { [weak self] in self?.resetFontSize() },
+            PaletteItem(title: "Close Session", shortcut: "⌘W") { [weak self] in self?.closeActiveSession() },
+            PaletteItem(title: "Toggle Split", shortcut: "⌘D") { [weak self] in self?.toggleSplit() },
+            PaletteItem(title: "Quick Terminal", shortcut: "⌃`") { [weak self] in self?.toggleQuickTerminal() },
+            PaletteItem(title: "Increase Font Size", shortcut: "⌘+") { [weak self] in self?.increaseFontSize() },
+            PaletteItem(title: "Decrease Font Size", shortcut: "⌘−") { [weak self] in self?.decreaseFontSize() },
+            PaletteItem(title: "Actual Font Size", shortcut: "⌘0") { [weak self] in self?.resetFontSize() },
         ]
         if store?.canRemoveWorkspace == true {
             items.append(PaletteItem(title: "Delete Workspace") { [weak self] in self?.deleteActiveWorkspace() })
         }
         if store?.activeSession?.isSplit == true {
-            items.append(PaletteItem(title: "Focus Left Pane") { [weak self] in self?.focusPane(.main) })
-            items.append(PaletteItem(title: "Focus Right Pane") { [weak self] in self?.focusPane(.split) })
+            items.append(PaletteItem(title: "Focus Left Pane", shortcut: "⌘⌥←") { [weak self] in self?.focusPane(.main) })
+            items.append(PaletteItem(title: "Focus Right Pane", shortcut: "⌘⌥→") { [weak self] in self?.focusPane(.split) })
         }
-        items.append(PaletteItem(title: "New Window") { [weak self] in self?.newWindow() })
+        items.append(PaletteItem(title: "New Window", shortcut: "⌘⌥N") { [weak self] in self?.newWindow() })
         items.append(PaletteItem(title: "Rename Window") { [weak self] in self?.renameActiveWindow() })
         if library.canRemoveWindow {
             items.append(PaletteItem(title: "Delete Window") { [weak self] in self?.deleteActiveWindow() })

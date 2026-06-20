@@ -1,18 +1,22 @@
 import agtCore
 import SwiftUI
 
-/// One selectable palette entry: a title (and optional subtitle, e.g. a session's cwd) plus the
-/// closure to run when chosen.
+/// One selectable palette entry: a title (and optional subtitle, e.g. a session's cwd), an optional
+/// keyboard-shortcut hint shown right-aligned, plus the closure to run when chosen.
 struct PaletteItem: Identifiable {
     let id: String
     let title: String
     let subtitle: String?
+    /// The action's keyboard shortcut as display glyphs (e.g. `⌘N`), shown right-aligned. nil for
+    /// items with no shortcut. Kept in sync by hand with the `.commands` keyboard shortcuts in `agtApp`.
+    let shortcut: String?
     let run: () -> Void
 
-    init(id: String? = nil, title: String, subtitle: String? = nil, run: @escaping () -> Void) {
+    init(id: String? = nil, title: String, subtitle: String? = nil, shortcut: String? = nil, run: @escaping () -> Void) {
         self.id = id ?? title
         self.title = title
         self.subtitle = subtitle
+        self.shortcut = shortcut
         self.run = run
     }
 }
@@ -152,7 +156,12 @@ struct CommandPalette: View {
                         .lineLimit(1).truncationMode(.middle)
                 }
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+            if let shortcut = item.shortcut {
+                Text(shortcut)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
