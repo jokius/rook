@@ -205,6 +205,10 @@ final class AppActions {
         if store?.canRemoveWorkspace == true {
             items.append(PaletteItem(title: "Delete Workspace") { [weak self] in self?.deleteActiveWorkspace() })
         }
+        if store?.activeSession?.isSplit == true {
+            items.append(PaletteItem(title: "Focus Left Pane") { [weak self] in self?.focusPane(.main) })
+            items.append(PaletteItem(title: "Focus Right Pane") { [weak self] in self?.focusPane(.split) })
+        }
         items.append(PaletteItem(title: "New Window") { [weak self] in self?.newWindow() })
         items.append(PaletteItem(title: "Rename Window") { [weak self] in self?.renameActiveWindow() })
         if library.canRemoveWindow {
@@ -246,10 +250,31 @@ final class AppActions {
 
     // MARK: - Split
 
+    /// Toggle the active session's split. Opening shows both panes (focus STAYS on the current pane,
+    /// it does not jump to the new right pane); closing HIDES the split (both shells stay alive,
+    /// nothing is destroyed) and shows the focused pane maximized, so reopening restores the two panes
+    /// in their original positions. Either way focus is re-asserted on the currently active pane.
     func toggleSplit() {
         guard let store, let session = store.activeSession else { return }
         store.toggleSplit(session.id)
-        focusSplitPane(session, wantSplit: session.isSplit)
+        focusSplitPane(session, wantSplit: session.splitFocused)
+    }
+
+    /// Move keyboard focus to a pane of the active session's split: `.split` -> the right pane,
+    /// anything else -> the left/primary. No-op when the active session isn't split. Drives the
+    /// keyboard shortcuts, the View menu items, and the action palette.
+    func focusPane(_ pane: PaneRole) {
+        guard let session = store?.activeSession else { return }
+        setSplitFocus(pane == .split, of: session)
+    }
+
+    /// Set which pane of a session's split holds focus and move first responder there. Shared by the
+    /// GUI `focusPane` and the control channel (which may target a session that isn't the active one).
+    /// Updates `splitFocused` so the pane dim, sidebar, and title bar follow. No-op when not split.
+    func setSplitFocus(_ toSplit: Bool, of session: Session) {
+        guard session.isSplit else { return }
+        session.splitFocused = toSplit
+        focusSplitPane(session, wantSplit: toSplit)
     }
 
     // MARK: - Quick terminal (frontmost window)
@@ -265,13 +290,14 @@ final class AppActions {
 
     // MARK: - Focus
 
-    /// Move first responder back to the active session's primary terminal (used after the quick
-    /// terminal or a palette closes). Re-asserts briefly since the target view may not be on-window
-    /// yet. Bails while the quick terminal is up — it owns focus, so don't steal it back.
+    /// Move first responder back to the active session's focused pane (used after the quick terminal
+    /// or a palette closes). Targets `activeSurface` so a collapsed split that shows the right pane
+    /// gets focus, not the hidden primary. Re-asserts briefly since the target view may not be
+    /// on-window yet. Bails while the quick terminal is up — it owns focus, so don't steal it back.
     func focusActiveSession(attempt: Int = 0) {
         if renamePending { return }
         if frontmostQuickTerminal?.isVisible == true { return }
-        if let view = store?.activeSession?.surface as? GhosttySurfaceView, let window = view.window {
+        if let view = store?.activeSession?.activeSurface as? GhosttySurfaceView, let window = view.window {
             window.makeFirstResponder(view)
         }
         guard attempt < 12 else { return }
@@ -336,9 +362,9 @@ final class AppActions {
     }
 
     /// The focused terminal: the key window's first responder if it's a surface (covers the main
-    /// pane, the split pane, and the quick terminal), else the active session's primary surface.
+    /// pane, the split pane, and the quick terminal), else the active session's focused pane.
     private func focusedSurface() -> GhosttySurfaceView? {
         if let view = NSApp.keyWindow?.firstResponder as? GhosttySurfaceView { return view }
-        return store?.activeSession?.surface as? GhosttySurfaceView
+        return store?.activeSession?.activeSurface as? GhosttySurfaceView
     }
 }

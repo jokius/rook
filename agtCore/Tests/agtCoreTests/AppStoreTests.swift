@@ -241,10 +241,14 @@ struct AppStoreTests {
         let ws = store.addWorkspace(name: "work")
         let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
         #expect(session.isSplit == false)
+        #expect(session.hasSplit == false)
         store.toggleSplit(session.id)
         #expect(session.isSplit == true)
+        #expect(session.hasSplit == true)
         store.toggleSplit(session.id)
         #expect(session.isSplit == false)
+        // hiding the split keeps hasSplit so the sidebar/title split indicators persist.
+        #expect(session.hasSplit == true)
     }
 
     @Test func closeSplitHidesAndTearsDownSurface() {
@@ -252,12 +256,39 @@ struct AppStoreTests {
         let ws = store.addWorkspace(name: "work")
         let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
         session.isSplit = true
+        session.hasSplit = true
+        session.splitFocused = true
         let split = SpySurface()
         session.splitSurface = split
+        session.splitCwd = "/var/log"
         store.closeSplit(session.id)
         #expect(session.isSplit == false)
+        #expect(session.hasSplit == false)
+        #expect(session.splitFocused == false)
         #expect(session.splitSurface == nil)
+        #expect(session.splitCwd == nil)
+        #expect(session.initialSplitCwd == nil)
         #expect(split.teardownCount == 1)
+    }
+
+    @Test func splitCwdRoundTripsThroughSnapshot() {
+        let store = Self.makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.isSplit = true
+        session.currentCwd = "/a/primary"
+        session.splitCwd = "/var/log"
+        let snap = store.snapshot()
+        let snapped = snap.workspaces[0].sessions[0]
+        #expect(snapped.cwd == "/a/primary")
+        #expect(snapped.splitCwd == "/var/log")
+        // restore into a fresh store: each pane keeps its own seed.
+        let restored = Self.makeStore()
+        restored.restore(from: snap)
+        let r = restored.workspaces[0].sessions[0]
+        #expect(r.initialCwd == "/a/primary")
+        #expect(r.initialSplitCwd == "/var/log")
+        #expect(r.isSplit == true)
     }
 
     @Test func openOverlaySetsCommandAndFlag() {

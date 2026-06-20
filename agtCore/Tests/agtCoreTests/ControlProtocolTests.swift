@@ -69,6 +69,13 @@ struct ControlProtocolTests {
         }
     }
 
+    @Test func sessionFocusRoundTripsWithPane() throws {
+        let request = ControlRequest(cmd: .sessionFocus, target: "active", args: ControlArgs(pane: "right"))
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.args?.pane == "right")
+    }
+
     @Test func fontCommandsRoundTrip() throws {
         let cases: [ControlRequest] = [
             ControlRequest(cmd: .fontInc, target: "active"),

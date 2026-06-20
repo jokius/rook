@@ -163,16 +163,25 @@ public final class AppStore {
     public func toggleSplit(_ sessionID: UUID) {
         guard let session = session(withID: sessionID) else { return }
         session.isSplit.toggle()
+        // opening marks the session as having a split; hiding (toggling off) leaves `hasSplit` set so
+        // the split indicators persist while the split is merely hidden. Only `closeSplit` clears it.
+        if session.isSplit { session.hasSplit = true }
         save()
     }
 
     /// Closes the split pane: hides it AND tears down its surface, so a subsequent split
-    /// starts a fresh shell. Used when the split shell exits on its own.
+    /// starts a fresh shell. Used when the split shell exits on its own; resets the focus flag so a
+    /// stale `splitFocused` doesn't point the collapsed view at the gone pane.
     public func closeSplit(_ sessionID: UUID) {
         guard let session = session(withID: sessionID) else { return }
         session.isSplit = false
+        session.hasSplit = false
+        session.splitFocused = false
         session.splitSurface?.teardown()
         session.splitSurface = nil
+        session.splitCwd = nil
+        session.splitTitle = nil
+        session.initialSplitCwd = nil
         save()
     }
 
@@ -254,7 +263,8 @@ public final class AppStore {
         let workspaceSnapshots = workspaces.map { workspace in
             WorkspaceSnapshot(id: workspace.id, name: workspace.name, sessions: workspace.sessions.map { session in
                 SessionSnapshot(id: session.id, customName: session.customName, cwd: session.currentCwd ?? session.initialCwd,
-                                isSplit: session.isSplit, fontSize: session.fontSize)
+                                isSplit: session.isSplit, fontSize: session.fontSize,
+                                splitCwd: session.splitCwd ?? session.initialSplitCwd)
             })
         }
         return Snapshot(selectedSessionID: selectedSessionID, workspaces: workspaceSnapshots)
@@ -273,7 +283,9 @@ public final class AppStore {
             let sessions = workspaceSnapshot.sessions.map { sessionSnapshot -> Session in
                 let session = Session(id: sessionSnapshot.id, initialCwd: sessionSnapshot.cwd, customName: sessionSnapshot.customName)
                 session.isSplit = sessionSnapshot.isSplit ?? false
+                session.hasSplit = session.isSplit
                 session.fontSize = sessionSnapshot.fontSize
+                session.initialSplitCwd = sessionSnapshot.splitCwd
                 return session
             }
             return Workspace(id: workspaceSnapshot.id, name: workspaceSnapshot.name, sessions: sessions)

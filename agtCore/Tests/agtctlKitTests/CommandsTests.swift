@@ -90,6 +90,16 @@ struct CommandsTests {
         #expect(try request(["session", "split", "on"]) == expected)
     }
 
+    @Test func sessionFocusDefaultsOther() throws {
+        let expected = ControlRequest(cmd: .sessionFocus, target: "active", args: ControlArgs(pane: "other"))
+        #expect(try request(["session", "focus"]) == expected)
+    }
+
+    @Test func sessionFocusRight() throws {
+        let expected = ControlRequest(cmd: .sessionFocus, target: "active", args: ControlArgs(pane: "right"))
+        #expect(try request(["session", "focus", "right"]) == expected)
+    }
+
     @Test func sessionCopyDefaultsActive() throws {
         #expect(try request(["session", "copy"]) == ControlRequest(cmd: .sessionCopy, target: "active"))
     }

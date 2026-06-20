@@ -157,6 +157,16 @@ struct agtApp: App {
                 }
                 .keyboardShortcut("d", modifiers: .command)
                 .disabled(library.activeStore?.activeSession == nil)
+                Button { actions.focusPane(.main) } label: {
+                    Label("Focus Left Pane", systemImage: "rectangle.lefthalf.filled")
+                }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+                .disabled(library.activeStore?.activeSession?.isSplit != true)
+                Button { actions.focusPane(.split) } label: {
+                    Label("Focus Right Pane", systemImage: "rectangle.righthalf.filled")
+                }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                .disabled(library.activeStore?.activeSession?.isSplit != true)
                 Button { actions.toggleQuickTerminal() } label: { Label("Quick Terminal", systemImage: "terminal") }
                     .keyboardShortcut("`", modifiers: .control)
                 Button { palette.toggle(.sessions) } label: { Label("Go to Session", systemImage: "rectangle.stack") }
@@ -211,16 +221,20 @@ struct agtApp: App {
         return view
     }
 
-    /// Split-pane surface factory: a second independent login shell in the session's
-    /// current directory. Deliberately NOT wired to the session (no `view.session`) so its
-    /// PWD reports don't clobber the session's cwd, and on shell exit it closes just
-    /// the split (hide + teardown), not the whole session.
+    /// Split-pane surface factory: a second independent login shell in the session's current
+    /// directory. Wired to the session as `isSplitPane`, so its PWD/title reports go to
+    /// `session.splitCwd`/`splitTitle` (never clobbering the primary's), and on shell exit it closes
+    /// just the split (hide + teardown), not the whole session.
     @MainActor
     private static func makeSplitSurface(for session: Session, store: AppStore, env: [String: String]) -> GhosttySurfaceView {
-        // seed the split from the session's font size so it matches the primary; its own
-        // cmd +/- changes aren't persisted (the split re-spawns fresh on restore). It inherits the
-        // parent session's window/workspace/session ids in the env.
-        let view = GhosttySurfaceView(workingDirectory: session.effectiveCwd, fontSize: session.fontSize.map(Float.init), env: env)
+        // seed the split's cwd from its persisted `initialSplitCwd` (so a restored split keeps its
+        // own directory, not the primary's), falling back to the session's effectiveCwd for a fresh
+        // split. Font size matches the primary; its own cmd +/- changes aren't persisted. It inherits
+        // the parent session's window/workspace/session ids in the env.
+        let view = GhosttySurfaceView(workingDirectory: session.initialSplitCwd ?? session.effectiveCwd,
+                                      fontSize: session.fontSize.map(Float.init), env: env)
+        view.session = session
+        view.isSplitPane = true
         let sessionID = session.id
         view.onExit = { store.closeSplit(sessionID) }
         view.onFocusChange = { focused in

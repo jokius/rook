@@ -99,4 +99,89 @@ struct SessionTests {
         session.currentCwd = "/repo/sub"
         #expect(session.effectiveCwd == "/repo/sub")
     }
+
+    @Test func focusedPaneDrivesDisplayNameAndCwd() {
+        let session = Session(initialCwd: "/Users/umputun/dev/foo")
+        session.currentCwd = "/Users/umputun/dev/foo"
+        session.isSplit = true
+        session.splitCwd = "/var/log"
+        // split not focused: the primary pane drives name + cwd.
+        #expect(session.displayName == "foo")
+        #expect(session.focusedCwd == "/Users/umputun/dev/foo")
+        session.splitFocused = true
+        // split focused: the split pane drives name + cwd.
+        #expect(session.displayName == "log")
+        #expect(session.focusedCwd == "/var/log")
+    }
+
+    @Test func focusedPaneTitleWins() {
+        let session = Session(initialCwd: "/repo")
+        session.isSplit = true
+        session.oscTitle = "primary-title"
+        session.splitTitle = "split-title"
+        #expect(session.displayName == "primary-title")
+        session.splitFocused = true
+        #expect(session.displayName == "split-title")
+    }
+
+    @Test func customNameWinsOverFocusedSplitPane() {
+        let session = Session(initialCwd: "/repo", customName: "build")
+        session.isSplit = true
+        session.splitFocused = true
+        session.splitTitle = "split-title"
+        session.splitCwd = "/var/log"
+        #expect(session.displayName == "build")
+    }
+
+    @Test func hiddenSplitStillShowsFocusedSplitPane() {
+        // split hidden (isSplit false) but the right pane is the one shown maximized + focused: the
+        // title/sidebar follow the split pane, NOT the hidden primary. (guarded on splitFocused, not
+        // isSplit — closeSplit resets the flag, so splitFocused is true only while the pane exists.)
+        let session = Session(initialCwd: "/repo")
+        session.currentCwd = "/repo/sub"
+        session.splitSurface = FakeSurface()
+        session.splitFocused = true
+        session.splitCwd = "/var/log"
+        #expect(session.focusedCwd == "/var/log")
+        #expect(session.displayName == "log")
+    }
+
+    @Test func focusedCwdFallsBackUntilSplitReports() {
+        // split focused but the split pane hasn't reported a cwd yet: fall back to the primary's.
+        let session = Session(initialCwd: "/repo")
+        session.currentCwd = "/repo/primary"
+        session.isSplit = true
+        session.splitFocused = true
+        #expect(session.focusedCwd == "/repo/primary")
+        #expect(session.displayName == "primary")
+    }
+
+    @Test func effectiveCwdStaysPrimaryWhileSplitFocused() {
+        // effectiveCwd (new-pane seeding + AGT_SESSION_PWD) is NOT focus-aware.
+        let session = Session(initialCwd: "/repo")
+        session.currentCwd = "/repo/primary"
+        session.isSplit = true
+        session.splitFocused = true
+        session.splitCwd = "/var/log"
+        #expect(session.effectiveCwd == "/repo/primary")
+    }
+
+    @Test func activeSurfacePicksFocusedPane() {
+        let session = Session(initialCwd: "/repo")
+        let primary = FakeSurface(), split = FakeSurface()
+        session.surface = primary
+        #expect(session.activeSurface === primary)
+        session.splitSurface = split
+        session.splitFocused = false
+        #expect(session.activeSurface === primary)
+        session.splitFocused = true
+        #expect(session.activeSurface === split)
+        // split pane gone (e.g. its shell exited) but the focus flag is stale: fall back to primary.
+        session.splitSurface = nil
+        #expect(session.activeSurface === primary)
+    }
+}
+
+private final class FakeSurface: TerminalSurface {
+    func teardown() {}
 }

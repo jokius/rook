@@ -46,6 +46,12 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     /// factory after construction.
     weak var session: Session?
 
+    /// Whether this surface is the session's split (right) pane rather than the primary. Set by the
+    /// split factory; routes `applyPwd`/`applyTitle` to `session.splitCwd`/`splitTitle` so the split
+    /// pane's reports don't clobber the primary's, and clears back to false when the pane is promoted
+    /// to primary on collapse.
+    var isSplitPane = false
+
     /// Called on the main actor when the shell process exits, so the app can
     /// close the owning session (free the surface and drop the sidebar row). Set
     /// by the app's surface factory.
@@ -136,14 +142,14 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
         // so persisting here would thrash the disk. Live cwd is persisted on quit
         // and on structural mutations (add/close/move/rename/select), not on every
         // cd, so a crash/force-quit loses only cwd changes since the last save.
-        session?.currentCwd = pwd
+        if isSplitPane { session?.splitCwd = pwd } else { session?.currentCwd = pwd }
     }
 
     func applyTitle(_ title: String) {
         // Already on the main actor (the callback hops via DispatchQueue.main.async).
-        // `oscTitle` is observed, so the sidebar row and window title refresh live. Like applyPwd,
-        // this deliberately does NOT save(): OSC set-title re-fires on every prompt redraw.
-        session?.oscTitle = title
+        // `oscTitle`/`splitTitle` are observed, so the sidebar row and window title refresh live. Like
+        // applyPwd, this deliberately does NOT save(): OSC set-title re-fires on every prompt redraw.
+        if isSplitPane { session?.splitTitle = title } else { session?.oscTitle = title }
     }
 
     func handleProcessExit() {

@@ -395,6 +395,8 @@ final class ControlServer {
             }
         case .sessionSplit:
             return splitSession(request.target, window: request.args?.window, mode: request.args?.mode)
+        case .sessionFocus:
+            return focusSessionPane(request.target, window: request.args?.window, pane: request.args?.pane)
         case .sessionCopy:
             return copySelection(request.target, window: request.args?.window)
         case .sessionOverlayOpen:
@@ -461,6 +463,29 @@ final class ControlServer {
                 if want { store.toggleSplit(id) } else { store.closeSplit(id) }
             }
             actions.focusSplitPane(session, wantSplit: want)
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+        }
+    }
+
+    /// Move keyboard focus to a split session's left/right pane. `pane` is `left`|`right`|`other`
+    /// (`other` toggles). Errors when the session isn't split or the pane value is unknown.
+    private func focusSessionPane(_ target: String?, window: String?, pane: String?) -> ControlResponse {
+        let pane = pane ?? "other"
+        return resolveSession(target, window: window) { store, id in
+            guard let session = store.session(withID: id) else {
+                return ControlResponse(ok: false, error: "no such session: \(target ?? "active")")
+            }
+            guard session.isSplit else {
+                return ControlResponse(ok: false, error: "session not split")
+            }
+            let toSplit: Bool
+            switch pane {
+            case "left", "primary": toSplit = false
+            case "right", "split": toSplit = true
+            case "other", "toggle": toSplit = !session.splitFocused
+            default: return ControlResponse(ok: false, error: "invalid pane: \(pane)")
+            }
+            actions.setSplitFocus(toSplit, of: session)
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
         }
     }

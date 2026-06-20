@@ -267,6 +267,27 @@ final class ControlAPIUITests: XCTestCase {
         XCTAssertTrue(pollActiveSessionSplit(false, timeout: 10), "off should clear the split")
     }
 
+    // session.focus errors on a non-split session, succeeds on each pane once split, and rejects an
+    // unknown pane.
+    func testSessionFocusPane() throws {
+        let notSplit = try sendCommand(#"{"cmd":"session.focus","target":"active","args":{"pane":"right"}}"#)
+        XCTAssertEqual(notSplit["ok"] as? Bool, false, "focus on a non-split session should fail: \(notSplit)")
+        XCTAssertTrue((notSplit["error"] as? String ?? "").contains("not split"), "should report not split: \(notSplit)")
+
+        let split = try sendCommand(#"{"cmd":"session.split","target":"active","args":{"mode":"on"}}"#)
+        XCTAssertEqual(split["ok"] as? Bool, true, "split on should succeed: \(split)")
+        XCTAssertTrue(pollActiveSessionSplit(true, timeout: 10), "the active session should report split:true")
+
+        let right = try sendCommand(#"{"cmd":"session.focus","target":"active","args":{"pane":"right"}}"#)
+        XCTAssertEqual(right["ok"] as? Bool, true, "focus right should succeed: \(right)")
+        let left = try sendCommand(#"{"cmd":"session.focus","target":"active","args":{"pane":"left"}}"#)
+        XCTAssertEqual(left["ok"] as? Bool, true, "focus left should succeed: \(left)")
+
+        let bad = try sendCommand(#"{"cmd":"session.focus","target":"active","args":{"pane":"bogus"}}"#)
+        XCTAssertEqual(bad["ok"] as? Bool, false, "invalid pane should fail: \(bad)")
+        XCTAssertTrue((bad["error"] as? String ?? "").contains("invalid pane"), "should report invalid pane: \(bad)")
+    }
+
     // quick toggle makes the quick-terminal accessibility element appear, and toggling again hides it.
     func testQuickTerminalToggle() throws {
         let quick = app.descendants(matching: .any).matching(identifier: "quick-terminal").firstMatch

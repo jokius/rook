@@ -167,7 +167,7 @@ struct Workspace: ParsableCommand {
 struct Session: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Session commands.",
-        subcommands: [New.self, Close.self, Select.self, Rename.self, Move.self, TypeText.self, Split.self, Copy.self, Overlay.self]
+        subcommands: [New.self, Close.self, Select.self, Rename.self, Move.self, TypeText.self, Split.self, Focus.self, Copy.self, Overlay.self]
     )
 
     struct New: RequestCommand {
@@ -255,6 +255,17 @@ struct Session: ParsableCommand {
 
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .sessionSplit, target: target.target, args: options.withWindow(ControlArgs(mode: mode)))
+        }
+    }
+
+    struct Focus: RequestCommand {
+        static let configuration = CommandConfiguration(abstract: "Focus a split session's pane (left|right|other).")
+        @Argument(help: "Pane: left, right, or other (toggle, default).") var pane: String = "other"
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .sessionFocus, target: target.target, args: options.withWindow(ControlArgs(pane: pane)))
         }
     }
 

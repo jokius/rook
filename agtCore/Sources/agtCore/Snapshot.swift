@@ -51,12 +51,19 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
     /// so a snapshot already on disk before this field was added still decodes (as nil →
     /// default) instead of failing the load and wiping the saved tree.
     public var fontSize: Double?
+    /// The split (right) pane's working directory, so each pane restores to its OWN cwd rather than
+    /// both re-spawning in the primary's. The live `splitCwd`, or its restore seed when the split
+    /// hasn't reported a PWD yet; nil when there is no split. Optional for forward-compat like the
+    /// fields above.
+    public var splitCwd: String?
 
-    public init(id: UUID, customName: String?, cwd: String, isSplit: Bool? = nil, fontSize: Double? = nil) {
+    public init(id: UUID, customName: String?, cwd: String, isSplit: Bool? = nil, fontSize: Double? = nil,
+                splitCwd: String? = nil) {
         self.id = id
         self.customName = customName
         self.cwd = cwd
         self.isSplit = isSplit
         self.fontSize = fontSize
+        self.splitCwd = splitCwd
     }
 }

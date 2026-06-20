@@ -26,6 +26,13 @@ public final class Session: Identifiable {
     /// `SessionSnapshot` doesn't capture it, and a bare prompt redraw doesn't trigger a save.
     public var oscTitle: String?
 
+    /// The split (right) pane's live cwd and terminal title, reported by the split surface (the one
+    /// flagged `isSplitPane`). Observed and ephemeral like `currentCwd`/`oscTitle`; nil when there is
+    /// no split pane. While the split pane has focus, the sidebar row and title bar derive their
+    /// name/cwd from these instead of the primary's, so the chrome tracks whichever pane you're in.
+    public var splitCwd: String?
+    public var splitTitle: String?
+
     /// Count of unseen terminal notifications fired by this session's panes while it wasn't focused.
     /// Observed, so the sidebar badge reacts. Ephemeral: `SessionSnapshot` doesn't capture it, so it
     /// never survives a relaunch.
@@ -39,6 +46,12 @@ public final class Session: Identifiable {
     /// side). Observed, so the detail pane shows/hides the second pane when toggled.
     public var isSplit: Bool = false
 
+    /// Whether the session HAS a split pane at all (shown side-by-side OR hidden/maximized to one
+    /// pane), as opposed to `isSplit` which is only "currently shown". Stays true across a hide, and
+    /// is cleared only when the split is closed (`closeSplit`). Observed, so the sidebar + title-bar
+    /// split indicators persist while a split is merely hidden.
+    public var hasSplit: Bool = false
+
     /// While split, whether the split (second) pane holds focus rather than the primary.
     /// Observed, so the detail pane can dim the inactive pane. Meaningless when not split.
     public var splitFocused: Bool = false
@@ -47,6 +60,12 @@ public final class Session: Identifiable {
     /// like `surface`; it survives view churn, so hiding the split keeps the shell alive
     /// rather than destroying it. Freed only on `closeSplit`/`closeSession`.
     @ObservationIgnored public var splitSurface: (any TerminalSurface)?
+
+    /// The directory the split (right) pane re-spawns in on restore, set from the persisted
+    /// `SessionSnapshot.splitCwd` so each pane keeps its own cwd across relaunch. nil for a
+    /// fresh (never-restored) split, which seeds from the session's `effectiveCwd` instead.
+    /// `@ObservationIgnored`: read imperatively by the split factory, captured by `snapshot()`.
+    @ObservationIgnored public var initialSplitCwd: String?
 
     /// The terminal font size in points, or nil to use the ghostty config default. The app
     /// sets the surface's initial size from this on creation and writes it back when the
@@ -85,10 +104,11 @@ public final class Session: Identifiable {
     }
 
     /// The sidebar label: a non-blank `customName` (a manual rename) wins; otherwise a non-blank
-    /// `oscTitle` (the terminal title the shell or a remote host set); otherwise the basename of the
-    /// live cwd (falling back to `initialCwd`).
+    /// terminal title of the focused pane (`focusedOscTitle` — the split pane's while it's focused in
+    /// a split, else the primary's); otherwise the basename of the focused pane's cwd (`focusedCwd`,
+    /// falling back to `initialCwd`).
     ///
-    /// `customName` and `oscTitle` are both trimmed before use, so a whitespace-only value falls
+    /// `customName` and the title are both trimmed before use, so a whitespace-only value falls
     /// through to the next source — matching `AppStore.renameSession`, which clears a blank name to
     /// nil. (A whitespace-only `customName` can only reach here via a hand-edited snapshot;
     /// `renameSession` never stores one.)
@@ -98,16 +118,38 @@ public final class Session: Identifiable {
     /// sensible component exists, so we show the home shorthand).
     public var displayName: String {
         if let trimmed = customName?.trimmedOrNil { return trimmed }
-        if let title = oscTitle?.trimmedOrNil { return title }
-        let path = currentCwd ?? initialCwd
+        if let title = focusedOscTitle?.trimmedOrNil { return title }
+        let path = focusedCwd
         if path.isEmpty { return "~" }
         return (path as NSString).lastPathComponent
     }
 
-    /// The session's effective working directory: the live `currentCwd` once a PWD
-    /// report has arrived, otherwise the `initialCwd`. Used for the title subtitle and
-    /// as the cwd a new split/overlay/quick-terminal inherits.
+    /// The cwd of the pane currently in focus: the split (right) pane's while it has focus (whether
+    /// the split is shown side-by-side OR hidden and maximized), otherwise the primary's; falls back
+    /// to the primary cwd then `initialCwd`. The sidebar and title bar use this so they track whichever
+    /// pane has focus, while `effectiveCwd` (below) stays the primary's for seeding new panes and the
+    /// `AGT_SESSION_PWD` token. Guarded on `splitFocused` alone (not `isSplit`): `closeSplit` resets
+    /// the flag, so `splitFocused` is true only while the split pane actually exists.
+    public var focusedCwd: String {
+        if splitFocused, let cwd = splitCwd { return cwd }
+        return currentCwd ?? initialCwd
+    }
+
+    /// The terminal title of the focused pane: the split pane's while it has focus, else the primary's.
+    private var focusedOscTitle: String? { splitFocused ? splitTitle : oscTitle }
+
+    /// The session's effective working directory: the live `currentCwd` once a PWD report has
+    /// arrived, otherwise `initialCwd`. Always the PRIMARY pane's (NOT focus-aware) — it seeds a new
+    /// split/overlay/quick-terminal and backs the `AGT_SESSION_PWD` token, which should be stable
+    /// regardless of which pane is focused. The focus-aware variant is `focusedCwd`.
     public var effectiveCwd: String { currentCwd ?? initialCwd }
+
+    /// The surface of the pane currently in focus: the split (right) pane while it has focus and
+    /// exists, otherwise the primary. When the split is hidden the detail pane shows this one
+    /// maximized, and the focus helpers target it, so focus/typing always reaches the visible pane.
+    public var activeSurface: (any TerminalSurface)? {
+        splitFocused && splitSurface != nil ? splitSurface : surface
+    }
 }
 
 extension String {

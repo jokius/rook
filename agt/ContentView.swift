@@ -316,6 +316,15 @@ private struct WindowContentView: View {
                             .overlay { paneDim(!active.splitFocused) }
                             .id("\(active.id.uuidString)-split")
                     }
+                    // per-session identity: without it SwiftUI reuses one NSSplitView across session
+                    // switches and the divider (and arranged subviews) leak between sessions.
+                    .id("\(active.id.uuidString)-hsplit")
+                } else if active.splitFocused, active.splitSurface != nil {
+                    // split hidden while the right pane had focus: show that pane maximized. Both
+                    // shells stay alive (the primary is just off-screen), so reopening the split
+                    // restores the two panes in place — nothing is destroyed or reordered.
+                    TerminalView(session: active, surfaceKeyPath: \.splitSurface, makeSurface: makeSplitSurface)
+                        .id("\(active.id.uuidString)-split")
                 } else {
                     TerminalView(session: active, surfaceKeyPath: \.surface, makeSurface: makeSurface)
                         .id(active.id)
@@ -373,10 +382,11 @@ private struct WindowContentView: View {
         return "\(session) — \(info.name)"
     }
 
-    /// The titlebar subtitle (second line): the active session's working directory. Dropped in
-    /// compact mode so the title bar is a single short row.
+    /// The titlebar subtitle (second line): the focused pane's working directory (the split pane's
+    /// while it's focused, else the primary's). Dropped in compact mode so the title bar is a single
+    /// short row.
     private var windowSubtitle: String {
-        compactToolbar ? "" : (store.activeSession?.effectiveCwd ?? "")
+        compactToolbar ? "" : (store.activeSession?.focusedCwd ?? "")
     }
 
     /// The window title at the terminal's leading edge: the session name, plus the cwd subtitle on a
@@ -442,14 +452,16 @@ private struct WindowContentView: View {
 
     private var splitButton: some View {
         let isSplit = store.activeSession?.isSplit ?? false
+        let hasSplit = store.activeSession?.hasSplit ?? false
         return Button {
             actions.toggleSplit()
         } label: {
-            // a Label (icon + title) so the toolbar's "Icon and Text" mode has text to show;
-            // the title is hidden in the default icon-only mode.
-            Label("Split", systemImage: "rectangle.split.2x1")
+            // a Label (icon + title) so the toolbar's "Icon and Text" mode has text to show; the title
+            // is hidden in the default icon-only mode. The filled variant marks a session that has a
+            // split (shown or hidden), matching the sidebar's split-session icon.
+            Label("Split", systemImage: hasSplit ? "rectangle.split.2x1.fill" : "rectangle.split.2x1")
         }
-        .help(isSplit ? "Hide split" : "Split right")
+        .help(isSplit ? "Hide split" : (hasSplit ? "Show split" : "Split right"))
         .disabled(store.activeSession == nil)
         .accessibilityIdentifier("split-toggle")
     }

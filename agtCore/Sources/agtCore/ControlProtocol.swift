@@ -16,6 +16,7 @@ public enum Command: String, Codable, Sendable {
     case sessionMove = "session.move"
     case sessionType = "session.type"
     case sessionSplit = "session.split"
+    case sessionFocus = "session.focus"
     case sessionCopy = "session.copy"
     case sessionOverlayOpen = "session.overlay.open"
     case sessionOverlayClose = "session.overlay.close"
@@ -46,6 +47,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var select: Bool?
     /// Mode for `session.split` / `quick` (`on|off|toggle`, `show|hide|toggle` for quick).
     public var mode: String?
+    /// Which split pane to focus for `session.focus` (`left`|`right`|`other`; `other` toggles).
+    public var pane: String?
     /// The program the overlay terminal runs for `session.overlay.open` (e.g. `revdiff`).
     public var command: String?
     /// Whether `session.overlay.open` keeps the overlay open after its command exits (showing the
@@ -57,7 +60,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
 
     public init(name: String? = nil, cwd: String? = nil, workspace: String? = nil, text: String? = nil,
                 select: Bool? = nil, mode: String? = nil, command: String? = nil, wait: Bool? = nil,
-                window: String? = nil) {
+                window: String? = nil, pane: String? = nil) {
         self.name = name
         self.cwd = cwd
         self.workspace = workspace
@@ -67,6 +70,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.command = command
         self.wait = wait
         self.window = window
+        self.pane = pane
     }
 }
 

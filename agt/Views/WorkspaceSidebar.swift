@@ -292,11 +292,14 @@ struct WorkspaceSidebar: NSViewRepresentable {
             let sessions: [SessionSignature]
         }
 
-        /// A session's contribution to a `TreeSignature`: its id and current display
-        /// name, so a name change is detected even when the tree shape is unchanged.
+        /// A session's contribution to a `TreeSignature`: its id, current display name, and whether it
+        /// has a split pane, so a name change OR a split open/close is detected (and the row reloaded
+        /// to swap the icon) even when the tree shape is unchanged. Uses `hasSplit` (not `isSplit`) so
+        /// the indicator persists while a split is hidden.
         private struct SessionSignature: Equatable {
             let id: UUID
             let displayName: String
+            let hasSplit: Bool
         }
 
         /// Decides between a full rebuild (structural change: add/move/close/rename) and
@@ -305,7 +308,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
         func reconcile() {
             let signature = store.workspaces.map { workspace in
                 TreeSignature(id: workspace.id, name: workspace.name,
-                              sessions: workspace.sessions.map { SessionSignature(id: $0.id, displayName: $0.displayName) })
+                              sessions: workspace.sessions.map { SessionSignature(id: $0.id, displayName: $0.displayName, hasSplit: $0.hasSplit) })
             }
             if signature != lastTreeSignature {
                 lastTreeSignature = signature
@@ -502,8 +505,11 @@ struct WorkspaceSidebar: NSViewRepresentable {
                 field.font = .preferredFont(forTextStyle: .body)
                 field.setAccessibilityIdentifier("session-row")
                 field.setAccessibilityLabel(nil)
-                applyBadge(toCell: cell, count: store.session(withID: node.id)?.unseenCount ?? 0)
-                cell.imageView?.image = sessionIcon
+                let session = store.session(withID: node.id)
+                applyBadge(toCell: cell, count: session?.unseenCount ?? 0)
+                // a session with a split shows the split-rectangle icon (matching the toolbar split
+                // button) so it's distinguishable at a glance; `hasSplit` keeps it while merely hidden.
+                cell.imageView?.image = session?.hasSplit == true ? splitSessionIcon : sessionIcon
                 cell.imageView?.setAccessibilityIdentifier("session-icon")
             }
             // text/icon colors track the terminal theme; a selected row uses the selection foreground.
@@ -520,11 +526,11 @@ struct WorkspaceSidebar: NSViewRepresentable {
             cell.badge.count = count
         }
 
-        /// Leading row icons: a filled folder for a workspace, an outlined terminal for a session,
-        /// rendered as monochrome template symbols tinted to `secondaryLabelColor`. The
-        /// filled-vs-outline contrast keeps the two readily distinguishable at row size. Cached
-        /// because only two distinct symbols exist and every row reuses them.
+        /// Leading row icons: a filled folder for a workspace, an outlined terminal for a single
+        /// session, and a split-rectangle for a split session, rendered as monochrome template symbols.
+        /// Cached because only a few distinct symbols exist and every row reuses them.
         private lazy var workspaceIcon = Self.rowIcon("folder.fill")
+        private lazy var splitSessionIcon = Self.rowIcon("rectangle.split.2x1")
         private lazy var sessionIcon = Self.rowIcon("terminal")
 
         private static func rowIcon(_ symbolName: String) -> NSImage? {
