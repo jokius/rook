@@ -76,7 +76,7 @@ public struct Agtctl: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "agtctl",
         abstract: "Drive agt over its control socket.",
-        subcommands: [Tree.self, Workspace.self, Session.self, Window.self, Quick.self, Font.self]
+        subcommands: [Tree.self, Workspace.self, Session.self, Window.self, Quick.self, Notify.self, Font.self]
     )
 
     public init() {}
@@ -382,6 +382,20 @@ struct Quick: RequestCommand {
 
     func makeRequest() throws -> ControlRequest {
         ControlRequest(cmd: .quick, args: ControlArgs(mode: mode))
+    }
+}
+
+// MARK: - notify
+
+struct Notify: RequestCommand {
+    static let configuration = CommandConfiguration(abstract: "Post a desktop notification (default: the active session of the frontmost window).")
+    @Argument(help: "Notification body.") var body: String
+    @Option(name: .long, help: "Notification title (defaults to the session name).") var title: String?
+    @OptionGroup var target: TargetOptions
+    @OptionGroup var options: ClientOptions
+
+    func makeRequest() throws -> ControlRequest {
+        ControlRequest(cmd: .notify, target: target.target, args: options.withWindow(ControlArgs(title: title, body: body)))
     }
 }
 

@@ -100,6 +100,16 @@ struct CommandsTests {
         #expect(try request(["session", "focus", "right"]) == expected)
     }
 
+    @Test func notifyDefaultsActiveNoTitle() throws {
+        let expected = ControlRequest(cmd: .notify, target: "active", args: ControlArgs(body: "hi"))
+        #expect(try request(["notify", "hi"]) == expected)
+    }
+
+    @Test func notifyWithTitleAndTarget() throws {
+        let expected = ControlRequest(cmd: .notify, target: "build", args: ControlArgs(title: "Build", body: "done"))
+        #expect(try request(["notify", "done", "--title", "Build", "--target", "build"]) == expected)
+    }
+
     @Test func sessionCopyDefaultsActive() throws {
         #expect(try request(["session", "copy"]) == ControlRequest(cmd: .sessionCopy, target: "active"))
     }

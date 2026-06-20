@@ -21,6 +21,7 @@ public enum Command: String, Codable, Sendable {
     case sessionOverlayOpen = "session.overlay.open"
     case sessionOverlayClose = "session.overlay.close"
     case quick
+    case notify
     case fontInc = "font.inc"
     case fontDec = "font.dec"
     case fontReset = "font.reset"
@@ -49,6 +50,10 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var mode: String?
     /// Which split pane to focus for `session.focus` (`left`|`right`|`other`; `other` toggles).
     public var pane: String?
+    /// The desktop-notification title for `notify` (optional; defaults to the target session's name).
+    public var title: String?
+    /// The desktop-notification body for `notify` (required).
+    public var body: String?
     /// The program the overlay terminal runs for `session.overlay.open` (e.g. `revdiff`).
     public var command: String?
     /// Whether `session.overlay.open` keeps the overlay open after its command exits (showing the
@@ -60,7 +65,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
 
     public init(name: String? = nil, cwd: String? = nil, workspace: String? = nil, text: String? = nil,
                 select: Bool? = nil, mode: String? = nil, command: String? = nil, wait: Bool? = nil,
-                window: String? = nil, pane: String? = nil) {
+                window: String? = nil, pane: String? = nil, title: String? = nil, body: String? = nil) {
         self.name = name
         self.cwd = cwd
         self.workspace = workspace
@@ -71,6 +76,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.wait = wait
         self.window = window
         self.pane = pane
+        self.title = title
+        self.body = body
     }
 }
 

@@ -288,6 +288,16 @@ final class ControlAPIUITests: XCTestCase {
         XCTAssertTrue((bad["error"] as? String ?? "").contains("invalid pane"), "should report invalid pane: \(bad)")
     }
 
+    // notify posts a banner for the active session; a missing body errors.
+    func testNotifySend() throws {
+        let ok = try sendCommand(#"{"cmd":"notify","target":"active","args":{"body":"hello","title":"Test"}}"#)
+        XCTAssertEqual(ok["ok"] as? Bool, true, "notify with a body should succeed: \(ok)")
+
+        let noBody = try sendCommand(#"{"cmd":"notify","target":"active"}"#)
+        XCTAssertEqual(noBody["ok"] as? Bool, false, "notify without a body should fail: \(noBody)")
+        XCTAssertTrue((noBody["error"] as? String ?? "").contains("requires a body"), "should report missing body: \(noBody)")
+    }
+
     // quick toggle makes the quick-terminal accessibility element appear, and toggling again hides it.
     func testQuickTerminalToggle() throws {
         let quick = app.descendants(matching: .any).matching(identifier: "quick-terminal").firstMatch

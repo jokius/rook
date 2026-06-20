@@ -76,6 +76,14 @@ struct ControlProtocolTests {
         #expect(decoded.args?.pane == "right")
     }
 
+    @Test func notifyRoundTripsWithTitleAndBody() throws {
+        let request = ControlRequest(cmd: .notify, target: "active", args: ControlArgs(title: "Build", body: "done"))
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.args?.title == "Build")
+        #expect(decoded.args?.body == "done")
+    }
+
     @Test func fontCommandsRoundTrip() throws {
         let cases: [ControlRequest] = [
             ControlRequest(cmd: .fontInc, target: "active"),

@@ -69,6 +69,26 @@ final class NotificationManager: NSObject, @preconcurrency UNUserNotificationCen
         }
     }
 
+    /// Post a desktop notification for a session via the control channel (the `notify` command), as
+    /// opposed to a terminal OSC. Unlike the OSC path there is NO focus-suppression — the caller asked
+    /// for it explicitly, so it always bumps the badge and posts a banner (gated only by
+    /// `bannersEnabled`). Attributed to the session's primary pane so a click reveals it. Returns false
+    /// when no open window owns the session (the click-reveal identity can't be built) → not sent.
+    @discardableResult
+    func send(toSession session: Session, title: String, body: String) -> Bool {
+        guard let windowID = library?.windowID(forSession: session.id) else { return false }
+        session.unseenCount += 1
+        guard bannersEnabled else { return true }
+        let content = UNMutableNotificationContent()
+        content.title = title.isEmpty ? session.displayName : title
+        content.body = body
+        let identity = TerminalNotification.identity(windowID: windowID, sessionID: session.id, pane: .main)
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: identity, content: content, trigger: nil)) { error in
+            if let error { logger.error("send failed: \(error.localizedDescription, privacy: .public)") }
+        }
+        return true
+    }
+
     /// Remove any delivered banners for a session from Notification Center — called when you focus
     /// the session, so a notification you've navigated to doesn't linger. Covers all of the session's
     /// panes by removing each possible `<windowID>:<sessionID>:<paneRole>` identifier. No-op when the

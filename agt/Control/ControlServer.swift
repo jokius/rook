@@ -419,6 +419,9 @@ final class ControlServer {
             }
         case .quick:
             return setQuickTerminal(mode: request.args?.mode)
+        case .notify:
+            return sendNotification(request.target, window: request.args?.window,
+                                    title: request.args?.title, body: request.args?.body)
         case .fontInc:
             return font(request.target, window: request.args?.window, action: "increase_font_size:1")
         case .fontDec:
@@ -486,6 +489,24 @@ final class ControlServer {
             default: return ControlResponse(ok: false, error: "invalid pane: \(pane)")
             }
             actions.setSplitFocus(toSplit, of: session)
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+        }
+    }
+
+    /// Post a desktop notification attributed to a session (default: the active session of the
+    /// frontmost window, via `resolveSession`). `title` defaults to the session name; `body` is
+    /// required. Errors when no open window owns the resolved session.
+    private func sendNotification(_ target: String?, window: String?, title: String?, body: String?) -> ControlResponse {
+        guard let body, !body.isEmpty else {
+            return ControlResponse(ok: false, error: "notify requires a body")
+        }
+        return resolveSession(target, window: window) { store, id in
+            guard let session = store.session(withID: id) else {
+                return ControlResponse(ok: false, error: "no such session: \(target ?? "active")")
+            }
+            guard NotificationManager.shared.send(toSession: session, title: title ?? "", body: body) else {
+                return ControlResponse(ok: false, error: "session's window is not open")
+            }
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
         }
     }
