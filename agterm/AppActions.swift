@@ -251,10 +251,10 @@ final class AppActions {
 
     // MARK: - Split
 
-    /// Toggle the active session's split. Opening shows both panes (focus STAYS on the current pane,
-    /// it does not jump to the new right pane); closing HIDES the split (both shells stay alive,
-    /// nothing is destroyed) and shows the focused pane maximized, so reopening restores the two panes
-    /// in their original positions. Either way focus is re-asserted on the currently active pane.
+    /// Toggle the active session's split. Opening shows both panes and moves focus to the new (right)
+    /// pane; closing HIDES the split (both shells stay alive, nothing is destroyed) and shows the
+    /// focused pane maximized, so reopening restores the two panes in their original positions. Either
+    /// way focus follows `splitFocused`, which `AppStore.toggleSplit` sets to the new pane on open.
     func toggleSplit() {
         guard let store, let session = store.activeSession else { return }
         store.toggleSplit(session.id)

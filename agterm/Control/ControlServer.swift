@@ -472,7 +472,7 @@ final class ControlServer {
             if want != session.isSplit {
                 store.toggleSplit(id) // mirror ⌘D: keep-alive hide/show, never destroys the hidden pane
             }
-            actions.focusSplitPane(session, wantSplit: want)
+            actions.focusSplitPane(session, wantSplit: session.splitFocused)
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
         }
     }

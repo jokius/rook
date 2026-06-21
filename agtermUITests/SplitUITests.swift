@@ -4,7 +4,7 @@ import XCTest
 /// `GhosttySurfaceView`s with no readable accessibility text, so this uses the terminal
 /// itself as the oracle: each pane's shell has a distinct `tty`, so typing `tty > file`
 /// in the focused pane records which shell received the keystrokes. That verifies the
-/// split opens a separate shell, that opening keeps focus on the current pane, that the
+/// split opens a separate shell, that opening moves focus to the new right pane, that the
 /// keyboard nav (⌘⌥←/→) moves focus between panes, and that closing keeps the focused pane.
 @MainActor
 final class SplitUITests: XCTestCase {
@@ -41,31 +41,29 @@ final class SplitUITests: XCTestCase {
         let primaryTTY = ttyAfterCommand(named: "primary")
         XCTAssertNotNil(primaryTTY, "primary shell should write its tty (terminal must be focused)")
 
-        // 2. open the split — focus STAYS on the current (primary) pane, it does not jump to the right.
+        // 2. open the split — focus MOVES to the new (right) pane, a separate shell.
         let splitButton = app.buttons["split-toggle"]
         XCTAssertTrue(splitButton.waitForExistence(timeout: 5), "split toolbar button should exist")
         splitButton.click()
         usleep(800_000)
-        let afterOpenTTY = ttyAfterCommand(named: "afteropen")
-        XCTAssertEqual(afterOpenTTY, primaryTTY, "opening the split keeps focus on the current (primary) pane")
-
-        // 3. Cmd+Opt+Right focuses the new right pane (a separate shell).
-        app.typeKey(.rightArrow, modifierFlags: [.command, .option])
-        usleep(500_000)
-        let rightTTY = ttyAfterCommand(named: "right")
+        let rightTTY = ttyAfterCommand(named: "afteropen")
         XCTAssertNotNil(rightTTY, "right shell should write its tty")
-        XCTAssertNotEqual(rightTTY, primaryTTY, "Cmd+Opt+Right focuses the separate right shell")
+        XCTAssertNotEqual(rightTTY, primaryTTY, "opening the split moves focus to the new (right) pane")
 
-        // 4. Cmd+Opt+Left focuses the primary pane again.
+        // 3. Cmd+Opt+Left focuses the primary pane again.
         app.typeKey(.leftArrow, modifierFlags: [.command, .option])
         usleep(500_000)
         let leftTTY = ttyAfterCommand(named: "left")
         XCTAssertEqual(leftTTY, primaryTTY, "Cmd+Opt+Left focuses the primary shell")
 
-        // 5. focus the right pane, then close the split — the focused (right) pane is kept maximized,
-        // its shell alive, not the primary.
+        // 4. Cmd+Opt+Right focuses the right pane (the same separate shell) again.
         app.typeKey(.rightArrow, modifierFlags: [.command, .option])
         usleep(500_000)
+        let rightAgainTTY = ttyAfterCommand(named: "right")
+        XCTAssertEqual(rightAgainTTY, rightTTY, "Cmd+Opt+Right focuses the separate right shell")
+
+        // 5. with focus on the right pane, close the split — the focused (right) pane is kept
+        // maximized, its shell alive, not the primary.
         splitButton.click()
         usleep(800_000)
         let collapsedTTY = ttyAfterCommand(named: "collapsed")

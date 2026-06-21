@@ -245,10 +245,13 @@ struct AppStoreTests {
         store.toggleSplit(session.id)
         #expect(session.isSplit == true)
         #expect(session.hasSplit == true)
+        #expect(session.splitFocused == true)  // opening focuses the new (right) pane
         store.toggleSplit(session.id)
         #expect(session.isSplit == false)
-        // hiding the split keeps hasSplit so the sidebar/title split indicators persist.
+        // hiding the split keeps hasSplit so the sidebar/title split indicators persist, and keeps
+        // splitFocused so the focused pane is the one shown maximized.
         #expect(session.hasSplit == true)
+        #expect(session.splitFocused == true)
     }
 
     @Test func closeSplitHidesAndTearsDownSurface() {

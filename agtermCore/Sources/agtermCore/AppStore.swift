@@ -163,9 +163,13 @@ public final class AppStore {
     public func toggleSplit(_ sessionID: UUID) {
         guard let session = session(withID: sessionID) else { return }
         session.isSplit.toggle()
-        // opening marks the session as having a split; hiding (toggling off) leaves `hasSplit` set so
-        // the split indicators persist while the split is merely hidden. Only `closeSplit` clears it.
-        if session.isSplit { session.hasSplit = true }
+        // opening marks the session as having a split and moves focus to the new (right) pane; hiding
+        // (toggling off) leaves `hasSplit` and `splitFocused` set so the split indicators persist and
+        // the focused pane is the one shown maximized. Only `closeSplit` clears them.
+        if session.isSplit {
+            session.hasSplit = true
+            session.splitFocused = true
+        }
         save()
     }
 
