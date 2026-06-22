@@ -652,6 +652,123 @@ struct AppStoreTests {
         store.moveSession(a.id, toWorkspace: UUID())
         #expect(store.workspaces[0].sessions.map(\.id) == [a.id])
     }
+
+    /// Builds a two-workspace tree (work: a, b; personal: c, d) so flattened order is [a, b, c, d].
+    static func makeNavTree() -> (store: AppStore, ids: [UUID]) {
+        let store = Self.makeStore()
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+        let a = store.addSession(toWorkspace: work.id, cwd: "/a")!
+        let b = store.addSession(toWorkspace: work.id, cwd: "/b")!
+        let c = store.addSession(toWorkspace: personal.id, cwd: "/c")!
+        let d = store.addSession(toWorkspace: personal.id, cwd: "/d")!
+        return (store, [a.id, b.id, c.id, d.id])
+    }
+
+    @Test func navigateNextStepsForwardCrossingWorkspaces() {
+        let (store, ids) = Self.makeNavTree()
+        store.selectSession(ids[0])
+        store.navigateSession(.next)
+        #expect(store.selectedSessionID == ids[1])
+        store.navigateSession(.next) // crosses from work into personal
+        #expect(store.selectedSessionID == ids[2])
+        store.navigateSession(.next)
+        #expect(store.selectedSessionID == ids[3])
+    }
+
+    @Test func navigatePreviousStepsBackwardCrossingWorkspaces() {
+        let (store, ids) = Self.makeNavTree()
+        store.selectSession(ids[3])
+        store.navigateSession(.previous)
+        #expect(store.selectedSessionID == ids[2])
+        store.navigateSession(.previous) // crosses from personal into work
+        #expect(store.selectedSessionID == ids[1])
+        store.navigateSession(.previous)
+        #expect(store.selectedSessionID == ids[0])
+    }
+
+    @Test func navigateNextAtLastStaysPut() {
+        let (store, ids) = Self.makeNavTree()
+        store.selectSession(ids.last!)
+        store.navigateSession(.next) // already at the end: no wrap, stays put
+        #expect(store.selectedSessionID == ids.last!)
+    }
+
+    @Test func navigatePreviousAtFirstStaysPut() {
+        let (store, ids) = Self.makeNavTree()
+        store.selectSession(ids.first!)
+        store.navigateSession(.previous) // already at the start: no wrap, stays put
+        #expect(store.selectedSessionID == ids.first!)
+    }
+
+    @Test func navigateFirstAndLastJumpToEnds() {
+        let (store, ids) = Self.makeNavTree()
+        store.selectSession(ids[1])
+        store.navigateSession(.last)
+        #expect(store.selectedSessionID == ids.last!)
+        store.navigateSession(.first)
+        #expect(store.selectedSessionID == ids.first!)
+    }
+
+    @Test func navigateWithNoSelectionLandsOnFirst() {
+        let (store, ids) = Self.makeNavTree()
+        store.selectSession(nil)
+        store.navigateSession(.next)
+        #expect(store.selectedSessionID == ids.first!)
+        store.selectSession(nil)
+        store.navigateSession(.previous)
+        #expect(store.selectedSessionID == ids.first!)
+    }
+
+    @Test func navigateFirstAndLastWithNoSelectionLandOnEnds() {
+        let (store, ids) = Self.makeNavTree()
+        store.selectSession(nil)
+        store.navigateSession(.last)
+        #expect(store.selectedSessionID == ids.last!) // .last ignores the (absent) selection
+        store.selectSession(nil)
+        store.navigateSession(.first)
+        #expect(store.selectedSessionID == ids.first!) // .first ignores the (absent) selection
+    }
+
+    @Test func navigateSingleSessionStaysSelected() {
+        let store = Self.makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let only = store.addSession(toWorkspace: ws.id, cwd: "/only")!
+        store.selectSession(only.id)
+        for direction in [SessionNavigation.next, .previous, .first, .last] {
+            store.navigateSession(direction)
+            #expect(store.selectedSessionID == only.id)
+        }
+    }
+
+    @Test func navigateEmptyTreeIsNoOp() {
+        let store = Self.makeStore()
+        store.addWorkspace(name: "work") // no sessions
+        store.navigateSession(.next)
+        #expect(store.selectedSessionID == nil)
+        store.navigateSession(.first)
+        #expect(store.selectedSessionID == nil)
+    }
+
+    @Test func navigateRoutesThroughSelectSession() {
+        let (store, ids) = Self.makeNavTree()
+        store.session(withID: ids[1])?.unseenCount = 5
+        store.selectSession(ids[0])
+        store.navigateSession(.next)
+        #expect(store.selectedSessionID == ids[1])
+        #expect(store.session(withID: ids[1])?.unseenCount == 0) // selectSession cleared the badge
+        // the navigation pushed a NEW recency entry on top of the prior selection (most-recent first).
+        #expect(Array(store.sessionRecency.items.prefix(2)) == [ids[1], ids[0]])
+    }
+
+    @Test func sessionNavigationWireMapping() {
+        #expect(SessionNavigation(wire: "next") == .next)
+        #expect(SessionNavigation(wire: "prev") == .previous)
+        #expect(SessionNavigation(wire: "previous") == .previous)
+        #expect(SessionNavigation(wire: "first") == .first)
+        #expect(SessionNavigation(wire: "last") == .last)
+        #expect(SessionNavigation(wire: "sideways") == nil)
+    }
 }
 
 private final class SpySurface: TerminalSurface {

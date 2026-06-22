@@ -167,7 +167,7 @@ struct Workspace: ParsableCommand {
 struct Session: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Session commands.",
-        subcommands: [New.self, Close.self, Select.self, Rename.self, Move.self, TypeText.self, Split.self, Focus.self, Copy.self, Overlay.self]
+        subcommands: [New.self, Close.self, Select.self, Go.self, Rename.self, Move.self, TypeText.self, Split.self, Focus.self, Copy.self, Overlay.self]
     )
 
     struct New: RequestCommand {
@@ -198,6 +198,17 @@ struct Session: ParsableCommand {
 
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .sessionSelect, target: target.target, args: options.withWindow())
+        }
+    }
+
+    struct Go: RequestCommand {
+        static let configuration = CommandConfiguration(commandName: "go",
+            abstract: "Navigate sessions: next|prev|first|last.")
+        @Option(name: .long, help: "Direction: next, prev, first, or last.") var to: String
+        @OptionGroup var options: ClientOptions
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .sessionGo, args: options.withWindow(ControlArgs(to: to)))
         }
     }
 

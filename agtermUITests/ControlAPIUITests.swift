@@ -290,6 +290,50 @@ final class ControlAPIUITests: XCTestCase {
         XCTAssertTrue((bad["error"] as? String ?? "").contains("invalid pane"), "should report invalid pane: \(bad)")
     }
 
+    // session.go navigates the selection in the sidebar's flattened order and returns the newly-selected
+    // id: seed two sessions with the first selected, then next/last/first/prev step the selection and the
+    // returned id (and the persisted selectedSessionID) track it. wrap is covered by the agtermCore tests.
+    func testSessionGoNavigatesSelection() throws {
+        let firstID = UUID(uuidString: "EEEE0000-0000-0000-0000-000000000001")!
+        let secondID = UUID(uuidString: "FFFF0000-0000-0000-0000-000000000002")!
+        let snapshot = """
+        {"version":1,"selectedSessionID":"\(firstID.uuidString)","workspaces":[\
+        {"id":"\(UUID().uuidString)","name":"workspace 1","sessions":[\
+        {"id":"\(firstID.uuidString)","customName":null,"cwd":"\(NSHomeDirectory())"},\
+        {"id":"\(secondID.uuidString)","customName":null,"cwd":"\(NSHomeDirectory())"}]}]}
+        """
+        try relaunch(withSnapshot: snapshot)
+
+        // next: first -> second; the response carries the second's id and it becomes active.
+        let next = try sendCommand(#"{"cmd":"session.go","args":{"to":"next"}}"#)
+        XCTAssertEqual(next["ok"] as? Bool, true, "session.go next should succeed: \(next)")
+        XCTAssertEqual(((next["result"] as? [String: Any])?["id"] as? String)?.lowercased(),
+                       secondID.uuidString.lowercased(), "next should select the second session: \(next)")
+        XCTAssertTrue(pollActiveSessionID(secondID, timeout: 10), "the second session should become active")
+
+        // first: jumps to the first session.
+        let first = try sendCommand(#"{"cmd":"session.go","args":{"to":"first"}}"#)
+        XCTAssertEqual(first["ok"] as? Bool, true, "session.go first should succeed: \(first)")
+        XCTAssertEqual(((first["result"] as? [String: Any])?["id"] as? String)?.lowercased(),
+                       firstID.uuidString.lowercased(), "first should select the first session: \(first)")
+        XCTAssertTrue(pollActiveSessionID(firstID, timeout: 10), "the first session should become active")
+
+        // last: jumps to the last (second) session.
+        let last = try sendCommand(#"{"cmd":"session.go","args":{"to":"last"}}"#)
+        XCTAssertEqual(last["ok"] as? Bool, true, "session.go last should succeed: \(last)")
+        XCTAssertEqual(((last["result"] as? [String: Any])?["id"] as? String)?.lowercased(),
+                       secondID.uuidString.lowercased(), "last should select the last session: \(last)")
+        XCTAssertTrue(pollActiveSessionID(secondID, timeout: 10), "the last session should become active")
+    }
+
+    // session.go with an unknown direction returns the structured guard and does not change the selection.
+    func testSessionGoInvalidDirectionErrors() throws {
+        let response = try sendCommand(#"{"cmd":"session.go","args":{"to":"sideways"}}"#)
+        XCTAssertEqual(response["ok"] as? Bool, false, "an invalid direction should fail: \(response)")
+        XCTAssertEqual(response["error"] as? String, "session.go requires --to next|prev|first|last",
+                       "should return the direction guard: \(response)")
+    }
+
     // notify posts a banner for the active session; a missing body errors.
     func testNotifySend() throws {
         let ok = try sendCommand(#"{"cmd":"notify","target":"active","args":{"body":"hello","title":"Test"}}"#)

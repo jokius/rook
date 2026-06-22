@@ -227,6 +227,11 @@ struct WorkspaceSidebar: NSViewRepresentable {
         /// Guards `syncSelection` against the selection-change delegate callback it
         /// itself triggers (which would otherwise re-enter the store).
         private var applyingSelection = false
+        /// Last session id whose row was revealed (expanded owner + scrolled into view).
+        /// Gates the intrusive reveal so unrelated observable updates (cwd/title/badge) to
+        /// the already-selected session don't re-expand a collapsed workspace or yank the
+        /// scroll position back — only an actual selection change reveals.
+        private var lastRevealedSelection: UUID?
         /// Last-seen tree SHAPE (ordered workspace ids, each with its ordered session ids). A change
         /// here is structural (add/remove/move/reorder) and needs a full rebuild; a row's name/icon/
         /// badge changing is NOT structural — it reloads just that row, so a cwd-driven name change
@@ -397,13 +402,34 @@ struct WorkspaceSidebar: NSViewRepresentable {
             defer { applyingSelection = false }
             guard let selectedID = store.selectedSessionID, let node = nodeCache[selectedID], node.kind == .session else {
                 outline.deselectAll(nil)
+                lastRevealedSelection = nil
                 return
+            }
+            // the row-selection sync runs every call (keeps the highlight correct), but the intrusive
+            // reveal — expanding a collapsed owner and scrolling into view — only fires when the
+            // selection actually changed, so unrelated cwd/title/badge updates to the already-selected
+            // session leave a user-collapsed workspace and a user-moved scroll position alone.
+            let selectionChanged = selectedID != lastRevealedSelection
+            // a session selected by keyboard nav may live in a collapsed workspace, whose row is -1
+            // until expanded; expand its owner first so the row resolves.
+            if selectionChanged, let owner = ownerWorkspaceNode(ofSession: selectedID), !outline.isItemExpanded(owner) {
+                outline.expandItem(owner)
             }
             let row = outline.row(forItem: node)
             guard row >= 0 else { return }
             if outline.selectedRow != row {
                 outline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
             }
+            if selectionChanged {
+                outline.scrollRowToVisible(row)
+            }
+            lastRevealedSelection = selectedID
+        }
+
+        /// The workspace node containing `sessionID` (its `children`), or nil if not found — used to
+        /// expand a collapsed owner before resolving a keyboard-navigated session's row.
+        private func ownerWorkspaceNode(ofSession sessionID: UUID) -> SidebarNode? {
+            roots.first { $0.children.contains { $0.id == sessionID } }
         }
 
         func outlineViewSelectionDidChange(_ notification: Notification) {

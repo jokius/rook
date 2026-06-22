@@ -74,6 +74,15 @@ final class AppActions {
         store.closeSession(id)
     }
 
+    /// Step the selection to the previous/next session, or jump to the first/last, in the sidebar's
+    /// flattened visual order (`navigateSession` owns the logic so the GUI, palette, and control
+    /// channel can't drift). Each routes through `selectSession` (recency/badge/persist/workspace)
+    /// then moves first responder into the moved-to session's focused pane.
+    func selectNextSession() { store?.navigateSession(.next); focusActiveSession() }
+    func selectPreviousSession() { store?.navigateSession(.previous); focusActiveSession() }
+    func selectFirstSession() { store?.navigateSession(.first); focusActiveSession() }
+    func selectLastSession() { store?.navigateSession(.last); focusActiveSession() }
+
     /// Delete a workspace and all of its sessions. Confirms first when the workspace still has
     /// sessions (the delete ends their shells); an empty workspace deletes without a prompt.
     /// No-ops when only one workspace remains — one is always kept.
@@ -197,6 +206,10 @@ final class AppActions {
             PaletteItem(title: "Rename Session") { [weak self] in self?.renameActiveSession() },
             PaletteItem(title: "Rename Workspace") { [weak self] in self?.renameActiveWorkspace() },
             PaletteItem(title: "Close Session", shortcut: "⌘W") { [weak self] in self?.closeActiveSession() },
+            PaletteItem(title: "Previous Session", shortcut: "⌥⌘↑") { [weak self] in self?.selectPreviousSession() },
+            PaletteItem(title: "Next Session", shortcut: "⌥⌘↓") { [weak self] in self?.selectNextSession() },
+            PaletteItem(title: "First Session") { [weak self] in self?.selectFirstSession() },
+            PaletteItem(title: "Last Session") { [weak self] in self?.selectLastSession() },
             PaletteItem(title: "Toggle Split", shortcut: "⌘D") { [weak self] in self?.toggleSplit() },
             PaletteItem(title: "Quick Terminal", shortcut: "⌃`") { [weak self] in self?.toggleQuickTerminal() },
             PaletteItem(title: "Increase Font Size", shortcut: "⌘+") { [weak self] in self?.increaseFontSize() },

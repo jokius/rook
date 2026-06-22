@@ -1,6 +1,24 @@
 import Foundation
 import Observation
 
+/// A relative step through the flattened session list for keyboard navigation.
+/// `next`/`previous` step one and stop at the ends (no wrap), `first`/`last` jump to a tree end.
+public enum SessionNavigation: Sendable { case next, previous, first, last }
+
+extension SessionNavigation {
+    /// Maps a control-channel direction string to a case. The CLI uses `prev`; the enum case is
+    /// `.previous`, so both spellings are accepted. Returns nil for an unknown string.
+    public init?(wire: String) {
+        switch wire {
+        case "next": self = .next
+        case "prev", "previous": self = .previous
+        case "first": self = .first
+        case "last": self = .last
+        default: return nil
+        }
+    }
+}
+
 /// The whole app state: the workspace tree and the current selection.
 ///
 /// `@Observable @MainActor` so SwiftUI views observe mutations and all model
@@ -264,6 +282,32 @@ public final class AppStore {
         let destination = max(0, min(index ?? workspaces[targetIndex].sessions.count, workspaces[targetIndex].sessions.count))
         workspaces[targetIndex].sessions.insert(session, at: destination)
         save()
+    }
+
+    /// Steps the selection through the flattened session list (`workspaces.flatMap(\.sessions)`,
+    /// the sidebar's visual order). `next`/`previous` move one and stop at the ends (no wrap — `next`
+    /// on the last session and `previous` on the first are no-ops); `first`/`last` jump to the tree
+    /// ends. With no/invalid current selection, `next`/`previous` land on the first session. No-op
+    /// when there are no sessions. Routes through `selectSession`, inheriting recency, badge clearing,
+    /// persistence, and workspace derivation.
+    public func navigateSession(_ direction: SessionNavigation) {
+        let ids = workspaces.flatMap(\.sessions).map(\.id)
+        guard let first = ids.first, let last = ids.last else { return }
+        let target: UUID
+        switch direction {
+        case .first: target = first
+        case .last: target = last
+        case .next, .previous:
+            if let current = selectedSessionID, let i = ids.firstIndex(of: current) {
+                let step = direction == .next ? 1 : -1
+                let next = i + step
+                guard next >= 0, next < ids.count else { return } // at an end -> stay put (no wrap)
+                target = ids[next]
+            } else {
+                target = first // no/invalid selection -> first
+            }
+        }
+        selectSession(target)
     }
 
     /// Records a session's terminal font size (points) and persists it. No-ops when

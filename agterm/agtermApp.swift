@@ -171,6 +171,23 @@ struct agtermApp: App {
                 }
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
                 .disabled(library.activeStore?.activeSession?.isSplit != true)
+                Divider()
+                // step between sessions in the sidebar's flattened order. Prev/Next ride ⌥⌘↑/↓ (NOT bare
+                // ⌘+arrows, which shadow text-field caret nav in the rename/palette/settings fields); ⌥⌘↑/↓
+                // sessions complements the ⌥⌘←/→ pane focus above (left/right = panes, up/down = sessions).
+                // First/Last get no key (menu + palette + control only). Real menu items so AppKit menu
+                // dispatch swallows the shortcut before libghostty — never leaked to the shell.
+                Button { actions.selectPreviousSession() } label: { Label("Previous Session", systemImage: "chevron.up") }
+                    .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                    .disabled(library.activeStore?.activeSession == nil)
+                Button { actions.selectNextSession() } label: { Label("Next Session", systemImage: "chevron.down") }
+                    .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                    .disabled(library.activeStore?.activeSession == nil)
+                Button { actions.selectFirstSession() } label: { Label("First Session", systemImage: "chevron.up.to.line") }
+                    .disabled(library.activeStore?.activeSession == nil)
+                Button { actions.selectLastSession() } label: { Label("Last Session", systemImage: "chevron.down.to.line") }
+                    .disabled(library.activeStore?.activeSession == nil)
+                Divider()
                 Button { actions.toggleQuickTerminal() } label: { Label("Quick Terminal", systemImage: "terminal") }
                     .keyboardShortcut("`", modifiers: .control)
                 Button { palette.toggle(.sessions) } label: { Label("Go to Session", systemImage: "rectangle.stack") }

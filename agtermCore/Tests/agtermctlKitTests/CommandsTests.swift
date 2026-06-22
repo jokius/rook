@@ -100,6 +100,26 @@ struct CommandsTests {
         #expect(try request(["session", "focus", "right"]) == expected)
     }
 
+    @Test func sessionGoNext() throws {
+        let expected = ControlRequest(cmd: .sessionGo, args: ControlArgs(to: "next"))
+        #expect(try request(["session", "go", "--to", "next"]) == expected)
+    }
+
+    @Test func sessionGoPrev() throws {
+        let expected = ControlRequest(cmd: .sessionGo, args: ControlArgs(to: "prev"))
+        #expect(try request(["session", "go", "--to", "prev"]) == expected)
+    }
+
+    @Test func sessionGoWithWindow() throws {
+        let expected = ControlRequest(cmd: .sessionGo, args: ControlArgs(window: "w1", to: "last"))
+        #expect(try request(["session", "go", "--to", "last", "--window", "w1"]) == expected)
+    }
+
+    @Test func sessionGoRequiresToFails() {
+        // --to has no default, so omitting it must fail to parse (the direction is validated server-side).
+        #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["session", "go"]) }
+    }
+
     @Test func notifyDefaultsActiveNoTitle() throws {
         let expected = ControlRequest(cmd: .notify, target: "active", args: ControlArgs(body: "hi"))
         #expect(try request(["notify", "hi"]) == expected)

@@ -12,6 +12,7 @@ public enum Command: String, Codable, Sendable {
     case sessionNew = "session.new"
     case sessionClose = "session.close"
     case sessionSelect = "session.select"
+    case sessionGo = "session.go"
     case sessionRename = "session.rename"
     case sessionMove = "session.move"
     case sessionType = "session.type"
@@ -52,6 +53,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var mode: String?
     /// Which split pane to focus for `session.focus` (`left`|`right`|`other`; `other` toggles).
     public var pane: String?
+    /// Navigation direction for `session.go` (`next`|`prev`|`previous`|`first`|`last`).
+    public var to: String?
     /// The desktop-notification title for `notify` (optional; defaults to the target session's name).
     public var title: String?
     /// The desktop-notification body for `notify` (required).
@@ -76,8 +79,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
 
     public init(name: String? = nil, cwd: String? = nil, workspace: String? = nil, text: String? = nil,
                 select: Bool? = nil, mode: String? = nil, command: String? = nil, wait: Bool? = nil,
-                window: String? = nil, pane: String? = nil, title: String? = nil, body: String? = nil,
-                width: Int? = nil, height: Int? = nil, x: Int? = nil, y: Int? = nil, display: Int? = nil) {
+                window: String? = nil, pane: String? = nil, to: String? = nil, title: String? = nil,
+                body: String? = nil, width: Int? = nil, height: Int? = nil, x: Int? = nil, y: Int? = nil,
+                display: Int? = nil) {
         self.name = name
         self.cwd = cwd
         self.workspace = workspace
@@ -88,6 +92,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.wait = wait
         self.window = window
         self.pane = pane
+        self.to = to
         self.title = title
         self.body = body
         self.width = width

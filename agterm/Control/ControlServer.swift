@@ -306,6 +306,19 @@ final class ControlServer {
                 store.selectSession(id)
                 return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
             }
+        case .sessionGo:
+            // relative navigation acts on the store's current selection, so no session target — just
+            // the frontmost-or-`--window` store. unknown/missing `to` is a structured error.
+            guard let dir = (request.args?.to).flatMap(SessionNavigation.init(wire:)) else {
+                return ControlResponse(ok: false, error: "session.go requires --to next|prev|first|last")
+            }
+            return resolvePlacementStore(request.args?.window) { store in
+                store.navigateSession(dir)
+                guard let id = store.selectedSessionID else {
+                    return ControlResponse(ok: false, error: "no session to navigate")
+                }
+                return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+            }
         case .workspaceSelect:
             // selecting a workspace selects its first session (workspace rows are not selectable on
             // their own); an empty workspace just clears nothing and reports the workspace id.

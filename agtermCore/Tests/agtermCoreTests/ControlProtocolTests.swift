@@ -76,6 +76,14 @@ struct ControlProtocolTests {
         #expect(decoded.args?.pane == "right")
     }
 
+    @Test func sessionGoRoundTripsWithDirection() throws {
+        let request = ControlRequest(cmd: .sessionGo, args: ControlArgs(to: "next"))
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.cmd == .sessionGo)
+        #expect(decoded.args?.to == "next")
+    }
+
     @Test func notifyRoundTripsWithTitleAndBody() throws {
         let request = ControlRequest(cmd: .notify, target: "active", args: ControlArgs(title: "Build", body: "done"))
         let decoded = try roundTrip(request)
