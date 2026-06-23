@@ -21,7 +21,7 @@ public enum AgentHooksInstall {
     /// unmatched). Only the `Stop`→`completed` hook passes `--auto-reset` (it clears on visit); `active`
     /// and `blocked` stay keep-state.
     static let claudeHooks: [(event: String, matcher: String?, state: String)] = [
-        ("UserPromptSubmit", nil, "active"),
+        ("UserPromptSubmit", nil, "active --blink"),
         ("Stop", nil, "completed --auto-reset"),
         ("Notification", "permission_prompt", "blocked"),
     ]

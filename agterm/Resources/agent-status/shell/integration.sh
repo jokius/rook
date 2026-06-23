@@ -27,7 +27,7 @@ _ags_dir="$(cd "$(dirname "$_ags_self")/.." >/dev/null 2>&1 && pwd)"
 
 if [ -n "${ZSH_VERSION:-}" ]; then
   autoload -Uz add-zsh-hook
-  _ags_preexec() { [[ "$1" =~ $AGTERM_AGENT_RE ]] && { "$AGTERM_AGENT_BIN" active; _ags_active=1; }; }
+  _ags_preexec() { [[ "$1" =~ $AGTERM_AGENT_RE ]] && { "$AGTERM_AGENT_BIN" active --blink; _ags_active=1; }; }
   _ags_precmd()  { [[ -n "${_ags_active:-}" ]] && { "$AGTERM_AGENT_BIN" idle; unset _ags_active; }; }
   add-zsh-hook preexec _ags_preexec
   add-zsh-hook precmd  _ags_precmd
@@ -38,7 +38,7 @@ elif [ -n "${BASH_VERSION:-}" ]; then
     [ -n "${COMP_LINE:-}" ] && return             # ignore tab-completion
     case "$cmd" in _ags_*) return ;; esac
     if [[ "$cmd" =~ $AGTERM_AGENT_RE ]]; then
-      "$AGTERM_AGENT_BIN" active
+      "$AGTERM_AGENT_BIN" active --blink
       _ags_active=1
     fi
   }

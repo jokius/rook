@@ -31,7 +31,7 @@ struct AgentHooksInstallTests {
         #expect(evts["UserPromptSubmit"]?.count == 1)
         #expect(evts["Stop"]?.count == 1)
         #expect(evts["Notification"]?.count == 1)
-        #expect(command(evts["UserPromptSubmit"]![0])?.hasSuffix("agent-status.sh' active") == true)
+        #expect(command(evts["UserPromptSubmit"]![0])?.hasSuffix("agent-status.sh' active --blink") == true)
         // only the Stop hook passes --auto-reset (clear-on-visit); active/blocked stay keep-state
         #expect(command(evts["Stop"]![0])?.hasSuffix("agent-status.sh' completed --auto-reset") == true)
         #expect(command(evts["Notification"]![0])?.hasSuffix("agent-status.sh' blocked") == true)
@@ -75,7 +75,7 @@ struct AgentHooksInstallTests {
         #expect(evts["UserPromptSubmit"]?.count == 2)
         let commands = evts["UserPromptSubmit"]!.compactMap { command($0) }
         #expect(commands.contains("/usr/bin/other-hook.sh"))
-        #expect(commands.contains { $0.hasSuffix("agent-status.sh' active") })
+        #expect(commands.contains { $0.hasSuffix("agent-status.sh' active --blink") })
         // Stop + Notification are still added fresh
         #expect(evts["Stop"]?.count == 1)
         #expect(evts["Notification"]?.count == 1)
