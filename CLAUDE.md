@@ -19,6 +19,7 @@
 - `scripts/run.sh` — setup, `xcodegen generate`, `xcodebuild` Debug, then launch.
 - `scripts/build.sh` — same but Release, no launch.
 - `cd agtermCore && swift test` — run the host-free unit tests (`scripts/test.sh` wraps this).
+- `Makefile` — a thin front door over the scripts: `make prep`/`build` (Debug, no launch)/`run`/`release`/`deploy` (Release build + copy to `~/Applications`)/`test`/`dist VERSION=x.y.z [PUBLISH=1]` (the `release.sh` DMG)/`clean`; a bare `make` lists them. The scripts stay the source of truth — only `build` and `deploy` carry their own recipe.
 
 The app must build and `swift test` must stay green after every change.
 

@@ -41,6 +41,8 @@ scripts/setup.sh   # build libghostty from ghostty source + stage resources (ide
 scripts/run.sh     # setup, generate the Xcode project, build Debug, launch
 ```
 
+A `Makefile` wraps these as a convenience front door: `make run` (build Debug + launch), `make build` (Debug, no launch), `make release` (Release build), `make deploy` (Release build + copy to `~/Applications`), `make test`, and `make dist VERSION=x.y.z` (signed, notarized DMG). Run `make` with no target to list them.
+
 `scripts/build.sh` produces a Release build without launching. The unit tests run independently of Xcode and libghostty:
 
 ```sh
