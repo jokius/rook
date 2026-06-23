@@ -425,7 +425,7 @@ final class ControlAPIUITests: XCTestCase {
     // the agent-status icon is gated by the visibility rule: it shows only on a session that is NOT the
     // frontmost window's selected one. Set status on a non-selected session → the icon appears; select that
     // session → it hides; select a different session → it reappears (mirrors the notify-badge test).
-    func testAgentStatusIconShowsOnUnselectedRowAndHidesOnSelect() throws {
+    func testAgentStatusIconShowsRegardlessOfSelectionAndAutoResetClears() throws {
         let tree = try sendCommand(#"{"cmd":"tree"}"#)
         let treeResult = try XCTUnwrap(tree["result"] as? [String: Any], "tree should carry a result")
         let root = try XCTUnwrap(treeResult["tree"] as? [String: Any], "result should carry a tree")
@@ -439,26 +439,29 @@ final class ControlAPIUITests: XCTestCase {
         let secondID = try XCTUnwrap(createdResult["id"] as? String, "session.new should return the new id")
         XCTAssertTrue(pollSessionCount(2, timeout: 10), "the new session should land")
 
-        // negative baseline: no status set yet, so no agent-status icon exists on any row — this makes
-        // the "appears" assertion below meaningful (it's a transition, not a pre-existing element).
+        // negative baseline: no status set yet, so no agent-status icon exists on any row.
         XCTAssertTrue(app.staticTexts["agent-status"].waitForNonExistence(timeout: 5),
                       "no agent-status icon should exist before any status is set")
 
-        // set active status on the non-selected seeded session: the gate lets its icon show.
+        // set active on the non-selected seeded session: the icon appears.
         let status = try sendCommand(#"{"cmd":"session.status","target":"\#(seeded)","args":{"status":"active"}}"#)
         XCTAssertEqual(status["ok"] as? Bool, true, "session.status active should succeed: \(status)")
         XCTAssertTrue(app.staticTexts["agent-status"].waitForExistence(timeout: 12),
-                      "the status icon should appear on the non-selected session's row")
+                      "the status icon should appear on the session's row")
 
-        // selecting the session (now the frontmost window's selected one) hides its icon.
+        // selecting that session KEEPS the icon — active is keep-state and there is no visibility gate.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.select","target":"\#(seeded)"}"#)["ok"] as? Bool, true)
+        XCTAssertTrue(app.staticTexts["agent-status"].waitForExistence(timeout: 5),
+                      "the active status icon stays on the selected session (no visibility gate)")
+
+        // completed --auto-reset on the now non-selected session shows, then VISITING it clears it.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.select","target":"\#(secondID)"}"#)["ok"] as? Bool, true)
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.status","target":"\#(seeded)","args":{"status":"completed","autoReset":true}}"#)["ok"] as? Bool, true)
+        XCTAssertTrue(app.staticTexts["agent-status"].waitForExistence(timeout: 12),
+                      "completed --auto-reset should show on the non-selected session")
         XCTAssertEqual(try sendCommand(#"{"cmd":"session.select","target":"\#(seeded)"}"#)["ok"] as? Bool, true)
         XCTAssertTrue(app.staticTexts["agent-status"].waitForNonExistence(timeout: 12),
-                      "selecting the session should hide its status icon")
-
-        // switching away to a different session re-reveals the icon (status is never auto-reset).
-        XCTAssertEqual(try sendCommand(#"{"cmd":"session.select","target":"\#(secondID)"}"#)["ok"] as? Bool, true)
-        XCTAssertTrue(app.staticTexts["agent-status"].waitForExistence(timeout: 12),
-                      "switching away should re-reveal the status icon")
+                      "visiting a completed --auto-reset session should clear its icon")
     }
 
     // the General → "Show notification badges" toggle gates the red count pill's RENDERING (the count

@@ -143,6 +143,8 @@ struct agtermApp: App {
                     else { NSApp.keyWindow?.performClose(nil) }
                 }
                 .keyboardShortcut("w", modifiers: .command)
+                Button("Clear Status") { actions.clearActiveSessionStatus() }
+                    .disabled(library.activeStore?.activeSession == nil)
             }
             // View: font zoom (drives ghostty on the focused terminal), the status-bar toggle, and
             // split / quick terminal / palettes. The menu reserves an icon column because the system

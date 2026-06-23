@@ -233,14 +233,9 @@ private final class SidebarNode {
 struct WorkspaceSidebar: NSViewRepresentable {
     @Bindable var store: AppStore
     let actions: AppActions
-    /// True only when this representable's window is the frontmost one. Passed down from
-    /// `WindowContentView` (computed as `library.activeWindowID == windowID`); because the parent
-    /// re-renders on a frontmost flip, a fresh Bool re-runs `updateNSView` — the whole reactive path
-    /// for the agent-status visibility gate, with no `WindowLibrary` read inside the representable.
-    let isFrontmostWindow: Bool
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(store: store, actions: actions, isFrontmostWindow: isFrontmostWindow)
+        Coordinator(store: store, actions: actions)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -297,14 +292,11 @@ struct WorkspaceSidebar: NSViewRepresentable {
         // SwiftUI re-invokes updateNSView when the tree shape, selection, any session's name/displayName,
         // split state, unseen count, or agent status changes. folding all of those into the read is what
         // lets reconcile do a targeted per-row reload for a content change; a touch inside viewFor wouldn't
-        // register it. agentIndicator + selection feed the status-icon visibility gate. the badge-visibility
-        // toggle (GhosttyApp.notificationBadgeEnabled) is NOT observable, so it drives a re-reconcile via the
-        // .agtermAppearanceChanged notification (appearanceChanged), like compactToolbar — not this read.
+        // register it. agentIndicator feeds the status-icon reconcile (it renders on every session). the
+        // badge-visibility toggle (GhosttyApp.notificationBadgeEnabled) is NOT observable, so it drives a
+        // re-reconcile via the .agtermAppearanceChanged notification (appearanceChanged), like compactToolbar.
         _ = store.workspaces.map { ($0.id, $0.name, $0.unseenCount, $0.sessions.map { ($0.id, $0.displayName, $0.hasSplit, $0.unseenCount, $0.agentIndicator) }) }
         _ = store.selectedSessionID
-        // the parent passes a fresh isFrontmostWindow on a frontmost flip; sync it so reconcile's gate
-        // re-evaluates (a non-frontmost window's selected session keeps showing its icon).
-        context.coordinator.isFrontmostWindow = isFrontmostWindow
         context.coordinator.reconcile()
         context.coordinator.syncSelection()
     }
@@ -316,10 +308,6 @@ struct WorkspaceSidebar: NSViewRepresentable {
     final class Coordinator: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate, NSTextFieldDelegate {
         private let store: AppStore
         private let actions: AppActions
-        /// True only when this coordinator's window is frontmost. Drives the agent-status visibility
-        /// gate: the selected session of the frontmost window hides its icon. Set by `updateNSView` from
-        /// the fresh Bool the parent passes on a frontmost flip.
-        var isFrontmostWindow: Bool
         weak var outlineView: NSOutlineView?
 
         /// Root workspace nodes in store order. Rebuilt (in place, reusing cached
@@ -353,10 +341,9 @@ struct WorkspaceSidebar: NSViewRepresentable {
         /// reconcile reloads only the rows whose content changed. An absent key ≠ any real content.
         private var lastRowContent: [UUID: RowContent] = [:]
 
-        init(store: AppStore, actions: AppActions, isFrontmostWindow: Bool) {
+        init(store: AppStore, actions: AppActions) {
             self.store = store
             self.actions = actions
-            self.isFrontmostWindow = isFrontmostWindow
             super.init()
             // the menu/palette can't reach the inline editor directly, so they post a
             // notification and this coordinator starts the edit on the selected row.
@@ -424,14 +411,11 @@ struct WorkspaceSidebar: NSViewRepresentable {
             let indicator: AgentIndicator
         }
 
-        /// The agent-status indicator after the visibility gate: hidden (`.idle`) when this is the
-        /// frontmost window's selected session (you're looking at it), else the session's own indicator.
-        /// `NSApp.isActive` is deliberately not in the gate (it would flicker the selected row on every
-        /// app-switch). A workspace row never carries one.
+        /// The session's own agent-status indicator (or `.idle` for an unknown id / workspace row). Shown
+        /// on every session regardless of selection — `completed --auto-reset` clears itself on
+        /// `selectSession`, so a visited session drops its glyph without a render-time gate.
         private func effectiveIndicator(forSession id: UUID) -> AgentIndicator {
-            guard let session = store.session(withID: id) else { return AgentIndicator() }
-            if isFrontmostWindow, id == store.selectedSessionID { return AgentIndicator() }
-            return session.agentIndicator
+            store.session(withID: id)?.agentIndicator ?? AgentIndicator()
         }
 
         /// The unseen-count after the badge-visibility gate: 0 (hidden) when the Settings badge toggle
@@ -865,6 +849,16 @@ struct WorkspaceSidebar: NSViewRepresentable {
             // rather than via the responder-chain auto-enabling.
             menu.autoenablesItems = false
 
+            // "Clear Status" sits first for a session row that has a status to clear (same effect as
+            // `agtermctl session status idle`).
+            if node.kind == .session, store.session(withID: node.id)?.agentIndicator.status != .idle {
+                let clearStatus = NSMenuItem(title: "Clear Status", action: #selector(menuClearStatus(_:)), keyEquivalent: "")
+                clearStatus.target = self
+                clearStatus.representedObject = node
+                menu.addItem(clearStatus)
+                menu.addItem(.separator())
+            }
+
             let rename = NSMenuItem(title: "Rename", action: #selector(menuRename(_:)), keyEquivalent: "")
             rename.target = self
             rename.representedObject = node
@@ -935,6 +929,11 @@ struct WorkspaceSidebar: NSViewRepresentable {
         @objc private func menuClose(_ sender: NSMenuItem) {
             guard let node = sender.representedObject as? SidebarNode else { return }
             store.closeSession(node.id)
+        }
+
+        @objc private func menuClearStatus(_ sender: NSMenuItem) {
+            guard let node = sender.representedObject as? SidebarNode else { return }
+            store.setAgentIndicator(AgentIndicator(), forSession: node.id)
         }
 
         @objc private func menuNewSession(_ sender: NSMenuItem) {

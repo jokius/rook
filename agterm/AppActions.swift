@@ -74,6 +74,13 @@ final class AppActions {
         store.closeSession(id)
     }
 
+    /// Clear the active session's agent-status indicator back to idle (the same effect as `agtermctl
+    /// session status idle` and the sidebar row's "Clear Status"). No-op when nothing is selected.
+    func clearActiveSessionStatus() {
+        guard let store, let id = store.selectedSessionID else { return }
+        store.setAgentIndicator(AgentIndicator(), forSession: id)
+    }
+
     /// Step the selection to the previous/next session, or jump to the first/last, in the sidebar's
     /// flattened visual order (`navigateSession` owns the logic so the GUI, palette, and control
     /// channel can't drift). Each routes through `selectSession` (recency/badge/persist/workspace)
@@ -206,6 +213,7 @@ final class AppActions {
             PaletteItem(title: "Rename Session") { [weak self] in self?.renameActiveSession() },
             PaletteItem(title: "Rename Workspace") { [weak self] in self?.renameActiveWorkspace() },
             PaletteItem(title: "Close Session", shortcut: "⌘W") { [weak self] in self?.closeActiveSession() },
+            PaletteItem(title: "Clear Status") { [weak self] in self?.clearActiveSessionStatus() },
             PaletteItem(title: "Previous Session", shortcut: "⌥⌘↑") { [weak self] in self?.selectPreviousSession() },
             PaletteItem(title: "Next Session", shortcut: "⌥⌘↓") { [weak self] in self?.selectNextSession() },
             PaletteItem(title: "First Session") { [weak self] in self?.selectFirstSession() },

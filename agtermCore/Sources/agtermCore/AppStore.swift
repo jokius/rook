@@ -91,22 +91,27 @@ public final class AppStore {
     /// A non-nil id that matches no session is ignored, leaving the current
     /// selection untouched; nil always deselects. Backs the sidebar's
     /// `List(selection:)` so a click persists immediately rather than waiting for
-    /// the next structural mutation. Visiting a session clears its unseen badge and,
-    /// when its agent indicator is `autoReset`, resets the indicator to idle for good;
-    /// a non-`autoReset` indicator is left untouched (keep-state: hidden while viewed,
-    /// restored on switch-away).
+    /// the next structural mutation. Visiting a session clears its unseen badge. An
+    /// `autoReset` agent indicator (the one-time `completed` flash) is reset to idle on
+    /// BOTH the session moved to (you've seen it) and the one moved from (it must not
+    /// persist once you leave it); a non-`autoReset` indicator (active/blocked) is left
+    /// untouched (keep-state).
     public func selectSession(_ sessionID: UUID?) {
         if let sessionID, session(withID: sessionID) == nil { return }
+        let previous = selectedSessionID
         selectedSessionID = sessionID
-        if let sessionID {
-            clearUnseen(sessionID)
-            // reset the indicator on visit only when the caller marked it auto-reset (clear-on-visit).
-            if let session = session(withID: sessionID), session.agentIndicator.autoReset {
-                session.agentIndicator = AgentIndicator()
-            }
-        }
+        if let sessionID { clearUnseen(sessionID) }
+        clearAutoResetIndicator(sessionID) // visit: you've seen it
+        clearAutoResetIndicator(previous)  // leave: a one-time status must not linger on the row you left
         recordRecency()
         save()
+    }
+
+    /// Reset a session's agent indicator to idle when it is marked `autoReset` (the one-time `completed`
+    /// flash). No-op for nil / an unknown id / a non-autoReset indicator.
+    private func clearAutoResetIndicator(_ id: UUID?) {
+        guard let id, let session = session(withID: id), session.agentIndicator.autoReset else { return }
+        session.agentIndicator = AgentIndicator()
     }
 
     /// Clears a session's unseen-notification badge — it's been looked at. No-op for an unknown id.

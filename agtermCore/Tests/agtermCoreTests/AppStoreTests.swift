@@ -164,8 +164,23 @@ struct AppStoreTests {
         let a = store.addSession(toWorkspace: ws.id, cwd: "/a")!
         let b = store.addSession(toWorkspace: ws.id, cwd: "/b")!
         store.setAgentIndicator(AgentIndicator(status: .completed, autoReset: true), forSession: a.id)
-        store.selectSession(b.id) // selecting a different session leaves a's indicator alone
+        store.selectSession(b.id) // selecting a different session leaves a background indicator alone
         #expect(a.agentIndicator == AgentIndicator(status: .completed, autoReset: true))
+    }
+
+    @Test func switchingAwayClearsAutoResetIndicatorOnTheLeftSession() {
+        let store = Self.makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let a = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let b = store.addSession(toWorkspace: ws.id, cwd: "/b")!
+        store.selectSession(a.id)
+        // the agent finishes WHILE a is the selected session, so no visit fires and its completed flash lingers
+        store.setAgentIndicator(AgentIndicator(status: .completed, autoReset: true), forSession: a.id)
+        #expect(a.agentIndicator == AgentIndicator(status: .completed, autoReset: true))
+        // switching away from a clears its one-time completed flash (it must not persist on the row you left)
+        store.selectSession(b.id)
+        #expect(a.agentIndicator == AgentIndicator())
+        #expect(b.agentIndicator == AgentIndicator()) // and b (the one moved to) carries nothing
     }
 
     @Test func workspaceForSessionDerivesOwner() {
