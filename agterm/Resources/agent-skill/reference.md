@@ -175,12 +175,28 @@ Built-in action names for `map` include: `new_window`, `new_workspace`, `new_ses
 `decrease_font_size`, `reset_font_size`, `toggle_split`, `toggle_scratch`, `toggle_sidebar`, `quick_terminal`,
 `session_palette`, `command_palette`, and the navigation actions (`previous_session`, `next_session`,
 `first_session`, `last_session`, `previous_attention_session`, `next_attention_session`,
-`focus_left_pane`, `focus_right_pane`). Editing the keymap from a terminal: open `keymap.conf` in
-`$EDITOR`, then `agtermctl keymap reload`.
+`focus_left_pane`, `focus_right_pane`, `select_theme`). Editing the keymap from a terminal: open
+`keymap.conf` in `$EDITOR`, then `agtermctl keymap reload`.
+
+## theme
+
+The app's out-of-the-box default theme is the bundled **agterm** theme (a fresh install opens on it).
+A separate **default ghostty** entry means "no theme" — ghostty's own built-in colors (`theme` absent).
+
+`agtermctl theme list` — list the bundled theme names; returns `result.themes` (the names) and
+`result.theme` (the current one, absent = ghostty's built-in / "default ghostty"). Human output prints
+one name per line with a leading "default ghostty" row, the current one marked `* `.
+
+`agtermctl theme set [name]` — set and persist the terminal theme app-wide (the same change as Settings
+▸ Appearance ▸ Theme). Pass a bundled name (e.g. `agterm`); omit the name for ghostty's built-in
+default ("default ghostty"). An unknown name returns `unknown theme: <name>`. Returns `result.theme`
+= the applied name (absent = ghostty built-in); human output prints `ok`. App-global (no `--window`).
+The GUI's live-preview picker (View ▸ Select Theme…) is keyboard-only; over the socket `theme set` is
+the commit, with no preview.
 
 ## Errors you may see
 
 `notFound` / `ambiguous` (target resolution), `no such session`, `invalid split mode` /
 `invalid scratch mode`, `not split` (focus), `no selection` (copy), `overlay already open` /
 `no overlay` / `still running` / `no result` (overlay), `invalid sidebar mode` (sidebar), `no open window` (quick/sidebar), `window not open`
-(resize/move/`--window`). Unknown commands fail to decode and return a structured error, never a crash.
+(resize/move/`--window`), `unknown theme: <name>` (theme set). Unknown commands fail to decode and return a structured error, never a crash.

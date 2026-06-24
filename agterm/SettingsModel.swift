@@ -29,6 +29,13 @@ final class SettingsModel {
         self.library = library
         self.settingsStore = settingsStore
         self.settings = settingsStore.load()
+        // write the ghostty config from the loaded settings NOW — before GhosttyApp boots and reads it
+        // (its loadConfig runs in applicationDidFinishLaunching, AFTER this App.init). The SEEDED default
+        // theme (agterm) lives only in memory (load() seeds it; it isn't in settings.json), so without
+        // this the launch config carries no theme line and the terminal renders ghostty's built-in until
+        // the first settings change rewrites the conf. Idempotent: writeGhosttyConfig no-ops when the file
+        // already matches (e.g. a user with an explicit theme already has it on disk).
+        _ = writeGhosttyConfig()
         // mirror the persisted window translucency + notification toggle + compact toolbar + badge
         // toggle into their shared channels at launch, before any settings change fires.
         applyWindowTranslucency()
@@ -53,6 +60,17 @@ final class SettingsModel {
     func setActiveStatusColorHex(_ hex: String?) { settings.activeStatusColorHex = hex; persistAndApply() }
     func setBlockedStatusColorHex(_ hex: String?) { settings.blockedStatusColorHex = hex; persistAndApply() }
     func setCompletedStatusColorHex(_ hex: String?) { settings.completedStatusColorHex = hex; persistAndApply() }
+
+    /// Apply a theme live WITHOUT persisting it — the live-preview half of the action-palette theme
+    /// picker. Runs the same apply path as a real change (config rewrite + surface reload + chrome
+    /// refresh) but skips `settingsStore.save`, so navigating themes in the picker doesn't touch
+    /// `settings.json`; the picker commits with `commitTheme()` on Enter or reverts (re-previewing the
+    /// original) on Esc.
+    func previewTheme(_ value: String?) { settings.theme = value; apply() }
+
+    /// Persist the current settings — the commit half of the theme picker, called on Enter after one
+    /// or more `previewTheme` applies. The theme is already live; this only writes `settings.json`.
+    func commitTheme() { try? settingsStore.save(settings) }
 
     /// Clear all three agent-status colors back to the system defaults (the "Reset to defaults" button).
     func resetStatusColors() {
@@ -214,6 +232,14 @@ final class SettingsModel {
 
     private func persistAndApply() {
         try? settingsStore.save(settings)
+        apply()
+    }
+
+    /// Apply the current `settings` to the running app WITHOUT persisting: rewrite the ghostty config
+    /// and rebroadcast it to every live surface (only when the generated text changed), then refresh
+    /// the window translucency, toggles, and chrome. Split out of `persistAndApply` so the theme
+    /// picker can preview-apply without writing `settings.json`.
+    private func apply() {
         // only rebuild + rebroadcast the ghostty config (which resets every surface to the default
         // font size) when the generated config TEXT actually changed. A window-opacity drag within
         // the translucent range, or a blur change, leaves the config identical — re-syncing the
