@@ -363,7 +363,8 @@ final class SettingsModel {
     }
 
     private func applyCompactToolbar() {
-        GhosttyApp.shared.setCompactToolbar(settings.compactToolbar ?? false)
+        // nil = the app default = compact (true); an explicit false is non-compact.
+        GhosttyApp.shared.setCompactToolbar(settings.compactToolbar ?? true)
     }
 
     private func applyNotificationBadgeEnabled() {

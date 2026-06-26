@@ -261,11 +261,11 @@ private struct AppearanceSettingsView: View {
         return offset < 0 ? "Lighter \(-offset)" : "Darker \(offset)"
     }
 
-    /// off (the default) maps to nil so settings.json stays minimal, matching the other appearance
-    /// controls' "unset = default" convention.
+    /// on (the default = compact) maps to nil so settings.json stays minimal, matching the other
+    /// appearance controls' "unset = default" convention; off writes an explicit false.
     private var compactToolbar: Binding<Bool> {
-        Binding(get: { model.settings.compactToolbar ?? false },
-                set: { model.setCompactToolbar($0 ? true : nil) })
+        Binding(get: { model.settings.compactToolbar ?? true },
+                set: { model.setCompactToolbar($0 ? nil : false) })
     }
 
     // each ColorPicker binds to the resolved color (the user's hex or the system default); a pick

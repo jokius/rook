@@ -37,7 +37,8 @@ final class GhosttyApp {
     private(set) var windowBlurRadius: Int = 0
     /// Whether the window chrome uses the compact title bar (single short row, smaller icons, no
     /// subtitle). NOT ghostty-resolved: `WindowAppearance.sync` reads it, `SettingsModel` writes it.
-    private(set) var compactToolbar: Bool = false
+    /// Defaults to compact (the app default; `settings.compactToolbar == nil` resolves to `true`).
+    private(set) var compactToolbar: Bool = true
     /// Whether the sidebar draws the red unseen-notification count badge. NOT ghostty-resolved: the
     /// sidebar Coordinator reads it (gating the count to 0 when off), `SettingsModel` writes it. The
     /// re-render rides the `.agtermAppearanceChanged` notification, like `compactToolbar`.
