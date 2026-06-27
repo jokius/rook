@@ -25,7 +25,7 @@ Run a command AS the session's process (closes when it exits, no echoed command 
 
 ```bash
 agtermctl session new --command "htop"
-agtermctl session new --command "ssh host -p 22"   # shell-parsed, runs with no echo
+agtermctl session new --command "ssh host -p 22"   # argv-split (quotes respected), no shell, no echo
 ```
 
 Create a session pre-named (label set at creation, no follow-up rename):
