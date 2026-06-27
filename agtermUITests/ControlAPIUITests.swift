@@ -138,6 +138,53 @@ final class ControlAPIUITests: XCTestCase {
                       "the new session should carry the given custom name")
     }
 
+    // session.new --workspace-name addresses a workspace by its sidebar label. Without --create-workspace
+    // a missing name errors (nothing created); with it, the workspace is created once and REUSED on the
+    // next call (idempotent), so two creates land two sessions in a single "servers" workspace.
+    func testSessionNewWorkspaceNameCreatesThenReuses() throws {
+        // no match + no create -> error, and nothing is created.
+        let missing = try sendCommand(#"{"cmd":"session.new","args":{"workspaceName":"servers"}}"#)
+        XCTAssertEqual(missing["ok"] as? Bool, false, "name target with no match and no create should fail: \(missing)")
+        XCTAssertTrue((missing["error"] as? String ?? "").contains("no workspace named"),
+                      "should report the missing workspace name: \(missing)")
+        XCTAssertTrue(pollWorkspaceNames(["workspace 1"], timeout: 5), "the failed call must not create a workspace")
+
+        // create: the "servers" workspace is added and the session lands in it.
+        let created = try sendCommand(#"{"cmd":"session.new","args":{"workspaceName":"servers","createWorkspace":true}}"#)
+        XCTAssertEqual(created["ok"] as? Bool, true, "create-workspace should succeed: \(created)")
+        XCTAssertTrue(pollWorkspaceNames(["workspace 1", "servers"], timeout: 10), "the servers workspace should be created")
+
+        // reuse: a second call with the same name does NOT create a duplicate; both sessions sit in servers.
+        let reused = try sendCommand(#"{"cmd":"session.new","args":{"workspaceName":"servers","createWorkspace":true}}"#)
+        XCTAssertEqual(reused["ok"] as? Bool, true, "the second create should reuse the workspace: \(reused)")
+        XCTAssertTrue(pollWorkspaceNames(["workspace 1", "servers"], timeout: 10), "still exactly one servers workspace")
+        XCTAssertTrue(pollSessionCounts([1, 2], timeout: 10), "both sessions should land in the single servers workspace")
+
+        // no-create name target of an EXISTING workspace succeeds and lands there (a third session).
+        let existing = try sendCommand(#"{"cmd":"session.new","args":{"workspaceName":"servers"}}"#)
+        XCTAssertEqual(existing["ok"] as? Bool, true, "no-create name target of an existing workspace should succeed: \(existing)")
+        XCTAssertTrue(pollSessionCounts([1, 3], timeout: 10), "the no-create name target should land a third session in servers")
+    }
+
+    // the ControlServer arm enforces the two addressing rules independently of the CLI validate() (a raw
+    // socket caller bypasses the CLI), and a blank name reports must-not-be-blank rather than a misleading
+    // --create-workspace suggestion.
+    func testSessionNewWorkspaceNameValidationErrors() throws {
+        let both = try sendCommand(#"{"cmd":"session.new","args":{"workspace":"active","workspaceName":"servers"}}"#)
+        XCTAssertEqual(both["ok"] as? Bool, false, "both --workspace and --workspace-name should fail: \(both)")
+        XCTAssertTrue((both["error"] as? String ?? "").contains("not both"), "should report mutual exclusion: \(both)")
+
+        let createNoName = try sendCommand(#"{"cmd":"session.new","args":{"createWorkspace":true}}"#)
+        XCTAssertEqual(createNoName["ok"] as? Bool, false, "create-workspace with no name should fail: \(createNoName)")
+        XCTAssertTrue((createNoName["error"] as? String ?? "").contains("requires --workspace-name"),
+                      "should report create-needs-name: \(createNoName)")
+
+        let blank = try sendCommand(#"{"cmd":"session.new","args":{"workspaceName":"   "}}"#)
+        XCTAssertEqual(blank["ok"] as? Bool, false, "a blank workspace name should fail: \(blank)")
+        XCTAssertTrue((blank["error"] as? String ?? "").contains("must not be blank"),
+                      "a blank name should report must-not-be-blank, not suggest --create-workspace: \(blank)")
+    }
+
     // workspace.new returns an id and the workspace appears; workspace.rename is reflected in json.
     func testWorkspaceNewAndRename() throws {
         let created = try sendCommand(#"{"cmd":"workspace.new","args":{"name":"control ws"}}"#)
