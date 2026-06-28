@@ -12,6 +12,45 @@ What sets it apart:
 
 For the real terminal work, rendering, VT parsing, and shell I/O, `agterm` embeds [Ghostty](https://ghostty.org)'s engine (libghostty); everything above is `agterm`'s own.
 
+![agterm](docs/screenshots/main.png)
+
+<details>
+<summary>More screenshots</summary>
+
+An agent's interactive prompt mid-session, with attention glyphs on the sessions that need you:
+
+![Agent prompt](docs/screenshots/agent-prompt.png)
+
+A split session (agent and shell side by side) with the action palette open:
+
+![Action palette](docs/screenshots/action-palette.png)
+
+A full-screen diff TUI running inside a session:
+
+![Diff TUI](docs/screenshots/diff-tui.png)
+
+A file manager in a floating overlay over the active session:
+
+![Floating overlay](docs/screenshots/floating-overlay.png)
+
+The fuzzy session palette for jumping to any session by name:
+
+![Session palette](docs/screenshots/session-palette.png)
+
+A session's right-click context menu:
+
+![Context menu](docs/screenshots/context-menu.png)
+
+The keymap editor:
+
+![Keymap editor](docs/screenshots/keymap-editor.png)
+
+A file open in a full-coverage overlay:
+
+![Overlay](docs/screenshots/overlay-pager.png)
+
+</details>
+
 ## Install
 
 > Pre-built releases are not published yet. Until the first one is out, build from source (below). The steps here describe how installing will work once releases are available.
