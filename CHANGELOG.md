@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.5.0 - 2026-07-01
+
+### New Features
+
+- per-session background watermark, set via session.background #32 @fkirill
+- read a session's scrollback over the control API with session.text #46 @paul-nameless
+- show the app-wide unseen-notification count as a Dock icon badge #48 @vnazarenko
+
+### Improvements
+
+- show the configured keyboard shortcut in toolbar and sidebar tooltips #62 @taras-mrtn
+
 ## v0.4.2 - 2026-07-01
 
 ### Bug Fixes
