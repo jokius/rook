@@ -92,6 +92,9 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   For a CONTRIBUTOR's PR: do NOT force this — a contributor shouldn't have to refactor a pre-existing long
   file to land their change; NOTIFY that a file is getting long and SUGGEST keeping it under 1000, but
   never make them address the line count or block the PR on it.
+  And when REVIEWING a contributor's PR, never suggest the contributor RAISE a `file_length`/`type_body_length`
+  (or any lint) limit to fit their change — bumping a grandfathered limit is a maintainer decision,
+  so at most note the file is getting long, never offer the limit bump as the fix.
 
 - **Working in a git WORKTREE: SYMLINK the prebuilt artifacts, don't re-run setup.** A fresh `git worktree`
   does NOT contain the gitignored `GhosttyKit.xcframework`, `agterm/Resources/ghostty`,
