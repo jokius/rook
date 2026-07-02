@@ -31,6 +31,44 @@ struct ConfigPathsTests {
         #expect(ConfigPaths.keymapPath(configDirectory: dir).path == "/Users/test/.config/agterm/keymap.conf")
     }
 
+    @Test func starterKeymapConfIsCommentedAndListsActions() {
+        let starter = ConfigPaths.starterKeymapConf()
+        #expect(starter.contains("agterm keymap — a kitty-flavored config"))
+        #expect(starter.contains("map <chord> <action>"))
+        #expect(starter.contains("command \"<name>\" [chord] <shell...>"))
+        #expect(starter.contains("single chord OR a leader like `ctrl+a>g`"))
+        #expect(starter.contains("command \"Open in Zed\"  cmd+shift+e  open -a Zed \"$AGT_SESSION_PWD\""))
+        #expect(starter.contains("command \"Lazygit\"      ctrl+a>g     agtermctl session overlay open lazygit --socket \"$AGT_SOCKET\""))
+        #expect(starter.contains("command \"Deploy\"                    ./deploy.sh"))
+        #expect(starter.contains("ctrl+shift+p"))
+        #expect(!starter.contains("super"))
+        for action in BuiltinAction.allCases {
+            #expect(starter.contains("#   \(action.rawValue)"))
+        }
+        #expect(starter.contains("#   new_session"))
+        #expect(starter.contains("cmd+n"))
+        #expect(starter.contains("#   increase_font_size"))
+        #expect(starter.contains("(not expressible)"))
+        #expect(starter.contains("#   rename_session"))
+        #expect(starter.contains("(no default)"))
+        for token in CommandContext.tokenNames {
+            #expect(starter.contains("#   {\(token)}"))
+        }
+        #expect(!starter.contains("{AGT_SESSION}"))
+        #expect(!starter.contains("{AGT_WINDOW}"))
+        #expect(!starter.contains("{AGT_CWD}"))
+        #expect(starter.contains("a {AGT_X} token is substituted RAW into the /bin/sh line"))
+        #expect(starter.contains("a remote host can also set"))
+        #expect(starter.contains("the session title (OSC) and the working directory (OSC 7)"))
+        #expect(starter.contains("{AGT_SESSION_NAME} and"))
+        #expect(starter.contains("{AGT_SESSION_PWD} are equally unsafe raw"))
+        #expect(starter.contains("environment variable, QUOTED, e.g. \"$AGT_SELECTION\""))
+        let parsed = parseKeymap(starter)
+        #expect(parsed.keymap.builtinOverrides.isEmpty)
+        #expect(parsed.keymap.commands.isEmpty)
+        #expect(parsed.diagnostics.isEmpty)
+    }
+
     @Test func ghosttyConfigPathIsGhosttyConfInDir() {
         let dir = URL(fileURLWithPath: "/Users/test/.config/agterm")
         #expect(ConfigPaths.ghosttyConfigPath(configDirectory: dir).path == "/Users/test/.config/agterm/ghostty.conf")
