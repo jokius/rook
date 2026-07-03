@@ -17,6 +17,16 @@ Manual prerequisites for CI publish:
 
 The Apple-gated tasks below (signing identity, notarization) remain the eventual target and are unaffected by the interim path.
 
+## Update (2026-07-02): notarized releases live; publishing back to local
+
+Apple approved the **Brave Elk LLC** organization account. A `Developer ID Application: Brave Elk LLC` cert is installed (the old individual cert was deleted from the keychain so nothing can sign under the maintainer's legal name), and the `agterm-notary` notary profile is stored (`notarytool store-credentials`). A full `scripts/release.sh 0.6.1` dry-run validated the whole path end-to-end: the app **and** the DMG both sign as Brave Elk LLC, notarize `Accepted`, staple, and pass `spctl` (`source=Notarized Developer ID`).
+
+What changed:
+- **`scripts/release.sh`** — fixed a real gap: the DMG *container* was never codesigned, so `hdiutil`'s unsigned image notarized + stapled fine but failed the `spctl -t open --context context:primary-signature` check (`no usable signature`) and aborted the run under `set -e`. Now the DMG is codesigned (Developer ID + `--timestamp`) **before** notarizing (create → sign → notarize → staple). The unsigned-install footer was replaced with a signed + notarized note.
+- **Publishing moved back to LOCAL** (the Overview's original model). `.github/workflows/release.yml` was deleted: the cert + `agterm-notary` profile exist only on the maintainer's Mac, so `scripts/release.sh <ver> --publish` runs there. It creates the tag + release, uploads the DMG, and pushes the cask with the maintainer's own `gh` auth (write to both `umputun/agterm` and `umputun/homebrew-apps`), so the `HOMEBREW_TAP_PAT` secret is no longer needed.
+- **`packaging/agterm.rb`** — dropped the `postflight` quarantine-strip (unneeded once notarized).
+- **`README.md`** — Install section rewritten off the `xattr` workaround (Task 4).
+
 ## Overview
 - Ship `agterm` as a Developer ID **signed + Apple-notarized + stapled** `.dmg` so macOS Gatekeeper runs it without the "unidentified developer / cannot be opened" block.
 - Two channels: a GitHub Release artifact (direct download) and a Homebrew **cask** in the existing `umputun/homebrew-apps` tap (`brew install --cask umputun/apps/agterm`).
@@ -47,7 +57,7 @@ The Apple-gated tasks below (signing identity, notarization) remain the eventual
 - **Notarized validation (Apple-gated)**: once the cert + creds exist, run the full `release.sh`, confirm `spctl -a -vv --type execute` passes and `stapler validate` succeeds, and verify a fresh download opens on a clean/second Mac without a Gatekeeper prompt.
 
 ## Prerequisites (Apple — manual, external, BLOCKS final validation)
-**Status (2026-06-21):** membership active; an Individual `Developer ID Application` cert is installed and signing is validated. To keep the maintainer's legal name off the artifacts, conversion to an **Organization** account (Brave Elk LLC, D-U-N-S 130180527) has been requested and is under Apple review (~weeks). The first real notarized release waits on: org approval → reissue the Developer ID cert under the LLC → `notarytool store-credentials agterm-notary`.
+**Status (2026-06-21):** membership active; an Individual `Developer ID Application` cert is installed and signing is validated. To keep the maintainer's legal name off the artifacts, conversion to an **Organization** account (Brave Elk LLC) has been requested and is under Apple review (~weeks). The first real notarized release waits on: org approval → reissue the Developer ID cert under the LLC → `notarytool store-credentials agterm-notary`.
 
 These cannot be done in the codebase and block the notarization tasks until complete:
 1. Enroll in the Apple Developer Program (individual, $99/yr) and wait for activation.
@@ -79,13 +89,13 @@ Until these are done, implement Tasks 1–4 (the `-` ad-hoc path stays the defau
 - [x] Accept a version (`$1`), validate `^[0-9]+\.[0-9]+\.[0-9]+$`; derive `TAG="v$VERSION"`; `--publish` is opt-in (build/notarize without it, publish only when passed).
 - [x] Build: `scripts/setup.sh` → `xcodegen generate` → plain `xcodebuild … -configuration Release build` (NOT archive); the `.app` at `build/DerivedData/Build/Products/Release/agterm.app` is copied into a staging dir.
 - [x] Authoritative signing AFTER `xcodebuild`: auto-detect the `Developer ID Application` identity (`security find-identity`, or `AGTERM_SIGN_IDENTITY` override), then `codesign --force --options runtime --timestamp` the nested `agtermctl` and the app bundle. **Validated** end-to-end against the real cert: app + helper both Developer ID + secure timestamp + hardened runtime, `--verify --deep --strict` OK. No identity → ad-hoc dry-run.
-- [ ] Notarize the app: `ditto -c -k --sequesterRsrc --keepParent` → `notarytool submit --keychain-profile agterm-notary --wait` (jq status check, `notarytool log` on failure) → `stapler staple`/`validate` → `spctl --type execute`. WRITTEN; ⚠️ not validated (gated on notary creds + org cert).
+- [x] Notarize the app: `ditto -c -k --sequesterRsrc --keepParent` → `notarytool submit --keychain-profile agterm-notary --wait` (jq status check, `notarytool log` on failure) → `stapler staple`/`validate` → `spctl --type execute`. VALIDATED 2026-07-02: app `accepted`, `source=Notarized Developer ID`.
 - [x] Package DMG via `hdiutil create … UDZO` with an `/Applications` symlink (no `create-dmg` node dep).
-- [ ] Notarize + staple the DMG, then `spctl -a -vv -t open --context context:primary-signature`. WRITTEN; ⚠️ gated on creds.
+- [x] Codesign (Developer ID + `--timestamp`) → notarize + staple the DMG, then `spctl -a -vv -t open --context context:primary-signature`. VALIDATED 2026-07-02: the missing DMG codesign was the one fix; DMG now `accepted`, `source=Notarized Developer ID`.
 - [x] Publish (behind `--publish`): `gh release create`/`upload --clobber` the DMG. WRITTEN; not run.
 - [x] Bump cask (behind `--publish`): `shasum -a 256`, clone `umputun/homebrew-apps`, seed from `packaging/agterm.rb` if the cask is absent (first publish), `sed` version/sha256, commit + push (no-op-diff guarded). WRITTEN; not run.
 - [x] `set -euo pipefail`, per-stage status messages, notarize/publish stages conditional.
-- [ ] ⚠️ Full `scripts/release.sh` dry-run not yet executed end-to-end (signing steps validated manually; gated on running the whole script).
+- [x] Full `scripts/release.sh` dry-run executed end-to-end 2026-07-02 (build → sign → notarize app + DMG → staple → `spctl`), exit 0.
 
 ### Task 3: Homebrew cask content
 
@@ -103,21 +113,19 @@ Until these are done, implement Tasks 1–4 (the `-` ad-hoc path stays the defau
 **Files:**
 - Modify: `README.md`
 
-⚠️ Deferred until the first release exists (otherwise the cask command + DMG URL point at a 404).
-
-- [ ] Add an Install/Distribution section: `brew install --cask umputun/apps/agterm` and the direct DMG download from Releases.
-- [ ] State it's **arm64-only (Apple Silicon)** and signed + notarized (no `xattr` workaround needed).
-- [ ] Cross-reference the `agtermctl` CLI: the cask `binary` stanza installs it automatically (cask users should NOT run the in-app installer); the in-app Help ▸ Install Command Line Tool is for **direct DMG** users only.
+- [x] Add an Install/Distribution section: `brew install --cask umputun/apps/agterm` and the direct DMG download from Releases.
+- [x] State it's **arm64-only (Apple Silicon)** and signed + notarized (no `xattr` workaround needed).
+- [x] Cross-reference the `agtermctl` CLI: the cask `binary` stanza installs it automatically (cask users should NOT run the in-app installer); the in-app Help ▸ Install Command Line Tool is for **direct DMG** users only.
 
 ### Task 5 (Apple-gated): Full notarized release validation
-- [ ] ⚠️ BLOCKED until Apple membership active + Developer ID cert in keychain + `notarytool store-credentials agterm-notary` done (see Prerequisites).
-- [ ] Run `scripts/release.sh` for a real version with signing; confirm app + DMG both notarized `Accepted` and `stapler validate` passes for both. Verify the app with `spctl -a -vv --type execute <app>` AND the DMG with `spctl -a -vv -t open --context context:primary-signature <dmg>` — both must report `accepted` / `source=Notarized Developer ID`.
+- [x] Apple membership active + `Developer ID Application: Brave Elk LLC` cert in keychain + `notarytool store-credentials agterm-notary` done (see the 2026-07-02 update).
+- [x] Run `scripts/release.sh` for a real version with signing; confirm app + DMG both notarized `Accepted` and `stapler validate` passes for both. Verify the app with `spctl -a -vv --type execute <app>` AND the DMG with `spctl -a -vv -t open --context context:primary-signature <dmg>` — both must report `accepted` / `source=Notarized Developer ID`. DONE 2026-07-02 via the `0.6.1` dry-run.
 - [ ] Download the published DMG on a clean/second Mac (or a fresh user); confirm it opens with no Gatekeeper block.
 
 ### Task 6: [Final] Docs + cleanup
-- [ ] Update CLAUDE.md if the release flow introduces conventions worth recording (the `AGTERM_SIGN_IDENTITY` hook, the local-release model, arm64-only).
-- [ ] Publish `packaging/agterm.rb` to `umputun/homebrew-apps:Casks/agterm.rb` (first cask in the tap).
-- [ ] Move this plan to `docs/plans/completed/`.
+- [x] Update CLAUDE.md: the CI/release section now documents the local, notarized flow (no `release.yml`; DMG codesigned before notarizing).
+- [ ] Publish `packaging/agterm.rb` (postflight removed) to `umputun/homebrew-apps:Casks/agterm.rb` — pushed automatically on the next `scripts/release.sh <ver> --publish`.
+- [x] Move this plan to `docs/plans/completed/`.
 
 ## Post-Completion
 *Manual / external — no checkboxes*

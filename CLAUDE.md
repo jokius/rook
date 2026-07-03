@@ -187,10 +187,15 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   **CI does NOT run the XCUITests** — it builds the app but never test-runs the app target;
   only the host-free `swift test` runs in CI.
   The `lint` job is `--strict`, so any swiftlint warning fails the build (see the `make lint` note above).
-  `release.yml` fires on `v*` tags: `scripts/release.sh <version> --publish` on `macos-26` builds an
-  unsigned DMG (`AGTERM_ALLOW_UNSIGNED=1`), publishes the GitHub release,
-  and bumps the Homebrew cask in `umputun/homebrew-apps` (needs the `HOMEBREW_TAP_PAT` secret,
-  not the default token).
+  There is NO `release.yml` — releases are cut LOCALLY, not by CI.
+  `scripts/release.sh <version> --publish` runs on the maintainer's Mac, the only place the
+  `Developer ID Application: Brave Elk LLC` cert and the `agterm-notary` keychain profile live.
+  It builds Release, then signs + notarizes + staples the app AND the DMG (the DMG container is
+  codesigned before notarizing — `hdiutil`'s image is otherwise unsigned and fails the `spctl`
+  primary-signature check), creates the tag + GitHub release, uploads the DMG, and pushes the Homebrew
+  cask to `umputun/homebrew-apps` with the maintainer's own `gh` auth (no `HOMEBREW_TAP_PAT` needed).
+  A no-`--publish` run is a full dry-run (build → sign → notarize → staple → `spctl`) that stops before
+  uploading.
   **`CHANGELOG.md` is RELEASE-ONLY — never touch it in a feature PR.**
   It is written only at release time (the `docs: update changelog for vX.Y.Z` commit / the release flow).
   A feature's own doc updates go to `README.md`, the bundled `agterm/Resources/agent-skill/`,

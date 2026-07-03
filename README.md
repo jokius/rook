@@ -57,7 +57,7 @@ A file open in the quick terminal, the window's shared scratch overlay:
 
 Pre-built releases are for **Apple Silicon (arm64) Macs running macOS 14 or later**.
 
-These interim builds are ad-hoc signed but **not yet Apple-notarized** (Developer ID enrollment is in progress), so macOS Gatekeeper blocks them until the quarantine flag is removed. This is temporary — once notarized builds ship, they install with no extra step.
+Releases are signed with a Developer ID certificate and notarized by Apple, so macOS Gatekeeper opens them with no extra steps.
 
 Homebrew:
 
@@ -65,17 +65,11 @@ Homebrew:
 brew install --cask umputun/apps/agterm
 ```
 
-The cask strips the quarantine flag on install, so the app opens with no prompt. It also installs the `agtermctl` command-line tool, so cask users should not run the in-app installer as well.
+The cask also installs the `agtermctl` command-line tool, so cask users should not run the in-app installer as well.
 
 Direct download:
 
-Download the latest `.dmg` from the [releases page](https://github.com/umputun/agterm/releases), open it, and drag `agterm.app` into `/Applications`. Because the build isn't notarized yet, run this once so Gatekeeper lets it launch:
-
-```sh
-xattr -cr /Applications/agterm.app
-```
-
-(Or try to open it, then click **Open Anyway** in **System Settings → Privacy & Security**. Right-click → Open no longer bypasses Gatekeeper on current macOS.)
+Download the latest `.dmg` from the [releases page](https://github.com/umputun/agterm/releases), open it, and drag `agterm.app` into `/Applications`.
 
 ### Optional Help-menu installers
 

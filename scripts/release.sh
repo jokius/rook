@@ -9,8 +9,7 @@
 # Signing identity: auto-detected from the keychain ("Developer ID Application"),
 # or override with AGTERM_SIGN_IDENTITY. With no identity it produces an AD-HOC
 # DMG (not notarized) — a dry run by default, but set AGTERM_ALLOW_UNSIGNED=1 to
-# --publish it as an interim unsigned release (what CI does until notarization is
-# available). Notary creds come from a keychain profile created
+# --publish it as an unsigned release. Notary creds come from a keychain profile created
 # with `xcrun notarytool store-credentials` (default name: agterm-notary,
 # override with AGTERM_NOTARY_PROFILE).
 set -euo pipefail
@@ -67,9 +66,8 @@ notarize() {
   fi
 }
 
-# build the GitHub release body: the matching CHANGELOG.md section followed by the
-# unsigned-install footer. Until the builds are notarized, the footer is the only
-# place direct-download users learn they must strip the Gatekeeper quarantine.
+# build the GitHub release body: the matching CHANGELOG.md section followed by a
+# short install note (signed + notarized; Apple Silicon only, macOS 14+).
 release_notes() {
   local section
   section="$(awk -v ver="v$VERSION" '
@@ -87,14 +85,10 @@ release_notes() {
   cat <<EOF
 ---
 
-These builds are ad-hoc signed but **not yet Apple-notarized** (Developer ID enrollment is in progress), so macOS Gatekeeper blocks them until the quarantine flag is removed. Apple Silicon (arm64) only, macOS 14 or later.
+Signed with a Developer ID certificate and notarized by Apple, so macOS Gatekeeper opens it with no extra steps. Apple Silicon (arm64) only, macOS 14 or later.
 
-- **Homebrew** (\`brew install --cask umputun/apps/agterm\`) strips the flag on install — the app just opens.
-- **Direct download:** drag \`agterm.app\` into \`/Applications\`, then run once:
-  \`\`\`
-  xattr -cr /Applications/agterm.app
-  \`\`\`
-  Or try to open it, then click **Open Anyway** in **System Settings → Privacy & Security**.
+- **Homebrew:** \`brew install --cask umputun/apps/agterm\`
+- **Direct download:** open the \`.dmg\` and drag \`agterm.app\` into \`/Applications\`.
 EOF
 }
 
@@ -143,8 +137,12 @@ rm -f "$DMG"
 hdiutil create -volname agterm -srcfolder "$STAGING" -ov -format UDZO "$DMG"
 rm -rf "$STAGING"
 
-# ── notarize + staple the DMG ─────────────────────────────────────────────────
+# ── sign + notarize + staple the DMG ──────────────────────────────────────────
+# codesign the DMG container itself (create → sign → notarize → staple), so the
+# primary-signature assessment below has a signature to verify. hdiutil produces
+# an unsigned image; without this the DMG notarizes+staples but spctl rejects it.
 if [ "$SIGNED" = "1" ]; then
+  codesign --force --timestamp --sign "$SIGN_ID" "$DMG"
   notarize "$DMG"
   xcrun stapler staple "$DMG"
   xcrun stapler validate "$DMG"
