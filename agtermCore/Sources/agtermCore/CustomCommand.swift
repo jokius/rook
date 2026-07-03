@@ -29,6 +29,13 @@ public struct CustomCommand: Codable, Equatable, Sendable, Identifiable {
 /// the token substitutions (`expand`) and the environment dictionary (`environment`). Both derive
 /// from the single `tokens` table, so the `{AGT_X}` set and the `$AGT_X` set can never drift.
 public struct CommandContext: Equatable, Sendable {
+    /// Which pane a command fired from. The raw values are exactly the `--pane` argument strings, so
+    /// `pane.rawValue` is always a valid `session.type`/`session.text --pane` value.
+    public enum Pane: String, Equatable, Sendable {
+        case left
+        case right
+    }
+
     public var sessionID: String
     public var sessionName: String
     public var sessionPWD: String
@@ -36,12 +43,20 @@ public struct CommandContext: Equatable, Sendable {
     public var workspaceName: String
     public var windowID: String
     public var windowName: String
+    /// The pane that had focus at fire time — `.left` (main) or `.right` (split). Reflects the pane's
+    /// physical surface slot: a session that has only ever had a main pane reports `.left`, but a promoted
+    /// split survivor (the primary pane exited and the split pane took over) reports `.right`, since that
+    /// surface still lives in the `splitSurface` slot and is where `session.type --pane` reaches it. Typed
+    /// (not a raw `String`) so `rawValue` can only be `left`/`right`; it is consumed as the `$AGT_PANE` env
+    /// var a script feeds back through `session type --pane` (re-validated CLI- AND server-side — the enum
+    /// pins the token this emits, not the shell round-trip).
+    public var pane: Pane
     public var selection: String
     public var socket: String
 
     public init(sessionID: String = "", sessionName: String = "", sessionPWD: String = "",
                 workspaceID: String = "", workspaceName: String = "", windowID: String = "",
-                windowName: String = "", selection: String = "", socket: String = "") {
+                windowName: String = "", pane: Pane = .left, selection: String = "", socket: String = "") {
         self.sessionID = sessionID
         self.sessionName = sessionName
         self.sessionPWD = sessionPWD
@@ -49,6 +64,7 @@ public struct CommandContext: Equatable, Sendable {
         self.workspaceName = workspaceName
         self.windowID = windowID
         self.windowName = windowName
+        self.pane = pane
         self.selection = selection
         self.socket = socket
     }
@@ -64,6 +80,7 @@ public struct CommandContext: Equatable, Sendable {
          ("AGT_WORKSPACE_NAME", workspaceName),
          ("AGT_WINDOW_ID", windowID),
          ("AGT_WINDOW_NAME", windowName),
+         ("AGT_PANE", pane.rawValue),
          ("AGT_SELECTION", selection),
          ("AGT_SOCKET", socket)]
     }

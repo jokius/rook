@@ -110,9 +110,12 @@ class ControlAPITestCase: XCTestCase {
         XCTAssertTrue(app.staticTexts["session-row"].waitForExistence(timeout: 30), "seeded session should exist")
     }
 
-    /// Build a `session.type` request line with JSON-escaped `text` (covers the newline and the quoted path).
-    func typeRequest(text: String, target: String? = nil, select: Bool) -> String {
-        var obj: [String: Any] = ["cmd": "session.type", "args": ["text": text, "select": select]]
+    /// Build a `session.type` request line with JSON-escaped `text` (covers the newline and the quoted
+    /// path); `pane` addresses a split pane (`left`|`right`, nil = the main pane).
+    func typeRequest(text: String, target: String? = nil, select: Bool, pane: String? = nil) -> String {
+        var args: [String: Any] = ["text": text, "select": select]
+        if let pane { args["pane"] = pane }
+        var obj: [String: Any] = ["cmd": "session.type", "args": args]
         if let target { obj["target"] = target }
         let data = try! JSONSerialization.data(withJSONObject: obj)
         return String(data: data, encoding: .utf8)!
@@ -146,6 +149,27 @@ class ControlAPITestCase: XCTestCase {
             let typed = try sendCommand(typeRequest(text: command, target: target, select: select))
             XCTAssertEqual(typed["ok"] as? Bool, true, "typing the probe (attempt \(attempt)) should succeed: \(typed)")
             if let value = pollMarker(file, timeout: perAttempt) { return value }
+        }
+        return nil
+    }
+
+    /// Polls `session.text --pane <pane>` of `target` until the returned buffer contains `contains`, re-running
+    /// `retype` (which re-injects the marker command — idempotent for an `echo` line) at the start of each
+    /// outer attempt to ride out shell/focus readiness. Returns the matching text, or nil on timeout. Shared
+    /// by the pane-addressed suites (`SessionTextUITests`, `SessionTypePaneUITests`).
+    @discardableResult
+    func pollPaneText(target: String, pane: String, contains: String,
+                      attempts: Int = 8, perAttempt: Int = 8,
+                      retype: () throws -> Void) throws -> String? {
+        for _ in 0..<attempts {
+            try retype()
+            for _ in 0..<perAttempt {
+                let response = try sendCommand(#"{"cmd":"session.text","target":"\#(target)","args":{"pane":"\#(pane)"}}"#)
+                if let t = (response["result"] as? [String: Any])?["text"] as? String, t.contains(contains) {
+                    return t
+                }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+            }
         }
         return nil
     }
