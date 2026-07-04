@@ -23,6 +23,10 @@ An agent's interactive prompt mid-session, with attention glyphs on the sessions
 
 ![Agent prompt](docs/screenshots/agent-prompt.png)
 
+The attention list, collecting every session that needs you, sorted blocked then active then completed:
+
+![Attention list](docs/screenshots/attention.png)
+
 A split session (agent and shell side by side) with the action palette open:
 
 ![Action palette](docs/screenshots/action-palette.png)
@@ -46,6 +50,10 @@ A session's right-click context menu:
 The keymap editor:
 
 ![Keymap editor](docs/screenshots/keymap-editor.png)
+
+A split session, two panes side by side on different color themes:
+
+![Split session](docs/screenshots/split-theme.png)
 
 A file open in the quick terminal, the window's shared scratch overlay:
 

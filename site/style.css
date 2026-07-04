@@ -128,7 +128,7 @@ a {
   height: 100%;
   object-fit: cover;
   opacity: 0;
-  animation: heroGallery 30s infinite;
+  animation: heroGallery 35s infinite;
 }
 .hero-gallery img:first-child {
   opacity: 1;
@@ -152,14 +152,17 @@ a {
 .hero-gallery img:nth-child(6) {
   animation-delay: 25s;
 }
+.hero-gallery img:nth-child(7) {
+  animation-delay: 30s;
+}
 @keyframes heroGalleryFirst {
   0% {
     opacity: 1;
   }
-  17% {
+  14% {
     opacity: 1;
   }
-  20% {
+  17% {
     opacity: 0;
   }
   97% {
@@ -176,10 +179,10 @@ a {
   3% {
     opacity: 1;
   }
-  17% {
+  14% {
     opacity: 1;
   }
-  20% {
+  17% {
     opacity: 0;
   }
   100% {
