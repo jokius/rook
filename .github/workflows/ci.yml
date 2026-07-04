@@ -39,9 +39,25 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
-      - name: swift test
+      - name: swift test (with coverage)
         working-directory: agtermCore
-        run: swift test
+        run: swift test --enable-code-coverage
+      - name: export lcov
+        working-directory: agtermCore
+        run: |
+          BIN=$(swift build --show-bin-path)
+          xcrun llvm-cov export \
+            "$BIN/agtermCorePackageTests.xctest/Contents/MacOS/agtermCorePackageTests" \
+            -instr-profile "$BIN/codecov/default.profdata" \
+            -format=lcov \
+            -ignore-filename-regex='(\.build|Tests|checkouts)/' > coverage.lcov
+      - name: submit coverage to coveralls
+        continue-on-error: true
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: agtermCore/coverage.lcov
+          format: lcov
 
   lint:
     name: swiftlint

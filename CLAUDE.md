@@ -184,12 +184,16 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
 - **CI / release (`.github/workflows/`).**
   `ci.yml` runs on push/PR to `master`, gated by a `dorny/paths-filter` (`**/*.swift`,
   `agtermCore/**`, `agterm/**`, `project.yml`, `scripts/**`, `.swiftlint.yml`, `ci.yml`): a `test` job
-  (`swift test` in `agtermCore`), a `lint` job (`brew install swiftlint` then `swiftlint lint --strict`
+  (`swift test --enable-code-coverage` in `agtermCore`, then `xcrun llvm-cov export … -format=lcov` and
+  a `continue-on-error` upload to Coveralls via `coverallsapp/github-action@v2` with `secrets.GITHUB_TOKEN`),
+  a `lint` job (`brew install swiftlint` then `swiftlint lint --strict`
   — no build, it only parses sources), and a `build` job (`brew install xcodegen` then `scripts/build.sh`,
   Release, with `GhosttyKit.xcframework` + ghostty/terminfo resources restored from an `actions/cache`
   keyed on `scripts/setup.sh`), all on `macos-26`, concurrency cancel-in-progress.
   **CI does NOT run the XCUITests** — it builds the app but never test-runs the app target;
   only the host-free `swift test` runs in CI.
+  So the Coveralls badge reflects `agtermCore` coverage ONLY — the app target
+  (SwiftUI/AppKit/libghostty) is manually tested and excluded, not "the whole app is N% covered".
   The `lint` job is `--strict`, so any swiftlint warning fails the build (see the `make lint` note above).
   There is NO `release.yml` — releases are cut LOCALLY, not by CI.
   `scripts/release.sh <version> --publish` runs on the maintainer's Mac, the only place the
