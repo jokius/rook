@@ -247,6 +247,21 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   Use plain `Double`-backed structs in `agtermCore` (see `WindowGeometry.Size`/`Point`/`Rect`) and convert
   to/from CG at the app-target call site.
   Treat CoreGraphics geometry types as if they were on the banned list above.
+- **Hoist host-free logic DOWN into `agtermCore`; keep the app target a thin side-effect adapter.**
+  The sustained refactor direction (the `refactor`/`hoist` PR series, #78 onward) moves command validation,
+  argument parsing, dispatch routing, response shaping, and static catalogs OUT of the app target INTO
+  `agtermCore`, so `swift test` exercises them with no app host.
+  For the control channel this is the `ControlDispatcher` + `ControlActions` seam
+  (`agtermCore/Sources/agtermCore/ControlDispatcher.swift`): `dispatch(_:)` owns parsing + validation +
+  response shape, and the app-target `ControlServer` conforms to `ControlActions` supplying ONLY target
+  resolution and AppKit/process side effects.
+  Commands are migrated group-by-group; a command the dispatcher doesn't yet own returns `nil` and falls
+  through to `ControlServer`'s existing switch.
+  The same "logic host-free, side effects app-side" split already governs the installers
+  (`CLIInstall`/`AgentHooksInstall`/`SkillInstall`), the status sound (`AgentStatus.effectiveSound`), and
+  the watermark (`WatermarkConfig`).
+  When adding a feature, ask which parts are host-free and put those in `agtermCore` by default — see the
+  dispatcher-first rule in `.claude/rules/control-api.md` for the control-command case.
 
 ## C-callback isolation
 
