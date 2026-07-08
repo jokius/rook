@@ -231,7 +231,23 @@ struct WindowAccessor: NSViewRepresentable {
             guard let saved = UserDefaults.standard.string(forKey: Self.frameKey(windowID)) else { return }
             let frame = NSRectFromString(saved)
             guard frame.width > 0, frame.height > 0 else { return }
-            window.setFrame(frame, display: true)
+            window.setFrame(Self.constrainedRestoredFrame(frame, for: window), display: true)
+        }
+
+        /// Normalize a persisted frame before restore. A saved `NSRect` may come from a display that is
+        /// no longer attached; applying it directly can put the relaunched window entirely off-screen.
+        /// Keep the saved size/position when possible, but fully contain it on a current screen.
+        private static func constrainedRestoredFrame(_ frame: NSRect, for window: NSWindow) -> NSRect {
+            let screens = NSScreen.screens
+            guard !screens.isEmpty, let fallback = window.screen ?? NSScreen.main ?? screens.first else { return frame }
+            let displayFrames = screens.map { WindowGeometry.Rect($0.frame) }
+            let fallbackIndex = screens.firstIndex(of: fallback) ?? 0
+            let displayIndex = WindowGeometry.bestDisplayIndex(for: WindowGeometry.Rect(frame), among: displayFrames) ?? fallbackIndex
+            let displayFrame = WindowGeometry.Rect(screens[displayIndex].visibleFrame)
+            let constrained = WindowGeometry.constrain(frame: WindowGeometry.Rect(frame),
+                                                       min: WindowGeometry.Size(window.minSize),
+                                                       displayFrame: displayFrame)
+            return constrained.nsRect
         }
 
         /// Installs (or re-asserts) the confirm-before-close proxy as the window's delegate, chaining to
@@ -286,6 +302,24 @@ struct WindowAccessor: NSViewRepresentable {
                                                 blurRadius: GhosttyApp.shared.windowBlurRadius,
                                                 toolbarMode: GhosttyApp.shared.toolbarMode))
         }
+    }
+}
+
+// CoreGraphics <-> host-free WindowGeometry conversions for restore-frame clamping. The arithmetic lives
+// in agtermCore so display-selection and off-screen restore edge cases stay unit-testable.
+private extension WindowGeometry.Size {
+    init(_ cg: CGSize) { self.init(width: Double(cg.width), height: Double(cg.height)) }
+}
+
+private extension WindowGeometry.Rect {
+    init(_ cg: CGRect) {
+        self.init(origin: WindowGeometry.Point(x: Double(cg.origin.x), y: Double(cg.origin.y)),
+                  size: WindowGeometry.Size(cg.size))
+    }
+
+    var nsRect: NSRect {
+        NSRect(x: CGFloat(origin.x), y: CGFloat(origin.y),
+               width: CGFloat(size.width), height: CGFloat(size.height))
     }
 }
 
