@@ -741,6 +741,10 @@ paths:
   It is the control half of the bottom-bar `flagged-view-toggle` + the View-menu Show Flagged/Show All
   + `BuiltinAction.toggleFlaggedView`; the existing `sidebar [show|hide|toggle]` is now the default `sidebar visibility`
   subcommand alongside `sidebar mode`.
+  Its READ side is `ControlTree.sidebarMode` at the tree TOP level (`AppStore.sidebarMode.rawValue`,
+  `tree`|`flagged`), the read side of this write-only command so a script can record and restore the view
+  mode — the sibling of `sidebarVisible`, except `tree`-ONLY (not mirrored onto the cached `window.list`,
+  since the GUI `flagged-view-toggle` bypasses the command path and would leave a cached copy stale).
   Four-point keep-in-sync audit: (1) `case sidebarMode = "sidebar.mode"` in `ControlProtocol.swift` (reuses
   `ControlArgs.mode`), (2) the `.sidebarMode` dispatch arm (`setSidebarViewMode`) in `ControlServer`,
   (3) the `sidebar mode tree|flagged|toggle` subcommand (`Mode`, alongside the `Visibility` default)
@@ -780,6 +784,9 @@ paths:
   selecting a session outside the focused workspace auto-unfocuses (see the Sidebar section).
   It is the control half of the workspace-row Focus/Unfocus + the `focus-pill` ✕ + `BuiltinAction.focusWorkspace`/`focusActiveWorkspace`
   + the Clear Focus menu/palette item.
+  Its READ side is `ControlWorkspaceNode.focused` on each `tree` workspace node (`workspace.id == focusedWorkspaceID ? true : nil`
+  in the tree builder — DISTINCT from `active`, the selected workspace), so a script can record which
+  workspace is focused and restore it; omitted on the non-focused ones and absent when nothing is focused.
   Four-point keep-in-sync audit: (1) `case workspaceFocus = "workspace.focus"` in `ControlProtocol.swift`
   (reuses `ControlArgs.mode`), (2) the `.workspaceFocus` dispatch arm (`focusWorkspace`) in `ControlServer`,
   (3) the `workspace focus on|off|toggle` subcommand (`Focus`) in `agtermctlKit`,
@@ -798,6 +805,12 @@ paths:
   It is the READ side of `session.overlay.resize` (which had only the write side), so a tmux-style zoom
   script can record the current size before switching to `--full` and restore the EXACT original on un-zoom
   (not a guessed default).
+  It ALSO surfaces `splitRatio` on each node — the left-pane divider fraction of a session that HAS a split
+  (`session.hasSplit ? session.splitRatio : nil` in the tree builder, so shown OR hidden splits report it),
+  nil/omitted when there is no split or the ratio was never explicitly set (divider then at the default 0.5).
+  It is the READ side of `session.resize` (whose applied ratio was echoed ONLY on the resize call's own
+  `ControlResult.ratio`), so a script can record the current ratio before maximizing a pane and restore the
+  exact divider even if the USER dragged it.
   `tree` ALSO carries, at the TOP level (alongside `idleMs`/`autoFollowMs`), `sidebarVisible` — the read
   side of the write-only `sidebar` command (per-window sidebar visibility), populated LIVE from the
   projected window's store in `AppStore.controlTree`.
@@ -810,6 +823,35 @@ paths:
   A script that reads-then-acts (e.g. the tmux-style zoom that must restore the sidebar only if it was
   visible) should still prefer `tree`'s LIVE `sidebarVisible` over the cached `window.list` one — the tree
   is built on the main actor per request, so it can never lag.
+  Each `ControlWindowNode` ALSO carries `geometry` — the open window's live on-screen frame
+  (`ControlWindowFrame{x, y, width, height, display}`, omitted for a closed window with no NSWindow).
+  It is the READ side of the write-only `window.move`/`window.resize` (which set the frame but nothing
+  reported it), in the SAME coordinate system those accept: `x`/`y` are the top-left relative to `display`
+  (y down), `width`/`height` the frame size, so a read-back round-trips straight back through
+  `window.move`/`window.resize` (record → resize/move → restore the exact frame).
+  Because the frame lives in AppKit (`WindowLibrary` is host-free), `controlWindowNodes` takes an app-side
+  `geometry:` closure (default nil for tests) that `ControlServer.buildWindowList` fills from
+  `WindowRegistry.geometry(for:)` — the exact inverse of `move`'s forward math.
+  It rides the `cachedWindowNodes` cache (there is no LIVE tree copy — geometry is window-scoped, absent
+  from the session tree), and since a user drag/resize/zoom/fullscreen changes it with NO control command
+  AND a polling `window.list` is fast-path-served (so it never refreshes its own cache), `ControlServer`
+  observes the NSWindow `didMove`/`didResize`/`didEnterFullScreen`/`didExitFullScreen` notifications and
+  `refreshWindowCache`s on each (the fullscreen ones fire AFTER the async transition, so the settled
+  `styleMask` is captured) — mirroring the `.agtermSidebarVisibilityChanged` refresh for the GUI-only
+  sidebar toggle, so the read-back stays current.
+  The notification is IGNORED, not captured — a non-Sendable `Notification` can't cross into the
+  `MainActor.assumeIsolated` block under Swift 6 strict concurrency (the `sending 'note'` error), so the
+  refresh fires for ANY window rather than filtering to an agterm one; harmless, since a non-agterm panel
+  just rebuilds the same cheap agterm nodes.
+  The host-free plumbing (the closure + node field) is unit-tested (`controlWindowNodesIncludeGeometryFromClosure`,
+  the round-trips); the coordinate conversion + the NSWindow-notification cache refresh are app-side, build-verified.
+  Each `ControlWindowNode` ALSO carries `fullscreen`/`zoomed` — the read side of the write-only
+  `window.fullscreen`/`window.zoom` toggles (so a script can toggle idempotently), filled by a PARALLEL
+  app-side `flags:` closure on `controlWindowNodes` (kept separate from `geometry:` so each stays a clean
+  addition) that `buildWindowList` reads from `WindowRegistry.windowFlags(for:)`
+  (`styleMask.contains(.fullScreen)` / `NSWindow.isZoomed`); both nil/omitted for a closed window, on the
+  cache like `geometry`. The closure plumbing is unit-tested (`controlWindowNodesIncludeFullscreenZoomFromClosure`
+  + the round-trips); the NSWindow reads are app-side, build-verified.
   `restore.clear` clears every open session's saved CAPTURED foreground command (`Session.foregroundCommand`/`splitForegroundCommand`)
   and persists via `library.saveAllOpen()`, so the next restart restores plain shells for those panes instead
   of re-running the captured commands (also closing the force-quit re-fire: the restored command is consumed
