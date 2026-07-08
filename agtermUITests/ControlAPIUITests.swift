@@ -697,6 +697,38 @@ final class ControlAPIUITests: ControlAPITestCase {
         XCTAssertFalse(quick.exists, "an invalid mode must leave the quick terminal hidden")
     }
 
+    // quick.type before the overlay has ever been shown errors (not a silent drop); once shown, a typed
+    // marker reads back off the quick terminal's own buffer via quick.text.
+    func testQuickTypeAndReadText() throws {
+        let quick = app.descendants(matching: .any).matching(identifier: "quick-terminal").firstMatch
+        XCTAssertFalse(quick.exists, "quick terminal should start hidden")
+
+        let closed = try sendCommand(#"{"cmd":"quick.type","args":{"text":"x"}}"#)
+        XCTAssertEqual(closed["ok"] as? Bool, false, "quick.type before show should fail: \(closed)")
+        XCTAssertEqual(closed["error"] as? String, "quick terminal not open", "should report the closed overlay")
+
+        // show, then IMMEDIATELY type once — no waitForExistence, no retry. The server-side realize poll
+        // must ride out the SwiftUI mount so this first post-show type lands, which is what proves the
+        // show->type race is fixed (a regression that dropped the poll would return "not realized" here).
+        let shown = try sendCommand(#"{"cmd":"quick","args":{"mode":"show"}}"#)
+        XCTAssertEqual(shown["ok"] as? Bool, true, "quick show should succeed: \(shown)")
+        let typed = try sendCommand(#"{"cmd":"quick.type","args":{"text":"QUICKPROBE"}}"#)
+        XCTAssertEqual(typed["ok"] as? Bool, true, "a single quick.type right after quick show must land via the realize poll: \(typed)")
+
+        // read the typed marker back off the quick surface, polling only for the shell echo to render (a
+        // no-newline marker, so it stays on the prompt line and never executes).
+        var readBack: String?
+        for _ in 0..<20 {
+            let response = try sendCommand(#"{"cmd":"quick.text","args":{"all":true}}"#)
+            if let text = (response["result"] as? [String: Any])?["text"] as? String, text.contains("QUICKPROBE") {
+                readBack = text
+                break
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        }
+        XCTAssertNotNil(readBack, "quick.text should read the typed marker back")
+    }
+
     // session.select by a UNIQUE prefix of a session id resolves to that session: seed two sessions with
     // distinct id prefixes, select the second by a prefix unique to it, and assert the tree marks it active.
     func testSessionSelectByUniquePrefix() throws {

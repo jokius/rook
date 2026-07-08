@@ -120,7 +120,7 @@ paths:
   The skill is a REFERENCE/knowledge skill (both user-invocable via `/agterm` and model-triggered,
   `allowed-tools: Bash(agtermctl *)`; the agent-neutral `description` carries the trigger nouns since
   Codex may ignore the extra `when_to_use` field — unknown frontmatter is harmless),
-  authored at `agterm/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 53-command
+  authored at `agterm/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 55-command
   summary + the image-display helper + a troubleshooting/reporting pointer;
   `reference.md` full per-command detail + keymap format; `examples.md` agtermctl recipes;
   `troubleshooting.md` diagnosing the common problems (keymap editor, custom actions,
@@ -190,11 +190,11 @@ paths:
   exact `uuidString` (case-insensitive), or a git-style unique prefix.
   Zero prefix hits → `notFound` error, ≥2 → `ambiguous` error listing the candidates.
   `--target` defaults to `active`, so scripts rarely type an id and never for "the current one".
-- **Command catalog (53 commands):**
+- **Command catalog (55 commands):**
   - `tree`
   - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`
   - `session.new`/`session.close`/`session.select`/`session.rename`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.text`/`session.search`/`session.status`/`session.flag`/`session.seen`/`session.background`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
-  - `quick`
+  - `quick`/`quick.type`/`quick.text`
   - `sidebar`/`sidebar.mode`/`sidebar.expand`/`sidebar.collapse`
   - `notify`
   - `font.inc`/`font.dec`/`font.reset`
@@ -216,7 +216,7 @@ paths:
   Setting echoes the resulting effective side in `result.text`; the BARE form (no name) reads the side
   the last config feed applied (`SettingsModel.lastAppliedIsDark`), which the test polls to prove the
   flip actually drove the reload.
-  `AppearanceFlipUITests` is its only consumer; the public command count stays 53.
+  `AppearanceFlipUITests` is its only consumer; the public command count stays 55.
 
   `workspace.delete` honors keep-at-least-one and returns an error instead of the GUI confirm alert (nothing
   blocks on a modal).
@@ -592,6 +592,23 @@ paths:
   Threaded as a `quickVisible: () -> Bool?` closure on `AppStore.controlTree` (defaulting nil for host-free
   tests), covered by `treeRoundTripsWithQuickVisible`/`treeOmitsQuickVisibleWhenNil` +
   `AppStoreTests.controlTreeReportsQuickVisibleFromClosure`; the app-side `QuickTerminalRegistry` read is build-verified.
+  `quick.type`/`quick.text` are the input/read-back pair for the quick terminal, the twins of `session.type`/`session.text`
+  (the quick terminal is the one typing surface the socket couldn't reach before — issue #170).
+  Both are frontmost-window-only (no `--target`/`--window`/`--pane`; the quick terminal is a single per-window surface),
+  dispatcher-owned via `ControlActions.typeQuick(text:)` / `readQuickText(all:lines:)` (both `async`), and inject/read
+  through the same `GhosttySurfaceView.inject(text:)` / `readScreenText(all:lines:)` primitives the session commands use.
+  They are `async` because `quick show` flips `isVisible` before SwiftUI mounts + libghostty realizes the surface, so
+  a bounded main-actor poll (12×30 ms, the `session.type` realize-poll pattern) waits out the mount — `quick show; quick
+  type` back-to-back is reliable rather than racing.
+  Fast-fail when NOT racing: `quick terminal not open` when the overlay has never been shown (no surface AND not visible,
+  so the poll returns at once), `quick terminal not realized` / `failed to read surface buffer` if a shown surface never
+  comes up within the poll, `no open window` when there is no window.
+  A shown-then-hidden quick terminal keeps its surface alive, so it types/reads while hidden (like `session.type --pane
+  scratch`).
+  `quick.text` is the read-back for `quick.type` (there is no NEW tree-node field — you read via the sibling `text`
+  command, exactly as `session.text` reads back `session.type`).
+  Covered by the `quickType*`/`quickText*` `ControlDispatcherTests` + the e2e `testQuickTypeAndReadText`
+  (type a marker, read it back off the quick surface).
   `session.status` flags a per-session agent status on the sidebar row — `args.status` is `idle`|`active`|`completed`|`blocked`
   (`AgentStatus(rawValue:)` → an `invalid status` error on anything else),
   `args.blink` pulses the glyph, and `args.autoReset` (status-agnostic, caller-set,
@@ -967,5 +984,5 @@ paths:
   (image/text/color set/clear + tree read-back).
   **Agent-skill mirror (HARD keep-in-sync, 4th surface):** all commands are documented in the bundled
   `agterm/Resources/agent-skill/` (SKILL.md summary, reference.md detail,
-  examples.md recipes) and the command count there is bumped to 53 to match.
+  examples.md recipes) and the command count there is bumped to 55 to match.
 
