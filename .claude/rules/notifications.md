@@ -126,31 +126,41 @@ paths:
   (the active session); all route to `AppStore.setAgentIndicator(AgentIndicator(), forSession:)`,
   the GUI half of `session.status idle`.
   **Typing also clears an attention glyph (pane-scoped):** `GhosttySurfaceView.keyDown` fires
-  `onUserInputClearsStatus(isEscape:)` UNCONDITIONALLY (it no longer reads `agentIndicator` itself),
+  `onUserInputClearsStatus(isInterrupt:)` UNCONDITIONALLY (it no longer reads `agentIndicator` itself),
   and each surface factory — main (`left`), split (`right`), and scratch (`scratch`) — wires that closure
   to the pane-scoped decision, clearing to idle via `setAgentIndicator(AgentIndicator(), …)` ONLY when the
-  host-free `AgentIndicator.clearedBy(pane:isEscape:)` says the keystroke's OWN pane owns the current status.
+  host-free `AgentIndicator.clearedBy(pane:isInterrupt:)` says the keystroke's OWN pane owns the current status.
   So a block set from a background pane (a `right`- or `scratch`-tagged `session status --pane`) SURVIVES
   foreground typing in the main pane — only a keystroke in the owning pane clears it — and the scratch,
   which has no `view.session`, still self-clears because the closure (not `keyDown`) owns the decision.
   The per-status decision is host-free + unit-tested in `agtermCore` (`clearedBy` gates `clearedByKeystroke`
   on the pane match): `blocked`/`completed` clear on ANY key (you've engaged with the prompt / finished result);
-  `active` clears ONLY on Escape — the interrupt key (`keyCode == 53`)
-  — so ordinary typing while the agent works does NOT wipe the "working" glyph,
-  but cancelling a prompt with Esc does; `idle` has no glyph.
+  `active` clears ONLY on an interrupt keystroke — Escape (`keyCode == 53`) or a bare Ctrl-C —
+  so ordinary typing while the agent works does NOT wipe the "working" glyph,
+  but cancelling a prompt does; `idle` has no glyph.
+  The host-free `InterruptKeystroke.isInterrupt(keyCode:character:modifiers:)` (agtermCore) computes the
+  flag from primitives — Esc (`keyCode == 53`), or a bare Ctrl-C: `.control` held with no
+  command/option/shift and the base letter `c` OR the physical `c` key (`keyCode == 8`).
+  The keyCode fallback is load-bearing for non-Latin layouts: on a Cyrillic/Greek layout the physical C
+  key produces a non-Latin char (`с`), so character matching alone misses it — the same reason the
+  `super+key_c` binds are keycode-based (see [[libghostty]]).
+  The character check still covers Dvorak, where the `c` letter sits at a different physical key.
+  `.shift` is excluded so a copy-style Ctrl-Shift-C does not clear a working glyph.
+  `GhosttySurfaceView.isInterruptKeystroke` (app target, `keyDown`) is a thin `NSEvent` adapter over it;
+  the full truth table, including the negatives, is unit-tested host-free in `InterruptKeystrokeTests`.
   This is the ONE input-driven clear (status is otherwise control-driven).
   Because the clear is pane-SCOPED, a tag whose owning pane's shell EXITS would otherwise strand a glyph
   no surviving surface can match, so `AppStore.closeSplit`/`closePrimaryPane`/`closeScratch` reconcile the
   indicator on teardown — clearing a status owned by the destroyed pane (`.right` on closeSplit, `.left`/nil
   on the primary→split promote, `.scratch` on closeScratch) — mirroring the `clearSearch()` reset on the
   same paths (host-free, `AppStorePaneTests`).
-  It covers the Esc-decline/interrupt case Claude Code fires NO hook for — the keystroke flows through
+  It covers the Esc/Ctrl-C decline/interrupt case Claude Code fires NO hook for — the keystroke flows through
   the surface's `keyDown` on its way to the agent's PTY, so it clears the stale glyph the moment you
   deal with the prompt — and clears the `completed` flash once you re-engage.
-  The `active`-on-Esc arm is load-bearing for the QUICK-Esc case: a pending question can still read `active`
-  when you cancel it, because Claude Code's `blocked` (`Notification[permission_prompt]`) fires on a
+  The `active`-on-interrupt arm is load-bearing for the QUICK-cancel case: a pending question can still read
+  `active` when you cancel it, because Claude Code's `blocked` (`Notification[permission_prompt]`) fires on a
   DELAY (~tens of seconds — its idle-notification timer, `messageIdleNotifThresholdMs`,
-  default 60000), so a fast Esc lands while the glyph is still `active`,
+  default 60000), so a fast Esc/Ctrl-C lands while the glyph is still `active`,
   and the interrupt itself fires no hook (verified by a status-hook probe:
   an Esc-cancel logs no hook at all; a manual decline fires neither `Stop` nor `PostToolUse`) — the keystroke
   clear is the only signal.

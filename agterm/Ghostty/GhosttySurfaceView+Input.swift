@@ -31,7 +31,19 @@ extension GhosttySurfaceView {
 
     // MARK: - Keyboard
 
-    private static let escapeKeyCode: UInt16 = 53
+    /// Reduce an `NSEvent` to the host-free `InterruptKeystroke` classifier — Escape or a bare Ctrl-C
+    /// clears a stale `active` glyph. The classification (and its negatives) is unit-tested in `agtermCore`.
+    private func isInterruptKeystroke(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        var modifiers: KeyModifiers = []
+        if flags.contains(.control) { modifiers.insert(.control) }
+        if flags.contains(.command) { modifiers.insert(.command) }
+        if flags.contains(.option) { modifiers.insert(.option) }
+        if flags.contains(.shift) { modifiers.insert(.shift) }
+        return InterruptKeystroke.isInterrupt(keyCode: event.keyCode,
+                                              character: event.charactersIgnoringModifiers,
+                                              modifiers: modifiers)
+    }
 
     override func keyDown(with event: NSEvent) {
         guard let surface else {
@@ -43,15 +55,16 @@ extension GhosttySurfaceView {
         // timer alive and the user would be yanked to a blocked session mid-type.
         onUserInput?()
         // a keystroke in a session flagged for your attention clears the glyph to idle: blocked/completed
-        // on ANY key (you've engaged with the prompt / finished result), active ONLY on Escape — the
-        // interrupt key — so ordinary typing while the agent works doesn't wipe the "working" glyph, but
-        // cancelling a pending prompt (Esc) does. Esc-interrupt fires no Claude Code hook and a pending
-        // prompt can still read active when you cancel (the blocked notification lands seconds later), so
-        // this keystroke clear is the only signal that drops the stale glyph. fire it UNCONDITIONALLY with
-        // the isEscape flag — the factory's closure owns the pane-scoped decision (AgentIndicator.clearedBy),
-        // so the scratch (which has no view.session) self-clears too, and a background pane's block survives
-        // foreground typing.
-        onUserInputClearsStatus?(event.keyCode == Self.escapeKeyCode)
+        // on ANY key (you've engaged with the prompt / finished result), active ONLY on an interrupt
+        // keystroke — Escape or Ctrl-C — so ordinary typing while the agent works doesn't wipe the
+        // "working" glyph, but cancelling a pending prompt does. Claude Code treats Ctrl-C like Esc for
+        // dismissing a prompt, yet neither fires a hook, and a pending prompt can still read active when
+        // you cancel (the blocked notification lands seconds later), so this keystroke clear is the only
+        // signal that drops the stale glyph. fire it UNCONDITIONALLY with the isInterrupt flag — the
+        // factory's closure owns the pane-scoped decision (AgentIndicator.clearedBy), so the scratch
+        // (which has no view.session) self-clears too, and a background pane's block survives foreground
+        // typing.
+        onUserInputClearsStatus?(isInterruptKeystroke(event))
         let action: ghostty_input_action_e = event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
