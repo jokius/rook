@@ -317,13 +317,26 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// side of the notification badge: `notify` (and terminal OSC 9/777) raise it, `session.seen` clears it.
     /// Ephemeral like `status` — never persisted, so it resets to nil on restart.
     public let unseen: Int?
+    /// The default/left pane's live font size in points, resolved via `addressableSurface`: the main pane,
+    /// or the promoted split survivor once the primary has exited (the same pane `font --pane left`, and the
+    /// default, writes). Nil when that pane isn't realized (omitted from the JSON). Reflects the live cmd
+    /// +/- value; the main pane's size is persisted across relaunch, but a promoted survivor's is live-only.
+    public let fontSize: Double?
+    /// The split (right) pane's live font size in points, or nil when the session has no realized split pane
+    /// (omitted). The read side of `font --pane right` — the split's font is otherwise unobservable, being
+    /// live-only (not persisted), so record it here before changing it.
+    public let splitFontSize: Double?
+    /// The scratch terminal's live font size in points, or nil when no scratch surface is realized (omitted).
+    /// The read side of `font --pane scratch` (also live-only).
+    public let scratchFontSize: Double?
 
     public init(id: String, name: String, cwd: String, title: String? = nil, active: Bool, split: Bool,
                 splitRatio: Double? = nil, splitFocused: Bool? = nil,
                 overlay: Bool = false, overlaySizePercent: Int? = nil, scratch: Bool = false, flagged: Bool = false,
                 foreground: [String]? = nil, splitForeground: [String]? = nil, status: String? = nil,
                 statusPane: String? = nil, statusBlink: Bool? = nil, statusColor: String? = nil,
-                background: BackgroundWatermark? = nil, unseen: Int? = nil) {
+                background: BackgroundWatermark? = nil, unseen: Int? = nil,
+                fontSize: Double? = nil, splitFontSize: Double? = nil, scratchFontSize: Double? = nil) {
         self.id = id
         self.name = name
         self.cwd = cwd
@@ -344,6 +357,9 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.statusColor = statusColor
         self.background = background
         self.unseen = unseen
+        self.fontSize = fontSize
+        self.splitFontSize = splitFontSize
+        self.scratchFontSize = scratchFontSize
     }
 }
 

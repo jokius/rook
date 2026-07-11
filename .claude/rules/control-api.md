@@ -70,6 +70,9 @@ paths:
   `session.flag`/`flagged`, `session.focus`/`splitFocused`, `session.resize`/`splitRatio`,
   `session.overlay.resize`/`overlaySizePercent`, `sidebar`/`sidebarVisible` (top-level),
   `sidebar.mode`/`sidebarMode`, `workspace.focus`/`focused` (workspace node), `quick`/`quickVisible` (top-level),
+  `font.*`/`fontSize`+`splitFontSize`+`scratchFontSize` (the per-pane LIVE font size — the split/scratch
+  panes' fonts are otherwise unobservable, being live-only; supplied to `controlTree` by app-side closures
+  reading `GhosttySurfaceView.currentFontSize()`, since the host-free tree can't read a surface),
   `window.move`+`window.resize`/`geometry`, `window.fullscreen`+`window.zoom`/`fullscreen`+`zoomed`
   (the last three on `window.list`).
   This is a SEPARATE obligation from the four-point audit (Command + arg + CLI + tests) and easy to forget:
@@ -410,8 +413,8 @@ paths:
   `session.selectall` selects the target's ENTIRE terminal buffer (main surface) — the analogue of ⌘A /
   Edit ▸ Select All.
   Both run a libghostty binding action on the resolved surface — `paste_from_clipboard` /
-  `select_all` — through the SAME `ControlServer+SurfaceIO.surfaceBindingAction` helper the `font.*` arms
-  use (resolve session → guard the surface is realized, `session not realized` otherwise → `performBindingAction`
+  `select_all` — through the shared `ControlServer+SurfaceIO.surfaceBindingAction` helper
+  (resolve session → guard the surface is realized, `session not realized` otherwise → `performBindingAction`
   → return the id), so paste takes the normal libghostty paste path (bracketed paste, PASTE requests are
   ungated so no OSC-52 prompt) and select_all covers the whole grid.
   They are the control half of the GUI Edit menu: agterm keeps the STANDARD SwiftUI Edit menu and
@@ -469,7 +472,9 @@ paths:
   since libghostty's built-in `super+a` is character-matched too (found in review — the fallback set must cover
   every shortcut the Edit menu owns, not just copy/paste).
   **The session-scoped surface arms resolve `Session.addressableSurface`, not `Session.surface`.**
-  `session.copy`/`session.paste`/`session.selectall`/`font.*` act on "the session" rather than a named `--pane`,
+  `session.copy`/`session.paste`/`session.selectall` act on "the session" rather than a named `--pane`
+  (and so does `font.*`'s omitted/`left` default — its `right`/`scratch` panes resolve `splitSurface`/`scratchSurface`
+  instead, via its own pane switch rather than `surfaceBindingAction`),
   and `addressableSurface` is `surface ?? splitSurface`: identical to `surface` for every ordinary or split
   session, but falling back to a PROMOTED SPLIT SURVIVOR whose primary shell exited (`closePrimaryPane` nils
   `surface` and keeps the live shell in `splitSurface`, asserted by `AppStorePaneTests`).

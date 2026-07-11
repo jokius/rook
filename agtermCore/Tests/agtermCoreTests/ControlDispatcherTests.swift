@@ -627,9 +627,28 @@ struct ControlDispatcherTests {
         #expect(dec == ControlResponse(ok: true, result: ControlResult(id: "session")))
         #expect(reset == ControlResponse(ok: true, result: ControlResult(id: "session")))
         #expect(actions.calls == [
-            .font(target: "session", window: "win", "increase_font_size:1"),
-            .font(target: "session", window: nil, "decrease_font_size:1"),
-            .font(target: "session", window: nil, "reset_font_size")
+            .font(target: "session", window: "win", pane: nil, "increase_font_size:1"),
+            .font(target: "session", window: nil, pane: nil, "decrease_font_size:1"),
+            .font(target: "session", window: nil, pane: nil, "reset_font_size")
+        ])
+    }
+
+    @Test func fontCommandsThreadPane() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        actions.nextFontResponse = ControlResponse(ok: true, result: ControlResult(id: "session"))
+
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .fontDec, target: "session",
+                                                     args: ControlArgs(pane: "right")))
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .fontInc, target: "session",
+                                                     args: ControlArgs(window: "win", pane: "scratch")))
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .fontReset, target: "session",
+                                                     args: ControlArgs(pane: "left")))
+
+        #expect(actions.calls == [
+            .font(target: "session", window: nil, pane: "right", "decrease_font_size:1"),
+            .font(target: "session", window: "win", pane: "scratch", "increase_font_size:1"),
+            .font(target: "session", window: nil, pane: "left", "reset_font_size")
         ])
     }
 
@@ -1374,7 +1393,7 @@ private final class MockControlActions: ControlActions {
         case sessionScratch(target: String?, window: String?, String?, command: String?)
         case sessionFocus(target: String?, window: String?, String?)
         case sessionResize(target: String?, window: String?, ControlSplitResize)
-        case font(target: String?, window: String?, String)
+        case font(target: String?, window: String?, pane: String?, String)
         case keymapReload
         case configReload
         case notify(target: String?, window: String?, title: String?, body: String)
@@ -1552,8 +1571,8 @@ private final class MockControlActions: ControlActions {
         return ControlResponse(ok: true)
     }
 
-    func font(_ target: String?, window: String?, action: String) -> ControlResponse {
-        calls.append(.font(target: target, window: window, action))
+    func font(_ target: String?, window: String?, pane: String?, action: String) -> ControlResponse {
+        calls.append(.font(target: target, window: window, pane: pane, action))
         return nextFontResponse
     }
 
