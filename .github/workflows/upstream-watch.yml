@@ -1,0 +1,63 @@
+# Keep an eye on upstream (umputun/agterm) without following it.
+#
+# This is our own terminal now: `master` is our line of development, not a mirror of upstream. We do
+# not rebase onto it and we do not inherit its design calls. This workflow just tells us what landed
+# there, weekly, so WE can decide whether any single commit (a bug fix, a libghostty bump) is worth
+# cherry-picking — see scripts/upstream.sh. It never pushes or changes anything.
+name: upstream-watch
+
+on:
+  schedule:
+    - cron: "0 9 * * 1" # Mondays, 09:00 UTC
+  workflow_dispatch: # and on demand
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/umputun/agterm.git
+          git fetch --quiet upstream master
+
+      - name: What landed upstream that we haven't taken?
+        id: cmp
+        run: |
+          # --cherry-pick drops commits whose patch we already carry, so anything we cherry-picked
+          # stops showing up here even though our history looks nothing like upstream's.
+          list=$(git log --oneline --no-decorate --cherry-pick --right-only HEAD...upstream/master)
+          count=$(printf '%s' "$list" | grep -c . || true)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          {
+            echo 'commits<<COMMITS_EOF'
+            printf '%s\n' "$list"
+            echo 'COMMITS_EOF'
+          } >> "$GITHUB_OUTPUT"
+          echo "$count untaken upstream commit(s)"
+
+      - name: Open or update the watch issue
+        if: steps.cmp.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COUNT: ${{ steps.cmp.outputs.count }}
+          COMMITS: ${{ steps.cmp.outputs.commits }}
+        run: |
+          gh label create upstream-watch --color 0366d6 --description "Upstream has commits we haven't taken" 2>/dev/null || true
+
+          body=$(printf 'Upstream (`umputun/agterm`) has **%s commit(s)** we have not taken.\n\nWe do not follow upstream — this is just a heads-up so we can decide if any of these is worth having.\n\n### Untaken upstream commits\n```\n%s\n```\n\n### Triage\n```sh\nscripts/upstream.sh              # list them\nscripts/upstream.sh <sha>        # inspect one\nscripts/upstream.sh diff <sha>   # full diff\nscripts/upstream.sh pick <sha>   # take it (cherry-pick + gate)\n```\n' "$COUNT" "$COMMITS")
+
+          existing=$(gh issue list --label upstream-watch --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+            echo "commented on existing issue #$existing"
+          else
+            gh issue create --title "Upstream has $COUNT commit(s) we haven't taken" --body "$body" --label upstream-watch
+          fi
