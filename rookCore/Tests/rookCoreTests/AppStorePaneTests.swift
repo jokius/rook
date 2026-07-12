@@ -1,0 +1,696 @@
+import Foundation
+import Testing
+@testable import rookCore
+
+@MainActor
+struct AppStorePaneTests {
+    // MARK: - split panes
+
+    @Test func toggleSplitFlipsFlag() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        #expect(session.isSplit == false)
+        #expect(session.hasSplit == false)
+        store.toggleSplit(session.id)
+        #expect(session.isSplit == true)
+        #expect(session.hasSplit == true)
+        #expect(session.splitFocused == true)  // opening focuses the new (right) pane
+        store.toggleSplit(session.id)
+        #expect(session.isSplit == false)
+        // hiding the split keeps hasSplit so the sidebar/title split indicators persist, and keeps
+        // splitFocused so the focused pane is the one shown maximized.
+        #expect(session.hasSplit == true)
+        #expect(session.splitFocused == true)
+    }
+
+    @Test func toggleSplitReshowPreservesFocusedPane() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        store.toggleSplit(session.id)           // open a NEW split -> focuses the new (right) pane
+        #expect(session.splitFocused == true)
+        session.splitFocused = false            // focus the left pane
+        store.toggleSplit(session.id)           // hide (zoom): left pane stays the maximized one
+        #expect(session.isSplit == false)
+        #expect(session.splitFocused == false)
+        store.toggleSplit(session.id)           // re-show (un-zoom): must keep the left pane focused
+        #expect(session.isSplit == true)
+        #expect(session.splitFocused == false)  // regression guard: no jerk back to the right pane
+    }
+
+    @Test func closeSplitHidesAndTearsDownSurface() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.isSplit = true
+        session.hasSplit = true
+        session.splitFocused = true
+        let split = SpySurface()
+        session.splitSurface = split
+        session.splitCwd = "/var/log"
+        session.splitRatio = 0.7
+        store.closeSplit(session.id)
+        #expect(session.isSplit == false)
+        #expect(session.hasSplit == false)
+        #expect(session.splitFocused == false)
+        #expect(session.splitSurface == nil)
+        #expect(session.splitCwd == nil)
+        #expect(session.initialSplitCwd == nil)
+        #expect(session.splitRatio == nil) // teardown clears geometry too, so a fresh re-split opens even
+        #expect(split.teardownCount == 1)
+    }
+
+    @Test func clampSplitRatioBoundsValue() {
+        #expect(AppStore.clampSplitRatio(0.7) == 0.7)
+        #expect(AppStore.clampSplitRatio(2.0) == AppStore.splitRatioMax)   // above the cap
+        #expect(AppStore.clampSplitRatio(-1.0) == AppStore.splitRatioMin)  // below the floor
+        #expect(AppStore.clampSplitRatio(AppStore.splitRatioMin) == AppStore.splitRatioMin)
+        #expect(AppStore.clampSplitRatio(AppStore.splitRatioMax) == AppStore.splitRatioMax)
+    }
+
+    @Test func applySplitRatioClampsSetsAndReturns() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        #expect(store.applySplitRatio(0.7, forSession: session.id) == 0.7)
+        #expect(session.splitRatio == 0.7)
+        // out-of-range clamps to the cap, on both the return and the stored value.
+        #expect(store.applySplitRatio(2.0, forSession: session.id) == AppStore.splitRatioMax)
+        #expect(session.splitRatio == AppStore.splitRatioMax)
+    }
+
+    @Test func applySplitRatioUnknownSessionReturnsNil() {
+        let store = makeStore()
+        #expect(store.applySplitRatio(0.5, forSession: UUID()) == nil)
+    }
+
+    @Test func closePrimaryPaneWithSplitKeepsSessionAndPromotesSurvivor() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let primary = SpySurface(); session.surface = primary
+        let split = SpySurface(); session.splitSurface = split
+        session.isSplit = true
+        session.hasSplit = true
+        session.splitCwd = "/var/log"
+        session.splitRatio = 0.3
+        session.initialCommand = "ssh host" // a --command primary whose command has now exited
+        store.closePrimaryPane(session.id)
+        #expect(store.session(withID: session.id) != nil) // session survives
+        #expect(primary.teardownCount == 1)               // the dead primary is torn down
+        #expect(split.teardownCount == 0)                 // the survivor is kept
+        #expect(session.surface == nil)
+        #expect(session.splitSurface != nil)
+        #expect(session.isSplit == false)
+        #expect(session.hasSplit == false)
+        #expect(session.splitFocused == true)             // the maximized survivor is shown
+        #expect(session.splitRatio == nil)                // promoted to single, so a later split opens even
+        #expect(session.currentCwd == "/var/log")         // the survivor's cwd is promoted
+        #expect(session.initialCommand == nil)            // the command pane is gone; a restart must NOT resurrect it
+        // the session-scoped control arms (session.copy/paste/selectall, font.*) must still reach the live
+        // shell: `surface` is nil here, so resolving through it alone would report "session not realized"
+        // for a session the user is actively typing in.
+        #expect(session.addressableSurface === split)
+    }
+
+    @Test func addressableSurfaceIsTheMainPaneUntilThePrimaryExits() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let primary = SpySurface(); session.surface = primary
+        #expect(session.addressableSurface === primary)   // plain session
+
+        let split = SpySurface(); session.splitSurface = split
+        session.isSplit = true
+        session.hasSplit = true
+        #expect(session.addressableSurface === primary)   // split shown, main pane still addressed
+
+        session.splitFocused = true
+        #expect(session.addressableSurface === primary)   // NOT focus-aware: selectall + copy stay paired
+    }
+
+    @Test func addressableSurfaceIsNilWhenNoPaneIsRealized() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        #expect(session.addressableSurface == nil)        // never-shown session still errors "session not realized"
+    }
+
+    @Test func closePrimaryPaneWithoutSplitClosesSession() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let primary = SpySurface(); session.surface = primary
+        store.closePrimaryPane(session.id)
+        #expect(store.session(withID: session.id) == nil) // single session → closed
+        #expect(primary.teardownCount == 1)
+    }
+
+    @Test func closeSplitPaneWithPrimaryCollapsesToPrimary() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let primary = SpySurface(); session.surface = primary
+        let split = SpySurface(); session.splitSurface = split
+        session.isSplit = true
+        session.hasSplit = true
+        session.splitRatio = 0.4
+        store.closeSplitPane(session.id)
+        #expect(store.session(withID: session.id) != nil) // session survives
+        #expect(split.teardownCount == 1)                 // the split is torn down
+        #expect(primary.teardownCount == 0)               // the primary is kept
+        #expect(session.splitSurface == nil)
+        #expect(session.isSplit == false)
+        #expect(session.splitRatio == nil)                // delegates to closeSplit, which clears the ratio
+    }
+
+    @Test func closeSplitPaneWithoutPrimaryClosesSession() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        // the primary already exited (surface nil); only the split survives, so this is the last pane.
+        let split = SpySurface(); session.splitSurface = split
+        store.closeSplitPane(session.id)
+        #expect(store.session(withID: session.id) == nil) // last pane → closed
+        #expect(split.teardownCount == 1)
+    }
+
+    @Test func closeSplitClearsStuckSearchOnSurvivingSession() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let split = SpySurface()
+        session.splitSurface = split
+        session.isSplit = true
+        session.hasSplit = true
+        // search opened on the split pane, pinned as the owner
+        session.searchActive = true
+        session.searchNeedle = "needle"
+        session.searchTotal = 3
+        session.searchSelected = 1
+        session.searchSurface = split
+        store.closeSplit(session.id)
+        #expect(session.searchActive == false)
+        #expect(session.searchNeedle == "")
+        #expect(session.searchTotal == nil)
+        #expect(session.searchSelected == nil)
+        #expect(session.searchSurface == nil)
+    }
+
+    @Test func closePrimaryPaneClearsStuckSearchOnPromotedSession() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let primary = SpySurface(); session.surface = primary
+        let split = SpySurface(); session.splitSurface = split
+        session.isSplit = true
+        session.hasSplit = true
+        // search opened on the primary, which is torn down + promoted while the session survives
+        session.searchActive = true
+        session.searchNeedle = "needle"
+        session.searchTotal = 2
+        session.searchSelected = 1
+        session.searchSurface = primary
+        store.closePrimaryPane(session.id)
+        #expect(store.session(withID: session.id) != nil) // session survives
+        #expect(session.searchActive == false)
+        #expect(session.searchNeedle == "")
+        #expect(session.searchTotal == nil)
+        #expect(session.searchSelected == nil)
+        #expect(session.searchSurface == nil)
+    }
+
+    @Test func closeSplitPaneClearsStuckSearchWhenCollapsingToPrimary() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let primary = SpySurface(); session.surface = primary
+        let split = SpySurface(); session.splitSurface = split
+        session.isSplit = true
+        session.hasSplit = true
+        session.searchActive = true
+        session.searchTotal = 5
+        session.searchSurface = split
+        store.closeSplitPane(session.id) // primary alive → collapses via closeSplit, which clears search
+        #expect(store.session(withID: session.id) != nil)
+        #expect(session.searchActive == false)
+        #expect(session.searchTotal == nil)
+        #expect(session.searchSurface == nil)
+    }
+
+    // MARK: - overlay
+
+    @Test func openOverlaySetsCommandAndFlag() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        #expect(store.openOverlay(session.id, command: "revdiff", cwd: "/b") == true)
+        #expect(session.overlayActive == true)
+        #expect(session.overlayCommand == "revdiff")
+        #expect(session.overlayCwd == "/b")
+        // no size given → the default full-pane overlay, not a floating one.
+        #expect(session.overlaySizePercent == nil)
+        // a second open while one is active is a no-op.
+        #expect(store.openOverlay(session.id, command: "other") == false)
+        #expect(session.overlayCommand == "revdiff")
+    }
+
+    @Test func openOverlayCarriesBackgroundColorAndCloseClears() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        #expect(store.openOverlay(session.id, command: "revdiff", backgroundColor: "#2a1a3a") == true)
+        #expect(session.overlayBackgroundColor == "#2a1a3a")
+        // close clears the overlay's color back to nil, like the other ephemeral overlay fields.
+        store.closeOverlay(session.id)
+        #expect(session.overlayBackgroundColor == nil)
+        // omitting the color leaves it nil (default theme background, unchanged behavior).
+        #expect(store.openOverlay(session.id, command: "revdiff") == true)
+        #expect(session.overlayBackgroundColor == nil)
+    }
+
+    @Test func overlayExitCodeRecordedAndSurvivesClose() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        store.openOverlay(session.id, command: "revdiff")
+        #expect(session.overlayExitCode == nil)
+        store.recordOverlayExit(session.id, code: 10)
+        #expect(store.closeOverlay(session.id) == true)
+        // the exit code survives close (read by session.overlay.result after the overlay vanishes)...
+        #expect(session.overlayExitCode == 10)
+        // ...and is reset when a new overlay opens.
+        #expect(store.openOverlay(session.id, command: "revdiff") == true)
+        #expect(session.overlayExitCode == nil)
+    }
+
+    @Test func recordOverlayExitUnknownSessionIsNoop() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        // a bogus id must be a no-op, not a crash, and must not touch any existing session.
+        store.recordOverlayExit(UUID(), code: 5)
+        #expect(session.overlayExitCode == nil)
+    }
+
+    @Test func openOverlayFloatingClampsSizePercent() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        #expect(store.openOverlay(session.id, command: "htop", sizePercent: 70) == true)
+        #expect(session.overlaySizePercent == 70)
+        // close clears the floating size back to nil.
+        store.closeOverlay(session.id)
+        #expect(session.overlaySizePercent == nil)
+        // out-of-range values clamp to 1...100, including negatives; the exact bounds pass through.
+        store.openOverlay(session.id, command: "htop", sizePercent: 250)
+        #expect(session.overlaySizePercent == 100)
+        store.closeOverlay(session.id)
+        store.openOverlay(session.id, command: "htop", sizePercent: 0)
+        #expect(session.overlaySizePercent == 1)
+        store.closeOverlay(session.id)
+        store.openOverlay(session.id, command: "htop", sizePercent: -5)
+        #expect(session.overlaySizePercent == 1)
+        store.closeOverlay(session.id)
+        store.openOverlay(session.id, command: "htop", sizePercent: 100)
+        #expect(session.overlaySizePercent == 100)
+        store.closeOverlay(session.id)
+        store.openOverlay(session.id, command: "htop", sizePercent: 1)
+        #expect(session.overlaySizePercent == 1)
+    }
+
+    @Test func resizeOverlaySwitchesFullAndFloatingAndClamps() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        // no overlay open → no-op, leaves size untouched.
+        #expect(store.resizeOverlay(session.id, sizePercent: 50) == false)
+        #expect(session.overlaySizePercent == nil)
+        // open full, then resize it to a floating percent (nil → 60).
+        store.openOverlay(session.id, command: "htop")
+        #expect(session.overlaySizePercent == nil)
+        #expect(store.resizeOverlay(session.id, sizePercent: 60) == true)
+        #expect(session.overlaySizePercent == 60)
+        #expect(session.floatingOverlayActive)
+        // resize back to full (nil).
+        #expect(store.resizeOverlay(session.id, sizePercent: nil) == true)
+        #expect(session.overlaySizePercent == nil)
+        #expect(session.fullOverlayActive)
+        // out-of-range percents clamp to 1...100.
+        store.resizeOverlay(session.id, sizePercent: 250)
+        #expect(session.overlaySizePercent == 100)
+        store.resizeOverlay(session.id, sizePercent: 0)
+        #expect(session.overlaySizePercent == 1)
+        // the overlay program keeps running across every resize (no re-spawn).
+        #expect(session.overlayActive)
+    }
+
+    @Test func controlTreeReportsOverlaySizePercent() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        // no overlay: the field is omitted (nil).
+        var node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.overlay == false)
+        #expect(node.overlaySizePercent == nil)
+        // floating overlay: the percent rides the node so a script can record it before zooming.
+        store.openOverlay(session.id, command: "htop", sizePercent: 95)
+        node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.overlay == true)
+        #expect(node.overlaySizePercent == 95)
+        // full-pane overlay: open but no size (nil = full).
+        store.resizeOverlay(session.id, sizePercent: nil)
+        node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.overlay == true)
+        #expect(node.overlaySizePercent == nil)
+    }
+
+    @Test func controlTreeReportsSplitRatio() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        // no split: the field is omitted (nil).
+        var node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.split == false)
+        #expect(node.splitRatio == nil)
+        // a split with the divider still at the default (never moved): still nil.
+        store.toggleSplit(session.id)
+        node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.split == true)
+        #expect(node.splitRatio == nil)
+        // moving the divider surfaces the ratio so a script can record and restore it.
+        _ = store.applySplitRatio(0.3, forSession: session.id)
+        node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.splitRatio == 0.3)
+        // a hidden split keeps its ratio readable (gated on hasSplit, not isSplit).
+        store.toggleSplit(session.id)
+        node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.split == false)
+        #expect(node.splitRatio == 0.3)
+    }
+
+    @Test func controlTreeThreadsFontSizesFromClosures() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        _ = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        // default closures: the font-size fields are omitted (nil), like foreground.
+        var node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.fontSize == nil)
+        #expect(node.splitFontSize == nil)
+        #expect(node.scratchFontSize == nil)
+        // the host supplies live per-pane sizes via closures (the app reads them off the surfaces).
+        node = try #require(store.controlTree(fontSize: { _ in 13 }, splitFontSize: { _ in 9.5 },
+                                              scratchFontSize: { _ in 11 }).workspaces[0].sessions.first)
+        #expect(node.fontSize == 13)
+        #expect(node.splitFontSize == 9.5)
+        #expect(node.scratchFontSize == 11)
+    }
+
+    @Test func controlTreeFontSizeReadsPromotedSurvivorViaAddressableSurface() throws {
+        // regression: after the primary pane exits, the fontSize read-back must resolve through
+        // addressableSurface (the promoted split survivor) — the same surface the font default/left
+        // WRITE path targets — not bare `surface`, which is nil in that state. A closure over `surface`
+        // would report nothing for a session the user is actively typing in.
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.surface = SpySurface()
+        session.splitSurface = SpySurface()
+        session.isSplit = true
+        session.hasSplit = true
+        store.closePrimaryPane(session.id)                 // primary exits -> surface nil, survivor promoted
+        #expect(session.surface == nil)
+        #expect(session.addressableSurface != nil)
+        // the app wires fontSize off addressableSurface: it reports the survivor's size here...
+        let viaAddressable = store.controlTree(fontSize: { $0.addressableSurface != nil ? 13 : nil })
+        #expect(viaAddressable.workspaces[0].sessions.first?.fontSize == 13)
+        // ...whereas the old wiring over the (now nil) `surface` would report nothing.
+        let viaSurface = store.controlTree(fontSize: { $0.surface != nil ? 13 : nil })
+        #expect(viaSurface.workspaces[0].sessions.first?.fontSize == nil)
+    }
+
+    @Test func controlTreeReportsSplitFocused() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        // no split: the field is omitted (nil).
+        var node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.splitFocused == nil)
+        // opening a split focuses the new (right) pane.
+        store.toggleSplit(session.id)
+        node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.splitFocused == true)
+        // focusing the main (left) pane surfaces false — distinct from nil (= no split).
+        session.splitFocused = false
+        node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.splitFocused == false)
+        // a hidden split keeps the focus readable (gated on hasSplit, not isSplit).
+        store.toggleSplit(session.id)
+        node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.split == false)
+        #expect(node.splitFocused == false)
+    }
+
+    @Test func controlTreeReportsStatusModifiers() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        // idle: no status, so blink/color are omitted.
+        var node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.statusBlink == nil)
+        #expect(node.statusColor == nil)
+        // a blocked status with blink + a color override surfaces both modifiers.
+        store.setAgentIndicator(AgentIndicator(status: .blocked, blink: true, color: "#ff8800"), forSession: session.id)
+        node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.status == "blocked")
+        #expect(node.statusBlink == true)
+        #expect(node.statusColor == "#ff8800")
+        // a status without blink omits statusBlink (false -> nil); without a color override omits statusColor.
+        store.setAgentIndicator(AgentIndicator(status: .active), forSession: session.id)
+        node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.status == "active")
+        #expect(node.statusBlink == nil)
+        #expect(node.statusColor == nil)
+    }
+
+    @Test func closeOverlayTearsDownAndClears() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        store.openOverlay(session.id, command: "revdiff")
+        let overlay = SpySurface()
+        session.overlaySurface = overlay
+        #expect(store.closeOverlay(session.id) == true)
+        #expect(session.overlayActive == false)
+        #expect(session.overlaySurface == nil)
+        #expect(session.overlayCommand == nil)
+        #expect(overlay.teardownCount == 1)
+        // closing again is a no-op.
+        #expect(store.closeOverlay(session.id) == false)
+    }
+
+    @Test func closeSessionTearsDownOverlaySurface() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        store.openOverlay(session.id, command: "revdiff")
+        let overlay = SpySurface()
+        session.overlaySurface = overlay
+        store.closeSession(session.id)
+        #expect(overlay.teardownCount == 1)
+    }
+
+    // MARK: - scratch
+
+    @Test func toggleScratchFlipsFlagAndKeepsSurfaceAlive() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        #expect(session.scratchActive == false)
+        store.toggleScratch(session.id)
+        #expect(session.scratchActive == true)
+        // the detail pane lazily creates the surface on show; simulate that.
+        let scratch = SpySurface()
+        session.scratchSurface = scratch
+        // hiding keeps the shell alive (slot retained), so a re-show reuses it.
+        store.toggleScratch(session.id)
+        #expect(session.scratchActive == false)
+        #expect(session.scratchSurface === scratch)
+        #expect(scratch.teardownCount == 0)
+        store.toggleScratch(session.id)
+        #expect(session.scratchActive == true)
+        #expect(session.scratchSurface === scratch)
+    }
+
+    @Test func closeScratchTearsDownAndClears() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.scratchActive = true
+        let scratch = SpySurface()
+        session.scratchSurface = scratch
+        #expect(store.closeScratch(session.id) == true)
+        #expect(session.scratchActive == false)
+        #expect(session.scratchSurface == nil)
+        #expect(scratch.teardownCount == 1)
+        // closing again (no surface) is a no-op.
+        #expect(store.closeScratch(session.id) == false)
+    }
+
+    @Test func closeScratchClearsStuckSearchWhenScratchOwnsIt() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.scratchActive = true
+        let scratch = SpySurface()
+        session.scratchSurface = scratch
+        // search opened on the scratch, pinned as the owner — its teardown must reset search.
+        session.searchActive = true
+        session.searchNeedle = "needle"
+        session.searchTotal = 4
+        session.searchSelected = 2
+        session.searchSurface = scratch
+        #expect(store.closeScratch(session.id) == true)
+        #expect(session.searchActive == false)
+        #expect(session.searchNeedle == "")
+        #expect(session.searchTotal == nil)
+        #expect(session.searchSelected == nil)
+        #expect(session.searchSurface == nil)
+    }
+
+    @Test func closeScratchLeavesSearchOwnedByMainPane() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let primary = SpySurface(); session.surface = primary
+        session.scratchActive = true
+        let scratch = SpySurface()
+        session.scratchSurface = scratch
+        // search is owned by the MAIN pane, not the scratch covering the session — tearing the scratch
+        // down must not nuke a valid main-pane search.
+        session.searchActive = true
+        session.searchNeedle = "needle"
+        session.searchSurface = primary
+        #expect(store.closeScratch(session.id) == true)
+        #expect(session.searchActive == true)
+        #expect(session.searchNeedle == "needle")
+        #expect(session.searchSurface === primary)
+    }
+
+    @Test func toggleScratchUnknownSessionIsNoop() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        store.toggleScratch(UUID()) // unknown id
+        #expect(session.scratchActive == false) // existing session untouched
+    }
+
+    @Test func closeScratchUnknownSessionReturnsFalse() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        _ = store.addSession(toWorkspace: ws.id, cwd: "/a")
+        #expect(store.closeScratch(UUID()) == false) // unknown id, no surface
+    }
+
+    @Test func closeSessionTearsDownScratchSurface() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let scratch = SpySurface()
+        session.scratchSurface = scratch
+        store.closeSession(session.id)
+        #expect(scratch.teardownCount == 1)
+    }
+
+    @Test func removeWorkspaceTearsDownScratchSurface() {
+        let store = makeStore()
+        let keep = store.addWorkspace(name: "keep")
+        _ = store.addSession(toWorkspace: keep.id, cwd: "/k")
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let scratch = SpySurface()
+        session.scratchSurface = scratch
+        store.removeWorkspace(ws.id)
+        #expect(scratch.teardownCount == 1)
+    }
+
+    // MARK: - status-pane reconcile on pane teardown
+
+    @Test func closeSplitClearsRightTaggedStatus() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.splitSurface = SpySurface(); session.isSplit = true; session.hasSplit = true
+        // a block set by the split (`--pane right`); once the split shell exits, the surviving main pane can
+        // never keystroke-clear a `.right` tag, so teardown must clear it.
+        store.setAgentIndicator(AgentIndicator(status: .blocked, statusPane: .right), forSession: session.id)
+        store.closeSplit(session.id)
+        #expect(session.agentIndicator.status == .idle)
+        #expect(session.agentIndicator.statusPane == nil)
+    }
+
+    @Test func closeSplitLeavesMainTaggedStatus() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.splitSurface = SpySurface(); session.isSplit = true; session.hasSplit = true
+        // a `.left`/main block is owned by the surviving main pane — tearing the split down must NOT clear it.
+        store.setAgentIndicator(AgentIndicator(status: .blocked, statusPane: .left), forSession: session.id)
+        store.closeSplit(session.id)
+        #expect(session.agentIndicator.status == .blocked)
+        #expect(session.agentIndicator.statusPane == .left)
+    }
+
+    @Test func closePrimaryPaneClearsLeftAndNilTaggedStatus() {
+        for pane: StatusPane? in [.left, nil] {
+            let store = makeStore()
+            let ws = store.addWorkspace(name: "work")
+            let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+            session.surface = SpySurface(); session.splitSurface = SpySurface()
+            session.isSplit = true; session.hasSplit = true
+            // the primary owned a `.left`/nil-tagged block and is promoted away, so the promoted (right-wired)
+            // survivor could never keystroke-clear it — teardown must.
+            store.setAgentIndicator(AgentIndicator(status: .blocked, statusPane: pane), forSession: session.id)
+            store.closePrimaryPane(session.id)
+            #expect(session.agentIndicator.status == .idle)
+        }
+    }
+
+    @Test func closePrimaryPaneLeavesRightTaggedStatus() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.surface = SpySurface(); session.splitSurface = SpySurface()
+        session.isSplit = true; session.hasSplit = true
+        // the `.right` block is owned by the split, which becomes the promoted survivor — still clearable, keep it.
+        store.setAgentIndicator(AgentIndicator(status: .blocked, statusPane: .right), forSession: session.id)
+        store.closePrimaryPane(session.id)
+        #expect(session.agentIndicator.status == .blocked)
+        #expect(session.agentIndicator.statusPane == .right)
+    }
+
+    @Test func closeScratchClearsScratchTaggedStatus() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.scratchActive = true; session.scratchSurface = SpySurface()
+        // a scratch-tagged block loses its owning surface on the scratch shell's exit.
+        store.setAgentIndicator(AgentIndicator(status: .blocked, statusPane: .scratch), forSession: session.id)
+        #expect(store.closeScratch(session.id) == true)
+        #expect(session.agentIndicator.status == .idle)
+        #expect(session.agentIndicator.statusPane == nil)
+    }
+
+    @Test func closeScratchLeavesMainTaggedStatus() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.surface = SpySurface()
+        session.scratchActive = true; session.scratchSurface = SpySurface()
+        // a main-pane block survives the scratch teardown (the main pane is still there to clear it).
+        store.setAgentIndicator(AgentIndicator(status: .blocked, statusPane: .left), forSession: session.id)
+        #expect(store.closeScratch(session.id) == true)
+        #expect(session.agentIndicator.status == .blocked)
+    }
+}

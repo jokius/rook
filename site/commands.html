@@ -3,36 +3,36 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Command reference — agterm | agtermctl control API</title>
+    <title>Command reference — rook | rookctl control API</title>
     <meta
       name="description"
-      content="Complete agtermctl reference: all 62 control commands for agterm — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, themes, and keymaps, with arguments and return values."
+      content="Complete rookctl reference: all 62 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, themes, and keymaps, with arguments and return values."
     />
     <meta
       name="keywords"
-      content="agtermctl reference, agterm control api, agterm commands, agterm cli, session.type, session.overlay, window.list"
+      content="rookctl reference, rook control api, rook commands, rook cli, session.type, session.overlay, window.list"
     />
     <meta name="author" content="umputun" />
-    <link rel="canonical" href="https://agterm.com/commands" />
+    <link rel="canonical" href="https://rook.app/commands" />
     <meta property="og:type" content="article" />
-    <meta property="og:title" content="Command reference — agterm" />
+    <meta property="og:title" content="Command reference — rook" />
     <meta
       property="og:description"
-      content="All 62 agtermctl control commands with arguments, return values, and errors."
+      content="All 62 rookctl control commands with arguments, return values, and errors."
     />
-    <meta property="og:url" content="https://agterm.com/commands" />
-    <meta property="og:image" content="https://agterm.com/assets/agterm-og.png" />
+    <meta property="og:url" content="https://rook.app/commands" />
+    <meta property="og:image" content="https://rook.app/assets/rook-og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:site_name" content="agterm" />
+    <meta property="og:site_name" content="rook" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@umputun" />
-    <meta name="twitter:title" content="Command reference — agterm" />
+    <meta name="twitter:title" content="Command reference — rook" />
     <meta
       name="twitter:description"
-      content="All 62 agtermctl control commands with arguments, return values, and errors."
+      content="All 62 rookctl control commands with arguments, return values, and errors."
     />
-    <meta name="twitter:image" content="https://agterm.com/assets/agterm-og.png" />
+    <meta name="twitter:image" content="https://rook.app/assets/rook-og.png" />
     <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png" />
@@ -89,7 +89,7 @@
                 font-size: 16px;
                 letter-spacing: -0.01em;
               "
-              >agterm</span
+              >rook</span
             >
             <span
               style="
@@ -115,7 +115,7 @@
             <a href="/" style="color: #949ba4; padding: 8px 12px; border-radius: 7px" class="hv1">← home</a>
             <a href="/docs" style="color: #949ba4; padding: 8px 12px; border-radius: 7px" class="hv1">docs</a>
             <a
-              href="https://github.com/umputun/agterm"
+              href="https://github.com/jokius/rook"
               style="
                 color: #c9cdd2;
                 border: 1px solid rgba(255, 255, 255, 0.16);
@@ -198,13 +198,13 @@
             Command reference
           </h1>
           <p style="font-size: 19px; line-height: 1.6; color: #bfbab0; margin: 0 0 8px">
-            All 62 commands of the agterm control API, with arguments and return values. Every one is reachable from the
-            <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl</span> CLI and from the local
+            All 62 commands of the rook control API, with arguments and return values. Every one is reachable from the
+            <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl</span> CLI and from the local
             control socket.
           </p>
           <p style="font-size: 16px; line-height: 1.7; color: #949ba4; margin: 16px 0 0">
             For the narrative introduction — what the socket is, how to install the CLI, and worked recipes — see the
-            <a href="/docs#agtermctl" style="color: #6d82f3">agtermctl section of the docs</a>.
+            <a href="/docs#rookctl" style="color: #6d82f3">rookctl section of the docs</a>.
           </p>
 
           <!-- OVERVIEW -->
@@ -223,19 +223,19 @@
               Overview
             </h2>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 16px">
-              agterm listens on a local unix-domain socket. Each connection carries one newline-delimited JSON request and receives
+              rook listens on a local unix-domain socket. Each connection carries one newline-delimited JSON request and receives
               one response, then closes. The scope is personal scripting — fire-and-forget commands. There is no scrollback
               streaming and no event subscription.
             </p>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 16px">
               <strong style="color: #e6e1d7">Socket resolution.</strong> With
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--socket</span> omitted, agtermctl
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--socket</span> omitted, rookctl
               resolves the same rendezvous the app bound:
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">&lt;AGTERM_STATE_DIR&gt;/agterm.sock</span>,
-              else <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">~/Library/Application Support/agterm/agterm.sock</span>.
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">&lt;ROOK_STATE_DIR&gt;/rook.sock</span>,
+              else <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">~/Library/Application Support/rook/rook.sock</span>.
               A spawned shell also sees the bound path in
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">$AGTERM_SOCKET</span>; passing
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc; white-space: nowrap">--socket "$AGTERM_SOCKET"</span> is the
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">$ROOK_SOCKET</span>; passing
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc; white-space: nowrap">--socket "$ROOK_SOCKET"</span> is the
               safe explicit form.
             </p>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 16px">
@@ -266,7 +266,7 @@
             >
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 0">
                 <strong style="color: #e6e1d7">Options go after the subcommand.</strong>
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #f2b45c">agtermctl session type "ls" --target active</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #f2b45c">rookctl session type "ls" --target active</span>,
                 never before it. Add
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--json</span> to print the raw response
                 object — without it, mutations print
@@ -326,8 +326,8 @@
                 <strong style="color: #e6e1d7">For an agent,</strong>
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">active</span> is the
                 <em>user's</em> GUI-selected session, not yours. Your own shell is
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">$AGTERM_SESSION_ID</span>. Pass
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc; white-space: nowrap">--target "$AGTERM_SESSION_ID"</span>
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">$ROOK_SESSION_ID</span>. Pass
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc; white-space: nowrap">--target "$ROOK_SESSION_ID"</span>
                 on any session-scoped command that must act on the session you run in — otherwise it hits whatever the user has
                 selected.
               </p>
@@ -367,7 +367,7 @@
                   word-break: break-word;
                 "
               >
-                agtermctl tree [--json] [--window W]
+                rookctl tree [--json] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">
                 tree
@@ -450,7 +450,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl workspace new [name] [--window W]
+                rookctl workspace new [name] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.new</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -462,7 +462,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl workspace rename &lt;name&gt; [--target T] [--window W]
+                rookctl workspace rename &lt;name&gt; [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.rename</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">Rename the target workspace.</p>
@@ -470,7 +470,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl workspace delete [--target T] [--window W]
+                rookctl workspace delete [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.delete</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -481,7 +481,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl workspace select [--target T] [--window W]
+                rookctl workspace select [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.select</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">Select the target workspace.</p>
@@ -489,7 +489,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl workspace move --to up|down|top|bottom [--target T] [--window W]
+                rookctl workspace move --to up|down|top|bottom [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.move</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -505,7 +505,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl workspace focus [on|off|toggle] [--target T] [--window W]
+                rookctl workspace focus [on|off|toggle] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.focus</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -529,7 +529,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl workspace color &lt;#rrggbb|clear&gt; [--target T] [--window W]
+                rookctl workspace color &lt;#rrggbb|clear&gt; [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.color</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -548,7 +548,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl workspace icon &lt;symbol|emoji|path|clear&gt; [--target T] [--window W]
+                rookctl workspace icon &lt;symbol|emoji|path|clear&gt; [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.icon</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -592,7 +592,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session new [--cwd DIR] [--workspace W | --workspace-name NAME [--create-workspace]] [--command CMD]
+                rookctl session new [--cwd DIR] [--workspace W | --workspace-name NAME [--create-workspace]] [--command CMD]
                 [--name NAME] [--after SID | --before SID] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.new</div>
@@ -637,7 +637,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session close [--target T ...] [--window W]
+                rookctl session close [--target T ...] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.close</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -649,7 +649,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session select [--target T] [--window W]
+                rookctl session select [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.select</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -659,7 +659,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session rename &lt;name&gt; [--target T] [--window W]
+                rookctl session rename &lt;name&gt; [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.rename</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">Set the session's custom sidebar label.</p>
@@ -667,7 +667,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session reveal [--target T] [--window W]
+                rookctl session reveal [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.reveal</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -677,7 +677,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session move &lt;workspace&gt; | --to up|down|top|bottom | --after SID | --before SID [--target T ...] [--window W]
+                rookctl session move &lt;workspace&gt; | --to up|down|top|bottom | --after SID | --before SID [--target T ...] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.move</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -697,7 +697,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session go --to next|prev|first|last|next-attention|prev-attention [--window W]
+                rookctl session go --to next|prev|first|last|next-attention|prev-attention [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.go</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -721,7 +721,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session type &lt;text&gt; [--stdin] [--select] [--pane left|right|scratch] [--target T] [--window W]
+                rookctl session type &lt;text&gt; [--stdin] [--select] [--pane left|right|scratch] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.type</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -745,7 +745,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session copy [--target T] [--window W]
+                rookctl session copy [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.copy</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -760,7 +760,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session paste [--target T] [--window W]
+                rookctl session paste [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.paste</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -776,7 +776,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session select-all [--target T] [--window W]
+                rookctl session select-all [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.selectall</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -792,7 +792,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session text [--all] [--lines N] [--pane left|right|scratch] [--target T] [--window W]
+                rookctl session text [--all] [--lines N] [--pane left|right|scratch] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.text</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -817,7 +817,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session search [needle] [--next | --prev | --close] [--target T] [--window W]
+                rookctl session search [needle] [--next | --prev | --close] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.search</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -836,7 +836,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session split [on|off|toggle] [--target T] [--window W]
+                rookctl session split [on|off|toggle] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.split</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -848,7 +848,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session scratch [on|off|toggle] [--command CMD] [--target T] [--window W]
+                rookctl session scratch [on|off|toggle] [--command CMD] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.scratch</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -870,7 +870,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session filetree [on|off|toggle|refresh|reroot &lt;path&gt;] [--target T] [--window W]
+                rookctl session filetree [on|off|toggle|refresh|reroot &lt;path&gt;] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.filetree</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -886,7 +886,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session focus [left|right|other] [--target T] [--window W]
+                rookctl session focus [left|right|other] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.focus</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -900,7 +900,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session resize (--split-ratio R | --grow-left D | --grow-right D) [--target T] [--window W]
+                rookctl session resize (--split-ratio R | --grow-left D | --grow-right D) [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.resize</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -915,14 +915,14 @@
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 Control-native: the divider is otherwise mouse-drag only, with no GUI, menu, or keymap action — bind a key by mapping
-                a <span style="font-family: &quot;JetBrains Mono&quot;, monospace">command "agtermctl session resize …"</span> custom
+                a <span style="font-family: &quot;JetBrains Mono&quot;, monospace">command "rookctl session resize …"</span> custom
                 action. Resizing a hidden split updates the stored fraction, applied when it is next shown.
               </p>
             </div>
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session status &lt;idle|active|completed|blocked&gt; [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb]
+                rookctl session status &lt;idle|active|completed|blocked&gt; [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb]
                 [--pane left|right|scratch] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.status</div>
@@ -960,7 +960,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session flag [on|off|toggle|clear] [--target T] [--window W]
+                rookctl session flag [on|off|toggle|clear] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.flag</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -976,7 +976,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session seen [--target T] [--window W]
+                rookctl session seen [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.seen</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -993,10 +993,10 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session background image &lt;path&gt; [--opacity F] [--fit contain|cover|stretch|none] [--position P] [--repeat]<br />
-                agtermctl session background text &lt;text&gt; [--color #rrggbb] [--opacity F] [--fit …] [--position …]<br />
-                agtermctl session background color &lt;#rrggbb&gt;<br />
-                agtermctl session background clear
+                rookctl session background image &lt;path&gt; [--opacity F] [--fit contain|cover|stretch|none] [--position P] [--repeat]<br />
+                rookctl session background text &lt;text&gt; [--color #rrggbb] [--opacity F] [--fit …] [--position …]<br />
+                rookctl session background color &lt;#rrggbb&gt;<br />
+                rookctl session background clear
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.background</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1045,7 +1045,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session overlay open &lt;command&gt; [--cwd DIR] [--wait] [--block] [--size-percent N]
+                rookctl session overlay open &lt;command&gt; [--cwd DIR] [--wait] [--block] [--size-percent N]
                 [--background-color #rrggbb] [--follow] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.overlay.open</div>
@@ -1063,13 +1063,13 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--target</span> and run in the background. Pass
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--follow</span> to select the target too. An automated
                 caller should pass
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">--target "$AGTERM_SESSION_ID"</span>, or a blocking
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">--target "$ROOK_SESSION_ID"</span>, or a blocking
                 full-pane overlay lands on whatever session the user has selected.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--wait</span> keeps the overlay open after the command
                 exits (press a key to close). <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--block</span> waits for
-                the command and makes agtermctl exit with its status — it cannot combine with
+                the command and makes rookctl exit with its status — it cannot combine with
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--wait</span>. The program's <em>output</em> is its own
                 concern; the control channel does not capture stdout.
               </p>
@@ -1085,7 +1085,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session overlay resize (--size-percent N | --full) [--target T] [--window W]
+                rookctl session overlay resize (--size-percent N | --full) [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.overlay.resize</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1103,7 +1103,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session overlay close [--target T] [--window W]
+                rookctl session overlay close [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.overlay.close</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">Close and destroy the overlay.</p>
@@ -1111,7 +1111,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session overlay result [--target T] [--window W]
+                rookctl session overlay result [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.overlay.result</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1146,7 +1146,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl window new [name]
+                rookctl window new [name]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">window.new</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1158,7 +1158,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl window list
+                rookctl window list
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">window.list</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1189,7 +1189,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl window select &lt;id&gt;
+                rookctl window select &lt;id&gt;
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">window.select</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">Raise the window if open, else open it.</p>
@@ -1197,7 +1197,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl window close &lt;id&gt;
+                rookctl window close &lt;id&gt;
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">window.close</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1208,7 +1208,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl window rename &lt;id&gt; &lt;name&gt;
+                rookctl window rename &lt;id&gt; &lt;name&gt;
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">window.rename</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">Rename the window.</p>
@@ -1216,7 +1216,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl window delete &lt;id&gt;
+                rookctl window delete &lt;id&gt;
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">window.delete</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1226,7 +1226,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl window resize &lt;id&gt; --width W --height H
+                rookctl window resize &lt;id&gt; --width W --height H
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">window.resize</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1238,7 +1238,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl window move &lt;id&gt; --x X --y Y [--display N]
+                rookctl window move &lt;id&gt; --x X --y Y [--display N]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">window.move</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1250,7 +1250,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl window zoom &lt;id&gt;
+                rookctl window zoom &lt;id&gt;
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">window.zoom</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1263,7 +1263,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl window fullscreen &lt;id&gt;
+                rookctl window fullscreen &lt;id&gt;
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">window.fullscreen</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1301,7 +1301,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl quick [show|hide|toggle]
+                rookctl quick [show|hide|toggle]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">quick</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1314,7 +1314,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl quick type &lt;text&gt; [--stdin]
+                rookctl quick type &lt;text&gt; [--stdin]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">quick.type</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1332,7 +1332,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl quick text [--all] [--lines N]
+                rookctl quick text [--all] [--lines N]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">quick.text</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1363,7 +1363,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl sidebar [show|hide|toggle]
+                rookctl sidebar [show|hide|toggle]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">sidebar</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1376,7 +1376,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl sidebar mode [tree|flagged|toggle]
+                rookctl sidebar mode [tree|flagged|toggle]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">sidebar.mode</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1395,7 +1395,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl sidebar expand [--window W]
+                rookctl sidebar expand [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">sidebar.expand</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1408,7 +1408,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl sidebar collapse [--window W]
+                rookctl sidebar collapse [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">sidebar.collapse</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1438,7 +1438,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl notify &lt;body&gt; [--title T] [--target T] [--window W]
+                rookctl notify &lt;body&gt; [--title T] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">notify</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1475,7 +1475,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl font inc|dec|reset [--target T] [--window W]
+                rookctl font inc|dec|reset [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">
                 font.inc · font.dec · font.reset
@@ -1504,13 +1504,13 @@
             </h2>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 16px">
               App-global — no <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--window</span>. The out-of-the-box
-              default is the bundled <strong style="color: #e6e1d7">agterm</strong> theme; a separate
+              default is the bundled <strong style="color: #e6e1d7">rook</strong> theme; a separate
               <em>default ghostty</em> entry means "no theme" — ghostty's own built-in colors.
             </p>
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl theme list
+                rookctl theme list
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">theme.list</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1527,7 +1527,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl theme set [name] [--light NAME] [--dark NAME|none]
+                rookctl theme set [name] [--light NAME] [--dark NAME|none]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">theme.set</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1566,7 +1566,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl keymap reload
+                rookctl keymap reload
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">keymap.reload</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1597,7 +1597,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl config reload
+                rookctl config reload
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">config.reload</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1607,7 +1607,7 @@
                 count (0 is clean). App-global; the same path as File ▸ Reload Config.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
-                The count spans <em>all</em> config sources, not just the agterm-scoped
+                The count spans <em>all</em> config sources, not just the rook-scoped
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ghostty.conf</span> — libghostty diagnostics do not
                 record which file they came from — so do not read a non-zero count as proof that
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ghostty.conf</span> is the culprit.
@@ -1633,7 +1633,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl restore clear
+                rookctl restore clear
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">restore.clear</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -2122,12 +2122,12 @@
           "
         >
           <a href="/" style="display: flex; align-items: center; gap: 10px; color: #949ba4; font-size: 13.5px" class="hv7"
-            >← agterm.com</a
+            >← rook.app</a
           >
           <div style="display: flex; gap: 24px; font-size: 13px">
-            <a href="https://github.com/umputun/agterm" style="color: #949ba4" class="hv7">GitHub</a>
-            <a href="https://github.com/umputun/agterm/issues" style="color: #949ba4" class="hv7">Issues</a>
-            <a href="https://github.com/umputun/agterm/discussions" style="color: #949ba4" class="hv7">Discussions</a>
+            <a href="https://github.com/jokius/rook" style="color: #949ba4" class="hv7">GitHub</a>
+            <a href="https://github.com/jokius/rook/issues" style="color: #949ba4" class="hv7">Issues</a>
+            <a href="https://github.com/jokius/rook/discussions" style="color: #949ba4" class="hv7">Discussions</a>
           </div>
         </div>
       </div>

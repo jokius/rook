@@ -1,15 +1,15 @@
 ---
 paths:
-  - "agterm/Views/WorkspaceSidebar*.swift"
-  - "agterm/Views/SidebarRowViews.swift"
-  - "agterm/Views/SidebarRenameController.swift"
-  - "agtermCore/Sources/agtermCore/SidebarDrop.swift"
-  - "agtermCore/Sources/agtermCore/SidebarMode.swift"
-  - "agtermCore/Sources/agtermCore/Reorder.swift"
-  - "agtermUITests/SidebarUITests.swift"
-  - "agtermUITests/ReorderUITests.swift"
-  - "agtermUITests/FlaggedViewUITests.swift"
-  - "agtermUITests/FocusWorkspaceUITests.swift"
+  - "rook/Views/WorkspaceSidebar*.swift"
+  - "rook/Views/SidebarRowViews.swift"
+  - "rook/Views/SidebarRenameController.swift"
+  - "rookCore/Sources/rookCore/SidebarDrop.swift"
+  - "rookCore/Sources/rookCore/SidebarMode.swift"
+  - "rookCore/Sources/rookCore/Reorder.swift"
+  - "rookUITests/SidebarUITests.swift"
+  - "rookUITests/ReorderUITests.swift"
+  - "rookUITests/FlaggedViewUITests.swift"
+  - "rookUITests/FocusWorkspaceUITests.swift"
 ---
 
 ## Sidebar
@@ -25,7 +25,7 @@ paths:
   drop to `NSOutlineViewDropOnItemIndex` — enabling intra-workspace SESSION reorder (drop between rows for
   a precise slot) AND precise cross-workspace placement (a cross-workspace drag now lands at the drop
   position, no longer always-append).
-  Workspace ROWS are draggable too: a second pasteboard type `com.umputun.agterm.workspace` is added
+  Workspace ROWS are draggable too: a second pasteboard type `com.rook.app.workspace` is added
   to `registerForDraggedTypes` (LOAD-BEARING — without it AppKit never delivers validate/accept for workspace
   drags) and `pasteboardWriterForItem` emits it (carrying the workspace UUID) for workspace nodes.
   **Workspace reorder is a TOP-LEVEL move, but it does NOT use AppKit's proposed `item`/`childIndex`.**
@@ -52,7 +52,7 @@ paths:
   mixes atomically. Workspace reorders use `resolveWorkspace` with the same remove-then-insert convention.
   The PURE index arithmetic (drop-on-row `sessionIndex + 1` redirect, source-removal adjustment,
   cross-workspace vs same-parent index spaces, batch block insertion, and no-op checks) lives host-free in
-  `agtermCore.SidebarDrop` (`resolveSession`/`resolveSessions`/`resolveWorkspace`), table-tested in
+  `rookCore.SidebarDrop` (`resolveSession`/`resolveSessions`/`resolveWorkspace`), table-tested in
   `SidebarDropTests`; the Coordinator helpers only do the AppKit/store glue (read the pasteboard, resolve
   ids → indices via `AppStore.sessionLocation(ofSession:)`) and feed `SidebarDrop`, so the trickiest part
   is unit-covered without the fragile XCUITest drag.
@@ -102,7 +102,7 @@ paths:
   `AppStore.softCloseSessions`, flag uses `AppActions.toggleFlags(_:in:)` → `setFlag(_:forSessions:)`,
   and clear-status loops `setAgentIndicator` once per selected session (loop-equivalent to `session status idle`).
 - **Flagged working-set view (`AppStore.sidebarMode` `.tree`/`.flagged`).**
-  `SidebarMode` (`agtermCore/SidebarMode.swift`, `String`-backed `Codable`/`Sendable`) drives a per-window
+  `SidebarMode` (`rookCore/SidebarMode.swift`, `String`-backed `Codable`/`Sendable`) drives a per-window
   MODE toggle between the normal two-level tree and a FLAT list of just the flagged sessions.
   A session is flagged via the observed `Session.flagged: Bool`; the flat list is the PURE derived projection
   `AppStore.flaggedSessions` (`workspaces.flatMap(\.sessions).filter(\.flagged)`,
@@ -118,7 +118,7 @@ paths:
   A row click routes through the existing `selectSession`; the mode switch is VIEW-ONLY (never re-selects/refocuses).
   Drag-reorder is DISABLED in `.flagged` mode.
   An empty flagged set shows a centered, non-scrolling empty-state hint ("No flagged sessions. / Right-click
-  a session → Flag.") overlaid in the scroll view, re-tinted on `.agtermAppearanceChanged` and toggled
+  a session → Flag.") overlaid in the scroll view, re-tinted on `.rookAppearanceChanged` and toggled
   by `updateEmptyStateHint` (visible only in `.flagged` with `flaggedSessions.isEmpty`).
   Mutators: `AppStore.setFlag(_:forSession:)` / `setFlag(_:forSessions:)` (clean no-op + no save on
   unknown ids or unchanged values, prune the transient selection when the current sidebar mode hides the
@@ -249,7 +249,7 @@ paths:
   → the Coordinator's `collapseOthers`, every workspace collapsed EXCEPT the active session's `currentWorkspaceID`,
   kept expanded + `scrollRowToVisible`'d).
   Both keep `expandedWorkspaceIDs` in sync (so the state survives a flagged-mode round-trip).
-  Per-window scoping rides a notification (`.agtermExpandWorkspaces`/`.agtermCollapseWorkspaces`) posted
+  Per-window scoping rides a notification (`.rookExpandWorkspaces`/`.rookCollapseWorkspaces`) posted
   with the TARGET window's `AppStore` as the object; each Coordinator registers its observer with `object: store`,
   so only the matching window's sidebar acts (unlike the rename notifications,
   which self-scope via the selected-session guard).

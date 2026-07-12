@@ -1,9 +1,9 @@
 ---
 paths:
-  - "agterm/Views/Palette.swift"
-  - "agterm/SettingsModel.swift"
-  - "agterm/SettingsCatalog.swift"
-  - "agterm/AppActions*.swift"
+  - "rook/Views/Palette.swift"
+  - "rook/SettingsModel.swift"
+  - "rook/SettingsCatalog.swift"
+  - "rook/AppActions*.swift"
 ---
 
 ## Theme picker
@@ -59,13 +59,13 @@ paths:
   behind it eats the keys).
   The guard also kills the retry the instant `.themes` opens AND blocks any focus steal during a live
   preview reload.
-- **Default theme = the bundled `agterm` theme (NOT ghostty's built-in).**
-  `AppSettings.defaultTheme = "agterm"` (host-free), and `SettingsStore.load()` seeds it on a fresh install
+- **Default theme = the bundled `rook` theme (NOT ghostty's built-in).**
+  `AppSettings.defaultTheme = "rook"` (host-free), and `SettingsStore.load()` seeds it on a fresh install
   (missing/corrupt `settings.json` → `AppSettings(theme: defaultTheme)`).
   It is NOT baked into the `AppSettings()` memberwise default — that stays `theme == nil` so `ghosttyConfigLines()`'s
   "nil = no theme line" invariant (and its tests) hold; the seed lives ONLY in the fresh-load path.
   So `theme == nil` means ghostty's built-in (the picker's "default ghostty" row);
-  the agterm default is a real seeded value, and the picker opens on the "agterm" row for a fresh install.
+  the rook default is a real seeded value, and the picker opens on the "rook" row for a fresh install.
   An EXISTING `settings.json` with `theme` absent decodes to nil (ghostty built-in) — an existing user
   is never silently re-themed.
   `theme.set` with no name still sets nil (ghostty built-in / "default ghostty"),
@@ -73,7 +73,7 @@ paths:
 - **Appearance sync = two theme slots + an explicit toggle; emission is the RAW dual value.**
   Three `AppSettings` fields hold it: `theme` (the single/base theme, and the LIGHT slot while following), `darkTheme` (the DARK slot), and `followSystemAppearance` (nil/false = off, the default).
   `ghosttyConfigLines()` (no `isDark` param) emits ONE line: while following it is ghostty's own dual conditional `theme = light:NAME,dark:NAME` written RAW; otherwise the single theme — one `if`, no parsing.
-  libghostty resolves the active side itself at runtime, but the SWITCH is host-driven: `SystemAppearanceObserver` (an app-level KVO observer on `NSApplication.effectiveAppearance`) posts `.agtermSystemAppearanceChanged` with the KVO-delivered `isDark`; `SettingsModel.appearanceChanged` (guarded on following + both slots set, AND on the posted side differing from the last config feed) threads that `isDark` into `reloadConfigPreservingSessionZoom` → `GhosttyApp.reloadConfig(surfaces:isDark:)`, which sets `ghostty_app_set_color_scheme` + each surface's `ghostty_surface_set_color_scheme` from it and re-feeds via `update_config` DIRECTLY — the raw dual file text is stable across flips, so `writeGhosttyConfig`'s text-diff would otherwise skip the reload.
+  libghostty resolves the active side itself at runtime, but the SWITCH is host-driven: `SystemAppearanceObserver` (an app-level KVO observer on `NSApplication.effectiveAppearance`) posts `.rookSystemAppearanceChanged` with the KVO-delivered `isDark`; `SettingsModel.appearanceChanged` (guarded on following + both slots set, AND on the posted side differing from the last config feed) threads that `isDark` into `reloadConfigPreservingSessionZoom` → `GhosttyApp.reloadConfig(surfaces:isDark:)`, which sets `ghostty_app_set_color_scheme` + each surface's `ghostty_surface_set_color_scheme` from it and re-feeds via `update_config` DIRECTLY — the raw dual file text is stable across flips, so `writeGhosttyConfig`'s text-diff would otherwise skip the reload.
   The flip reload KEEPS each session's ⌘+/⌘− zoom (`reapplySessionConfigIfNeeded` re-emits the zoomed sessions' `font-size` after the broadcast); only the explicit reloads clear it.
   The side comes from the APP-level `NSApplication.effectiveAppearance` via KVO (`change.newValue`, the settled value), never from a view — the old per-view hook wedged after sleep/wake and stuck the terminal on the old theme (see the libghostty rule for the mechanism; `AppearanceFlipUITests` pins the zoom-preserving flip via the UI-test-only `debug.appearance` seam).
   `AppSettings.activeTheme(isDark:)` (dark slot in dark mode, else `theme`) is now used ONLY by the palette badge/selection; emission never resolves a side.

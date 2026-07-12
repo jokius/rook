@@ -24,12 +24,12 @@ jobs:
           filters: |
             swift:
               - "**/*.swift"
-              - "agtermCore/**"
-              - "agterm/**"
+              - "rookCore/**"
+              - "rook/**"
               - "project.yml"
               - "scripts/**"
               - ".swiftlint.yml"
-              - "agtermUITests/.swiftlint.yml"
+              - "rookUITests/.swiftlint.yml"
               - ".github/workflows/ci.yml"
 
   test:
@@ -40,16 +40,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: swift test (with coverage)
-        working-directory: agtermCore
+        working-directory: rookCore
         run: swift test --enable-code-coverage
       - name: export lcov
-        working-directory: agtermCore
+        working-directory: rookCore
         # rewrite the absolute SF: paths llvm-cov emits to repo-relative so the
         # separate linux coverage job can resolve them against its own checkout
         run: |
           BIN=$(swift build --show-bin-path)
           xcrun llvm-cov export \
-            "$BIN/agtermCorePackageTests.xctest/Contents/MacOS/agtermCorePackageTests" \
+            "$BIN/rookCorePackageTests.xctest/Contents/MacOS/rookCorePackageTests" \
             -instr-profile "$BIN/codecov/default.profdata" \
             -format=lcov \
             -ignore-filename-regex='(\.build|Tests|checkouts)/' \
@@ -61,7 +61,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-lcov
-          path: agtermCore/coverage.lcov
+          path: rookCore/coverage.lcov
 
   coverage:
     name: Coverage upload
@@ -110,8 +110,8 @@ jobs:
         with:
           path: |
             GhosttyKit.xcframework
-            agterm/Resources/ghostty
-            agterm/Resources/terminfo
+            rook/Resources/ghostty
+            rook/Resources/terminfo
           key: ghosttykit-${{ hashFiles('scripts/setup.sh') }}
       - name: Install xcodegen
         run: brew install xcodegen

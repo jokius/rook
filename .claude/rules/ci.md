@@ -6,8 +6,8 @@ paths:
 ## CI (`ci.yml`)
 
 - **`ci.yml` runs on push/PR to `master`, gated by a `dorny/paths-filter`** (`**/*.swift`,
-  `agtermCore/**`, `agterm/**`, `project.yml`, `scripts/**`, `.swiftlint.yml`, `ci.yml`).
-  Jobs: a `test` job (`swift test --enable-code-coverage` in `agtermCore`, then
+  `rookCore/**`, `rook/**`, `project.yml`, `scripts/**`, `.swiftlint.yml`, `ci.yml`).
+  Jobs: a `test` job (`swift test --enable-code-coverage` in `rookCore`, then
   `xcrun llvm-cov export … -format=lcov`, then uploads the lcov as an artifact),
   a `coverage` job (the ONLY `ubuntu-latest` job) that downloads that artifact and does a
   `continue-on-error` upload to Coveralls via `coverallsapp/github-action@v2` with `secrets.GITHUB_TOKEN`,
@@ -31,7 +31,7 @@ paths:
   anything here, never trust the check color alone.
 - **CI does NOT run the XCUITests** — it builds the app but never test-runs the app target;
   only the host-free `swift test` runs in CI.
-  So the Coveralls badge reflects `agtermCore` coverage ONLY — the app target
+  So the Coveralls badge reflects `rookCore` coverage ONLY — the app target
   (SwiftUI/AppKit/libghostty) is manually tested and excluded, not "the whole app is N% covered".
 - **The `lint` job is `--strict`**, so any swiftlint warning fails the build (see the `make lint` note in
   the root `CLAUDE.md`).

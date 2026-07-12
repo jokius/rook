@@ -1,21 +1,21 @@
 ---
 paths:
-  - "agtermCore/Sources/agtermCore/Keybind.swift"
-  - "agtermCore/Sources/agtermCore/KeybindMatcher.swift"
-  - "agtermCore/Sources/agtermCore/Keymap.swift"
-  - "agtermCore/Sources/agtermCore/BuiltinAction.swift"
-  - "agtermCore/Sources/agtermCore/CustomCommand.swift"
-  - "agtermCore/Sources/agtermCore/ConfigPaths.swift"
-  - "agterm/Commands/CustomCommandRunner.swift"
-  - "agtermUITests/KeymapUITests.swift"
+  - "rookCore/Sources/rookCore/Keybind.swift"
+  - "rookCore/Sources/rookCore/KeybindMatcher.swift"
+  - "rookCore/Sources/rookCore/Keymap.swift"
+  - "rookCore/Sources/rookCore/BuiltinAction.swift"
+  - "rookCore/Sources/rookCore/CustomCommand.swift"
+  - "rookCore/Sources/rookCore/ConfigPaths.swift"
+  - "rook/Commands/CustomCommandRunner.swift"
+  - "rookUITests/KeymapUITests.swift"
 ---
 
 ## Keymap
 
 - A user-editable, kitty-flavored keymap file (`<configDir>/keymap.conf`,
-  default `~/.config/agterm`) lets the user (1) **rebind built-in menu shortcuts** and (2) **define custom
+  default `~/.config/rook`) lets the user (1) **rebind built-in menu shortcuts** and (2) **define custom
   shell commands** bound to keys, the latter listed in the action palette marked `custom`.
-  Like the Control API, the pure logic lives host-free in `agtermCore` and the app target wires it.
+  Like the Control API, the pure logic lives host-free in `rookCore` and the app target wires it.
   The feature is the keymap analogue of the toolbar/menu/control seam: the SAME parsed `Keymap` drives
   the menu shortcuts, the custom-command monitor, and the palette, so the three can't drift.
 - **Two-section verb-based format (`parseKeymap`, host-free, never throws).**
@@ -37,9 +37,9 @@ paths:
   token table — single source of truth for both `{AGT_X}` expansion and the `$AGT_X` env),
   `BuiltinAction` (the 36 rebindable actions + `defaultChord`), `Keymap`/`parseKeymap` (`Keymap.swift`),
   `ConfigPaths` (the path resolver).
-  All unit-tested under `agtermCoreTests`.
+  All unit-tested under `rookCoreTests`.
 - **MENU-driven built-in override vs MONITOR-driven custom commands — two different mechanisms.** Built-ins
-  ride AppKit menu-key-equivalents: each built-in `Button` in `agtermApp`'s `.commands` reads `settingsModel.keymap.equivalent(for: .action)`
+  ride AppKit menu-key-equivalents: each built-in `Button` in `rookApp`'s `.commands` reads `settingsModel.keymap.equivalent(for: .action)`
   via the `shortcut(for:)` helper (`Chord` → SwiftUI `KeyboardShortcut?`,
   applied only when non-nil so a keyless action stays keyless until mapped).
   Because `keymap` is `@Observable` and `.commands` reads it, the menu shortcuts re-render on reload
@@ -51,13 +51,13 @@ paths:
   focused pane's `CommandContext` (cwd + selection + `$AGT_*` env); a non-zero exit posts a failure banner
   via `NotificationManager.notifyCommandFailure`.
   It only fires when a `GhosttySurfaceView` holds first responder (so a bound chord never eats keystrokes
-  in a text field) and rebuilds its matcher on `.agtermKeymapChanged`.
+  in a text field) and rebuilds its matcher on `.rookKeymapChanged`.
   The runner also exposes a public `run(_:)` for the palette items, which resolve context from the active
   session (no first responder to key off).
   `CommandContext.pane` (the `{AGT_PANE}`/`$AGT_PANE` token, `left`|`right`)
   carries the fired-from pane: the keybind path derives it from the focused SURFACE's identity
   (`splitSurface === focusedSurface`), the palette path from `session.splitFocused` —
-  so a script can feed it back as `agtermctl session type --pane "$AGT_PANE"` to type into the very
+  so a script can feed it back as `rookctl session type --pane "$AGT_PANE"` to type into the very
   pane the shortcut was pressed in.
   It reflects the pane's PHYSICAL surface slot, not `hasSplit`: a promoted split survivor (the primary
   pane exited and the split pane took over) reports `right` even though the session no longer shows a
@@ -96,7 +96,7 @@ paths:
   So every physical chord is owned by exactly one mechanism — the menu OR a monitor,
   never both — regardless of AppKit's menu-key-equivalent-vs-local-monitor dispatch order (the design
   does NOT rely on asserting that order).
-  Caveat: validation covers agterm's own built-ins + reserved monitor chords,
+  Caveat: validation covers rook's own built-ins + reserved monitor chords,
   NOT system/standard menu items (⌘Q/⌘C/⌘,); binding a custom command to one of those resolves by AppKit's
   own dispatch — documented, not validated.
 - **`BuiltinAction.defaultChord` is the single source of truth for the built-in shortcuts (keep-in-sync
@@ -154,14 +154,14 @@ paths:
   The starter `keymap.conf` comments + README recommend `$AGT_X` (quoted) for untrusted content.
   Do NOT add quoting to the `{AGT_X}` expansion — by design.
 - **Reload + control.**
-  `AppActions.reloadKeymap()` → `SettingsModel.reloadKeymap()` (re-read + re-parse + post `.agtermKeymapChanged`)
+  `AppActions.reloadKeymap()` → `SettingsModel.reloadKeymap()` (re-read + re-parse + post `.rookKeymapChanged`)
   is exposed as File ▸ Reload Keymap, an action-palette entry, AND the `keymap.reload` control command
   — all ONE path.
   See the Control API catalog for the `keymap.reload` four-point audit.
 - **Edit Keymap (GUI-only).**
   `AppActions.editKeymap()` (File ▸ Edit Keymap… + the ⌃⇧P palette) opens `keymap.conf` in the user's
   editor inside a 95% FLOATING overlay over the active session via `AppStore.openOverlay(…, sizePercent: 95)`.
-  The command is the host-free, unit-tested `ConfigPaths.editorCommand(forPath:)` → `${SHELL:-/bin/zsh} -ilc 'exec /bin/sh -c '\''${VISUAL:-${EDITOR:-vi}} "$1"'\'' agterm-config-edit '<single-quoted path>''`
+  The command is the host-free, unit-tested `ConfigPaths.editorCommand(forPath:)` → `${SHELL:-/bin/zsh} -ilc 'exec /bin/sh -c '\''${VISUAL:-${EDITOR:-vi}} "$1"'\'' rook-config-edit '<single-quoted path>''`
   (the path comes from `SettingsModel.keymapPath`).
   The user's INTERACTIVE login shell (`$SHELL -ilc`) runs first so it sources its rc and EXPORTS `$EDITOR`/`$VISUAL`,
   then `exec`s a POSIX `/bin/sh` that does the actual `${VISUAL:-${EDITOR:-vi}} "$1"` resolution + launch
@@ -182,6 +182,6 @@ paths:
   with a fake recorder editor, plus VISUAL-precedence and rc-sourcing cases).
   On the editor exiting the keymap reloads automatically: `editKeymap` records the target in `AppActions.keymapEditOverlaySession`
   and `WindowContentView`'s overlay-close `onChange` calls `reloadKeymap()` for it (then clears it).
-  NO control command — a script can already `agtermctl session overlay open "$EDITOR <path>" --size-percent 95`
+  NO control command — a script can already `rookctl session overlay open "$EDITOR <path>" --size-percent 95`
   (keep-in-sync exempt, like `reveal`, since it composes the controllable `session.overlay.open`).
 

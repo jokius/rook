@@ -1,32 +1,32 @@
 ---
 paths:
-  - "agterm/Control/ControlServer*.swift"
-  - "agterm/Control/ControlTargetResolver.swift"
-  - "agtermCore/Sources/agtermCore/ControlProtocol.swift"
-  - "agtermCore/Sources/agtermCore/ControlResolve.swift"
-  - "agtermCore/Sources/agtermctlKit/*.swift"
-  - "agtermCore/Sources/agtermctl/main.swift"
-  - "agterm/CLIInstaller.swift"
-  - "agterm/AgentHooksInstaller.swift"
-  - "agterm/SkillInstaller.swift"
-  - "agtermCore/Sources/agtermCore/CLIInstall.swift"
-  - "agtermCore/Sources/agtermCore/AgentHooksInstall.swift"
-  - "agtermCore/Sources/agtermCore/SkillInstall.swift"
-  - "agtermUITests/Control*.swift"
-  - "agtermUITests/SessionTextUITests.swift"
-  - "agterm/Resources/agent-skill/**"
+  - "rook/Control/ControlServer*.swift"
+  - "rook/Control/ControlTargetResolver.swift"
+  - "rookCore/Sources/rookCore/ControlProtocol.swift"
+  - "rookCore/Sources/rookCore/ControlResolve.swift"
+  - "rookCore/Sources/rookctlKit/*.swift"
+  - "rookCore/Sources/rookctl/main.swift"
+  - "rook/CLIInstaller.swift"
+  - "rook/AgentHooksInstaller.swift"
+  - "rook/SkillInstaller.swift"
+  - "rookCore/Sources/rookCore/CLIInstall.swift"
+  - "rookCore/Sources/rookCore/AgentHooksInstall.swift"
+  - "rookCore/Sources/rookCore/SkillInstall.swift"
+  - "rookUITests/Control*.swift"
+  - "rookUITests/SessionTextUITests.swift"
+  - "rook/Resources/agent-skill/**"
 ---
 
 ## Control API
 
-- A programmatic control channel lets an external script drive `agterm` over a local unix-domain socket,
-  via the companion `agtermctl` CLI.
+- A programmatic control channel lets an external script drive `rook` over a local unix-domain socket,
+  via the companion `rookctl` CLI.
   It is a thin dispatcher onto the existing `AppActions`/`AppStore` seam — the third caller of that seam,
   alongside the toolbar/bottom bar and the menu bar — so no business logic is duplicated.
   Scope is personal scripting: fire-and-forget commands, no terminal-output/scrollback streaming and
   no event subscription (out of scope by design).
 - **Three layers, matching the core/app split:**
-  1. **Protocol + pure logic in `agtermCore`**
+  1. **Protocol + pure logic in `rookCore`**
      (Foundation-only, `Codable`, `Sendable`): `ControlProtocol.swift` holds the `Command` enum,
      `ControlArgs`, `ControlRequest`, the tree node types (`ControlSessionNode`/`ControlWorkspaceNode`/`ControlTree`),
      `ControlResult`, and `ControlResponse`.
@@ -34,20 +34,20 @@ paths:
      and the socket-path resolver (`socketPath(stateDir:appSupport:)`).
      Shared by both the app and the CLI so the wire contract cannot drift.
   2. **`ControlServer` in the app target**
-     (`agterm/Control/ControlServer.swift`, `@MainActor`): owns the POSIX unix socket.
+     (`rook/Control/ControlServer.swift`, `@MainActor`): owns the POSIX unix socket.
      The blocking accept/read loop runs on a background `DispatchQueue`;
      each newline-delimited `ControlRequest` is decoded, hopped to `@MainActor`,
      dispatched onto `AppActions`/`AppStore` (plus a thin `GhosttySurfaceView.inject(text:)` for input),
      and the `ControlResponse` written back before the connection closes.
-  3. **`agtermctl` CLI**
-     in the `agtermCore` SwiftPM package: an `agtermctlKit` library (the `ParsableCommand` tree — root
-     `Agtermctl` + shared option/request plumbing in `Commands.swift`, subcommands split by family into
+  3. **`rookctl` CLI**
+     in the `rookCore` SwiftPM package: an `rookctlKit` library (the `ParsableCommand` tree — root
+     `Rookctl` + shared option/request plumbing in `Commands.swift`, subcommands split by family into
      `SessionCommands.swift`/`WorkspaceCommands.swift`/`WindowCommands.swift`/`MiscCommands.swift` — and
-     the socket client in `SocketClient.swift`) plus a thin `agtermctl` executable.
-     It links `swift-argument-parser`; the `agtermCore` library target stays dependency-free.
+     the socket client in `SocketClient.swift`) plus a thin `rookctl` executable.
+     It links `swift-argument-parser`; the `rookCore` library target stays dependency-free.
      Builds with `swift build`, needs no Xcode/GhosttyKit.
 - **New/changed control commands are dispatcher-first** (the `refactor`/`hoist` migration, #78 onward).
-  A host-free `ControlDispatcher` in `agtermCore` (`ControlDispatcher.swift`) now fronts layer 2's dispatch:
+  A host-free `ControlDispatcher` in `rookCore` (`ControlDispatcher.swift`) now fronts layer 2's dispatch:
   its `dispatch(_:)` owns command parsing, argument validation, error strings, and the success-response
   shape, calling the app through the `ControlActions` protocol, which `ControlServer` conforms to and
   which supplies ONLY target resolution and the AppKit/process side effects.
@@ -57,7 +57,7 @@ paths:
   So when adding or changing a command: put every host-free part (arg checks, error text, the payload) in
   `ControlDispatcher` with a unit test, and put only the side effect behind a `ControlActions` method — do
   NOT add fresh validation/response logic inline in the `ControlServer` switch.
-  (This is the control-channel case of the root `CLAUDE.md` "hoist host-free logic down into `agtermCore`"
+  (This is the control-channel case of the root `CLAUDE.md` "hoist host-free logic down into `rookCore`"
   module-boundary rule.)
 - **The four-point audit is the WRITE path; a state-mutating command also owes a READ-BACK field.**
   Whenever a command SETS or MUTATES per-session state, surface that state on `ControlSessionNode` (or
@@ -82,25 +82,25 @@ paths:
   When adding a state-mutating command, add its read-back field in the SAME change and cover it with a
   `treeSessionNodeRoundTrips…`/`…OmitsWhenNil` round-trip test plus a `controlTree` populate test.
 - **Bundling + install.**
-  The `agterm` target's `Bundle agtermctl CLI` postBuildScript (`project.yml`) runs `swift build -c release --product agtermctl`,
-  copies it to `agterm.app/Contents/MacOS/agtermctl`, ad-hoc signs the helper,
+  The `rook` target's `Bundle rookctl CLI` postBuildScript (`project.yml`) runs `swift build -c release --product rookctl`,
+  copies it to `rook.app/Contents/MacOS/rookctl`, ad-hoc signs the helper,
   then **re-signs the whole app `--deep`** — the phase can run AFTER Xcode's own code-sign on incremental
   builds, so without the re-seal the injected helper breaks the signature (and a shallow re-sign chokes
-  on the Debug `agterm.debug.dylib`).
-  **Help ▸ Install Command Line Tool…** (`agtermApp` `CommandGroup(replacing: .help)` → `CLIInstaller.run()`)
+  on the Debug `rook.debug.dylib`).
+  **Help ▸ Install Command Line Tool…** (`rookApp` `CommandGroup(replacing: .help)` → `CLIInstaller.run()`)
   symlinks the bundled binary into `/usr/local/bin` (first entry in macOS's default `/etc/paths`,
   unlike `~/.local/bin`): a direct `FileManager` symlink when the dir is user-writable,
   else a one-time GUI admin prompt via `osascript … with administrator privileges`.
-  Pure path/quote logic is `agtermCore.CLIInstall` (host-free, unit-tested);
+  Pure path/quote logic is `rookCore.CLIInstall` (host-free, unit-tested);
   the AppKit FS + auth glue is `CLIInstaller` (app-side, manually verified like the directory picker).
   Install is GUI-only and keep-in-sync EXEMPT — driving it over the socket is meaningless (you'd need
-  `agtermctl` already installed to call it).
+  `rookctl` already installed to call it).
 - **Agent-status hooks install.**
   A second Help entry, **Help ▸ Install Agent Status Hooks…** (`AgentHooksInstaller.run()`),
   wires coding agents to `session.status`.
-  The hooks scripts bundle at `agterm/Resources/agent-status/` (`agterm-agent-status.sh` wrapper + `shell/integration.sh`
+  The hooks scripts bundle at `rook/Resources/agent-status/` (`rook-agent-status.sh` wrapper + `shell/integration.sh`
   + `shell/integration.fish`, a `project.yml` Contents/Resources folder mirroring `Resources/ghostty`).
-  The installer copies them to `~/.config/agterm/agent-status/`, bakes the bundled `agtermctl`'s absolute
+  The installer copies them to `~/.config/rook/agent-status/`, bakes the bundled `rookctl`'s absolute
   path (`Bundle.main.url(forAuxiliaryExecutable:)`) into the wrapper so the hooks fire even without the
   CLI on PATH, appends a marker-guarded `source` line to `~/.zshrc` + `~/.bashrc`,
   merges four Claude Code hooks into `~/.claude/settings.json` with a `.bak` (UserPromptSubmit→`active --blink`,
@@ -117,7 +117,7 @@ paths:
   turn's final message and misfired both ways (issue #193; the merge also strips the old
   `notify = [...codex-notify.sh...]` line).
   The Codex merge PARSES the config with `TOMLDecoder` (a pure-Swift, spec-compliant parser — the one
-  dependency `agtermCore` links besides swift-argument-parser) to decide the outcome
+  dependency `rookCore` links besides swift-argument-parser) to decide the outcome
   (`AgentHooksInstall.CodexMergeOutcome`): marker present → `.unchanged`; the file already defines its own
   `hooks` → `.hooksExist`; the file isn't valid TOML → `.unparseable`; else → `.merged`, a marker-guarded
   append (the same `rcMarkerBegin`/`End` markers as the shell rc files, so comments/layout survive) plus
@@ -130,22 +130,22 @@ paths:
   instead of clobbering it with no backup.
   Codex requires new command hooks to be reviewed (`/hooks`) before they run.
   Idempotent + re-runnable (re-run refreshes the baked path).
-  Like the CLI installer, the host-free JSON/TOML-merge / shell-rc-marker / backup-path logic is `agtermCore.AgentHooksInstall`
+  Like the CLI installer, the host-free JSON/TOML-merge / shell-rc-marker / backup-path logic is `rookCore.AgentHooksInstall`
   (unit-tested); `AgentHooksInstaller` (app-side) owns the AppKit FS glue,
   manually verified.
 - **Agent skill install (Claude Code + Codex).**
   A third Help entry, **Help ▸ Install Agent Skill…** (`SkillInstaller.run()`),
-  copies a bundled, personal-scope Agent Skill to `~/.claude/skills/agterm/` AND `~/.codex/skills/agterm/`
-  so a coding agent running INSIDE an agterm session knows how to drive the app over the control channel.
+  copies a bundled, personal-scope Agent Skill to `~/.claude/skills/rook/` AND `~/.codex/skills/rook/`
+  so a coding agent running INSIDE an rook session knows how to drive the app over the control channel.
   Claude Code and Codex use the SAME SKILL.md Agent-Skill format (`name`/`description`/`allowed-tools`
   frontmatter + optional reference files; verified against the user's `~/.codex/skills/`),
   so one authored skill serves both.
-  The skill is a REFERENCE/knowledge skill (both user-invocable via `/agterm` and model-triggered,
-  `allowed-tools: Bash(agtermctl *)`; the agent-neutral `description` carries the trigger nouns since
+  The skill is a REFERENCE/knowledge skill (both user-invocable via `/rook` and model-triggered,
+  `allowed-tools: Bash(rookctl *)`; the agent-neutral `description` carries the trigger nouns since
   Codex may ignore the extra `when_to_use` field — unknown frontmatter is harmless),
-  authored at `agterm/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 62-command
+  authored at `rook/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 62-command
   summary + the image-display helper + a troubleshooting/reporting pointer;
-  `reference.md` full per-command detail + keymap format; `examples.md` agtermctl recipes;
+  `reference.md` full per-command detail + keymap format; `examples.md` rookctl recipes;
   `troubleshooting.md` diagnosing the common problems (keymap editor, custom actions,
   logs) + the bug-issue / feature-Discussion reporting workflow (draft-first,
   scrub, never run `gh` without explicit user approval); `scripts/show-image.sh` the bundled image-display
@@ -162,32 +162,32 @@ paths:
   The agent CANNOT print graphics escapes to its own tool stdout — the harness escapes the control bytes
   — nor run a viewer in its tool shell — no `/dev/tty`; the overlay sidesteps both,
   so the method is agent-harness-agnostic and works identically for Codex.) It is invoked by absolute
-  install path (`~/.claude/skills/agterm/scripts/show-image.sh` or `~/.codex/...`),
+  install path (`~/.claude/skills/rook/scripts/show-image.sh` or `~/.codex/...`),
   NOT `${CLAUDE_SKILL_DIR}` — that token is Claude-Code-only and would not expand in the Codex copy of
   the SAME authored `SKILL.md`.
   **Install policy:** write to each agent base that EXISTS (`~/.claude` and/or `~/.codex`);
   if neither, fall back to creating `~/.claude` (`SkillInstall.installTargets`).
   Pure file-drop (no manifest): per-target remove-then-copy for a clean reinstall,
   best-effort per agent (one failing doesn't abort the other), but it REFUSES to clobber a same-named
-  skill the user authored (one whose `SKILL.md` lacks the `<!-- agterm-skill -->` marker — `SkillInstall.mayOverwrite`).
-  Host-free path/target/marker logic is `agtermCore.SkillInstall` (unit-tested);
+  skill the user authored (one whose `SKILL.md` lacks the `<!-- rook-skill -->` marker — `SkillInstall.mayOverwrite`).
+  Host-free path/target/marker logic is `rookCore.SkillInstall` (unit-tested);
   `SkillInstaller` (app-side) owns the AppKit copy, manually verified.
   Install is GUI-only and keep-in-sync EXEMPT (a skill that documents the socket isn't itself driven
   over it).
   **KEEP-IN-SYNC (HARD): the bundled skill is a documentation mirror of the control surface — whenever
   you change the Control API (commands/args/returns), the keymap format,
-  or the window/workspace/session/pane model, update `agterm/Resources/agent-skill/` (SKILL.md + reference.md
+  or the window/workspace/session/pane model, update `rook/Resources/agent-skill/` (SKILL.md + reference.md
   + examples.md + `troubleshooting.md` + `scripts/`, incl. the command count) so the installed agent-driver
   doc stays accurate.
   It is the fourth keep-in-sync surface alongside the GUI/menu/CLI.
   The skill's `troubleshooting.md` mirrors the user-facing `docs/troubleshooting.md`;
   keep the two in step when a diagnostic path or the reporting workflow changes.**
 - **Socket path / lifecycle.**
-  The path is `<AGTERM_STATE_DIR>/agterm.sock` when `AGTERM_STATE_DIR` is set (state isolation),
-  else `<app support>/agterm.sock` (`~/Library/Application Support/agterm`),
+  The path is `<ROOK_STATE_DIR>/rook.sock` when `ROOK_STATE_DIR` is set (state isolation),
+  else `<app support>/rook.sock` (`~/Library/Application Support/rook`),
   via `ControlResolve.socketPath`.
-  `ControlServer.defaultSocketPath()` adds an `AGTERM_CONTROL_SOCKET` env override that takes precedence
-  (used by XCUITests, whose sandboxed `AGTERM_STATE_DIR` container path exceeds the `sun_path` ~104-byte
+  `ControlServer.defaultSocketPath()` adds an `ROOK_CONTROL_SOCKET` env override that takes precedence
+  (used by XCUITests, whose sandboxed `ROOK_STATE_DIR` container path exceeds the `sun_path` ~104-byte
   limit); the CLI's `--socket` flag is the user-facing equivalent.
   The socket is `chmod 0600`.
   Each accepted connection sets `SO_RCVTIMEO` (5 s, alongside `SO_NOSIGPIPE`) so a stalled client can't
@@ -204,7 +204,7 @@ paths:
   `tree` returns `result.tree`.
   An unknown `cmd` fails to decode and comes back as a structured error,
   never a crash; a 1 MiB max-line cap bounds the read buffer.
-  In `agtermctl`'s human (non-`--json`) output, `result.id` is echoed ONLY for the create commands (`session/workspace/window new`,
+  In `rookctl`'s human (non-`--json`) output, `result.id` is echoed ONLY for the create commands (`session/workspace/window new`,
   via `RequestCommand.echoesResultID`) where the new id isn't known yet;
   every other mutation prints `ok` (the id you already named is noise).
   The id is always present under `--json`.
@@ -239,11 +239,11 @@ paths:
   One extra `Command` case is deliberately NOT part of the catalog: `debug.appearance` (`light`|`dark`
   via `args.name`) is a UI-TEST-ONLY seam that sets `NSApp.appearance` so an XCUITest can simulate a
   macOS light/dark flip (macOS XCUITest has no API for it); the arm ALSO posts
-  `.agtermSystemAppearanceChanged` directly so the flip pipeline runs deterministically without depending
+  `.rookSystemAppearanceChanged` directly so the flip pipeline runs deterministically without depending
   on whether KVO fires on an explicit `NSApp.appearance` set (production follows the appearance via an
   app-level KVO observer on `NSApplication.effectiveAppearance` — see the theme-picker/libghostty rules).
   The `ControlServer` arm refuses it outside an XCUITest launch (`ContentView.isUITestLaunch`), it gets
-  NO `agtermctl` subcommand, and it stays out of the agent skill — a documented keep-in-sync EXEMPTION
+  NO `rookctl` subcommand, and it stays out of the agent skill — a documented keep-in-sync EXEMPTION
   (test scaffolding, not a control surface).
   Setting echoes the resulting effective side in `result.text`; the BARE form (no name) reads the side
   the last config feed applied (`SettingsModel.lastAppliedIsDark`), which the test polls to prove the
@@ -266,7 +266,7 @@ paths:
   HARD close (no grace window), consistent with the one-element `session.move` routing.
   During the grace window, reopening any member restores the whole group but selects the specific Recent
   item the user chose, matching workspace close grouping without losing selection intent. Keep-in-sync: `ControlArgs.targets`, the
-  `.sessionClose` dispatcher batch arm, `ControlActions.closeSessions`, `agtermctl session close --target`
+  `.sessionClose` dispatcher batch arm, `ControlActions.closeSessions`, `rookctl session close --target`
   repeat support, round-trip/dispatcher/CLI tests, and `ControlAPIUITests.testSessionCloseMultipleTargets`.
   `session.move` is MODE-BEARING with THREE exclusive placement intents:
   `args.to` (`up`|`down`|`top`|`bottom`) REORDERS the session within its own workspace (parses `ReorderDirection`,
@@ -301,7 +301,7 @@ paths:
   `resolveRelative`), the `session move --after/--before` CLI, and round-trip / dispatcher / e2e
   (`testSessionMovePlaceWithinWorkspace`, `testSessionMovePlaceCrossWorkspace`, the reject-* guards) tests.
   Batch keep-in-sync additionally includes `ControlArgs.targets`, `ControlActions.moveSessions`,
-  `agtermctl session move --target` repeat support, and `ControlAPIUITests.testSessionMoveMultipleTargetsWithinWorkspaceBeforeAnchor`.
+  `rookctl session move --target` repeat support, and `ControlAPIUITests.testSessionMoveMultipleTargetsWithinWorkspaceBeforeAnchor`.
   Keep-in-sync exemptions for sidebar batch actions: Flag/Unflag is loop-equivalent to repeated
   `session.flag on|off --target <id>` (the plural store API only saves once).
   The GUI's multi-select toggle is NOT a `toggle` loop: `AppActions.toggleFlags` computes ONE uniform
@@ -319,7 +319,7 @@ paths:
   mirroring `session.go --to`.
   Four-point keep-in-sync audit for `workspace.move`: (1) `case workspaceMove = "workspace.move"` in
   `ControlProtocol.swift` (reuses `ControlArgs.to`, no new field), (2) the `.workspaceMove` dispatch
-  arm in `ControlServer`, (3) the `workspace move --to` subcommand in `agtermctlKit`,
+  arm in `ControlServer`, (3) the `workspace move --to` subcommand in `rookctlKit`,
   (4) round-trip tests in `ControlProtocolTests` plus the e2e in `ControlAPIUITests`.
   NOTE on `workspace.move --target active`: `active` for a workspace resolves to `AppStore.currentWorkspaceID`,
   which with NO selected session falls back to `workspaces.last` — so repeated `workspace.move --to top --target active`
@@ -349,7 +349,7 @@ paths:
   Four-point keep-in-sync audit: (1) `case sessionScratch = "session.scratch"` + the new `ControlSessionNode.scratch`
   flag in `ControlProtocol.swift` (reuses `ControlArgs.mode`), (2) the `.sessionScratch` dispatch arm
   (`scratchSession`) in `ControlServer` + `scratch:` in the tree builder,
-  (3) the `session scratch` subcommand in `agtermctlKit`, (4) round-trip in `ControlProtocolTests` +
+  (3) the `session scratch` subcommand in `rookctlKit`, (4) round-trip in `ControlProtocolTests` +
   the e2e `testSessionScratchToggle` in `ControlOverlaySplitUITests`.
   `session.focus` moves keyboard focus between the two split panes — `args.pane` is `left`|`right`|`other`
   (`other` toggles, the default); it errors when the session has no split (works whether the split is
@@ -359,14 +359,14 @@ paths:
   Its READ side is `ControlSessionNode.splitFocused` (`true`=split/right, `false`=main/left, nil=no split;
   see the `tree` read-side fields below), so a script can record the focused pane and restore it.
   `session.resize` moves the split DIVIDER — it is control-NATIVE (the divider is otherwise mouse-drag
-  only; NO GUI/menu/keymap action, so a key is bound by mapping a `command "agtermctl session resize …"`
+  only; NO GUI/menu/keymap action, so a key is bound by mapping a `command "rookctl session resize …"`
   custom action).
   `args.ratio` sets the absolute left-pane fraction; `args.ratioDelta` is a signed relative nudge (the
   CLI's `--grow-left`/`--grow-right` map to ±`ratioDelta`, applied to the current fraction,
   `AppStore.splitRatioDefault` = 0.5 when never moved); exactly one must be set (neither/both error).
   It errors when the session has no split (mirroring `session.focus`), clamps + persists via the host-free
   `AppStore.applySplitRatio` (→ `AppStore.clampSplitRatio`, `splitRatioMin...splitRatioMax`),
-  then posts the object-scoped `.agtermApplySplitRatio` (object = the `Session`) so the matching `SplitProbeView`
+  then posts the object-scoped `.rookApplySplitRatio` (object = the `Session`) so the matching `SplitProbeView`
   (`SplitRatioAccessor.swift`) moves the LIVE divider via `setPosition` — a no-op when the split is hidden (no live
   `NSSplitView`; the stored fraction applies on next show).
   It echoes the applied (clamped) fraction in the new `ControlResult.ratio` (the CLI prints it as a bare
@@ -375,7 +375,7 @@ paths:
   `ControlArgs.ratio`/`ratioDelta` + `ControlResult.ratio` in `ControlProtocol.swift`,
   (2) the `.sessionResize` dispatch arm (`resizeSplit`) in `ControlServer` (+ the `SplitProbeView` re-apply
   observer in `SplitRatioAccessor`), (3) the `session resize --split-ratio|--grow-left|--grow-right` subcommand
-  (`Resize`, `validate()`-guarded exactly-one) in `agtermctlKit` + the `result.ratio` format arm in `SocketClient`,
+  (`Resize`, `validate()`-guarded exactly-one) in `rookctlKit` + the `result.ratio` format arm in `SocketClient`,
   (4) round-trip in `ControlProtocolTests` + `AppStoreTests` (clamp/apply) + `CommandsTests` (validate/mapping)
   + `SocketClientTests` (format) + the e2e `testSessionResizeSplitDivider` in `ControlOverlaySplitUITests`.
   `session.go` navigates BETWEEN sessions — `args.to` is `next`|`prev`|`first`|`last`|`next-attention`|`prev-attention`
@@ -412,7 +412,7 @@ paths:
   `"session.new takes --after/--before or a workspace, not both"`, dispatcher-owned + CLI-pre-validated).
   The app-side `createSession` resolves the anchor, takes its `(workspace, index)`, and inserts via
   `AppStore.addSession(…, at: before ? index : index + 1)` (the new optional `at index:`, clamped).
-  `agtermctl session new --after active` = create right after the current session in one round-trip.
+  `rookctl session new --after active` = create right after the current session in one round-trip.
   `args.command` runs that command AS the session's process instead of the login shell (like kitty's
   `launch <cmd>` / ghostty's `command`) — NO echoed command line, and the session closes when the command
   exits (the normal single-pane `onExit` → `closePrimaryPane`).
@@ -461,7 +461,7 @@ paths:
   Four-point keep-in-sync audit for `session.type --pane`: (1) reuses `ControlArgs.pane` in
   `ControlProtocol.swift` (no new field), (2) the pane switch in `injectText`
   (`ControlServer+SurfaceIO.swift`), (3) the `session type --pane left|right|scratch` option
-  (`validate()`-guarded) in `agtermctlKit`, (4) round-trip in `ControlProtocolTests` + CLI mapping in
+  (`validate()`-guarded) in `rookctlKit`, (4) round-trip in `ControlProtocolTests` + CLI mapping in
   `CommandsTests` + the e2e (`testSessionTypePaneRightReachesSplitPane`,
   `testSessionTypePaneRightWithoutSplitErrors`, `testSessionTypeRejectsInvalidPaneServerSide`) in
   `SessionTypePaneUITests` (a `ControlAPITestCase` subclass like `SessionTextUITests`).
@@ -483,7 +483,7 @@ paths:
   (resolve session → guard the surface is realized, `session not realized` otherwise → `performBindingAction`
   → return the id), so paste takes the normal libghostty paste path (bracketed paste, PASTE requests are
   ungated so no OSC-52 prompt) and select_all covers the whole grid.
-  They are the control half of the GUI Edit menu: agterm keeps the STANDARD SwiftUI Edit menu and
+  They are the control half of the GUI Edit menu: rook keeps the STANDARD SwiftUI Edit menu and
   implements `copy:`/`paste:`/`selectAll:` + `validateMenuItem:` on `GhosttySurfaceView` (`+Input.swift`,
   conforming to `NSMenuItemValidation`) so AppKit's automatic menu enabling routes Copy/Paste/Select All
   to the terminal when it holds first responder — Copy enabled on `ghostty_surface_has_selection`, Paste
@@ -494,8 +494,8 @@ paths:
   **Cut cannot be dropped on its own** — SwiftUI puts Cut/Copy/Paste/Delete/Select All in ONE `.pasteboard`
   `CommandGroup`, and replacing that group is what would take ⌘C/⌘V/⌘A away from the rename/palette/Settings
   fields.
-  **Undo/Redo ARE dropped** (`CommandGroup(replacing: .undoRedo) {}` in `agtermApp+Menus.swift`): they are
-  their own group, agterm registers no `NSUndoManager`, and their advertised ⌘Z is already owned by File ▸
+  **Undo/Redo ARE dropped** (`CommandGroup(replacing: .undoRedo) {}` in `rookApp+Menus.swift`): they are
+  their own group, rook registers no `NSUndoManager`, and their advertised ⌘Z is already owned by File ▸
   Reopen Closed Item (`BuiltinAction.undoClose`), whose menu precedes Edit and wins the key-equivalent search —
   so Edit ▸ Undo could only ever be CLICKED, never invoked by its own shortcut.
   AppKit did enable it for the sidebar's inline rename field (whose field editor supplies an undo manager),
@@ -554,7 +554,7 @@ paths:
   in `ControlProtocol.swift` (no new args/fields), (2) the `.sessionPaste`/`.sessionSelectAll` arms in
   `ControlDispatcher.dispatchSessionSurfaceCommand` → `ControlActions.pasteSession`/`selectAllSession`
   (app-side `ControlServer+SurfaceIO`), (3) the `session paste` / `session select-all` subcommands in
-  `agtermctlKit`, (4) round-trip in `ControlProtocolTests` + dispatcher routing in `ControlDispatcherTests`
+  `rookctlKit`, (4) round-trip in `ControlProtocolTests` + dispatcher routing in `ControlDispatcherTests`
   + CLI mapping in `CommandsTests` + the e2e `testSessionSelectAllThenCopyReturnsBuffer` /
   `testSessionPasteInsertsClipboardText` in `ControlAPIUITests`.
   `session.text` reads the target surface's screen buffer as PLAIN TEXT (no ANSI) via `GhosttySurfaceView.readScreenText(all:lines:)`
@@ -581,7 +581,7 @@ paths:
   Four-point keep-in-sync audit for `session.text`: (1) `case sessionText = "session.text"` + new `ControlArgs.all: Bool?`/`lines: Int?`
   (reuses `pane` + `ControlResult.text`) in `ControlProtocol.swift`, (2) the `.sessionText` dispatcher arm —
   `ControlDispatcher.dispatchSessionText` (validation + response shape) with the app-side `readSessionText` (the surface read) behind `ControlActions`,
-  (3) the `session text [--all] [--lines N] [--pane left|right|scratch]` subcommand in `agtermctlKit`
+  (3) the `session text [--all] [--lines N] [--pane left|right|scratch]` subcommand in `rookctlKit`
   (`validate()` guards the flag combos, re-enforced SERVER-SIDE in the dispatcher), (4) round-trip tests in
   `ControlProtocolTests` + the e2e (`testSessionTextReturnsBuffer`, `testSessionTextSplitPaneWithoutSplitErrors`,
   `testSessionTextRejectsInvalidArgsServerSide`, `testSessionTextBlankScreenReturnsOkEmpty`) in `SessionTextUITests`
@@ -603,7 +603,7 @@ paths:
   Four-point keep-in-sync audit for `session.search`: (1) `case sessionSearch = "session.search"` in
   `ControlProtocol.swift` (reuses `ControlArgs.text` = needle + `ControlArgs.to` = next|prev|close,
   and `ControlResult.count` + `text` — no new field), (2) the `.sessionSearch` dispatch arm (`searchSession`)
-  in `ControlServer`, (3) the `session search [needle] --next|--prev|--close` subcommand in `agtermctlKit`
+  in `ControlServer`, (3) the `session search [needle] --next|--prev|--close` subcommand in `rookctlKit`
   (`validate()` rejects flag combos), (4) round-trip tests in `ControlProtocolTests` + the e2e `testSessionSearch`
   in `ControlAPIUITests`.
   `session.overlay.open`/`session.overlay.close` run an ephemeral terminal on top of a session executing
@@ -672,7 +672,7 @@ paths:
   completes without changing the active session.
   `follow` is a new optional ARG on the existing `overlay.open` command (NO new `Command` case): threaded
   `ControlProtocol` (`ControlArgs.follow`) → `ControlDispatcher` `.sessionOverlayOpen`
-  (`ControlSessionOverlayOpenOptions.follow`) → `ControlServer` → the `agtermctl … --follow` flag,
+  (`ControlSessionOverlayOpenOptions.follow`) → `ControlServer` → the `rookctl … --follow` flag,
   omitted = false for back-compat.
   On close an `.onChange(of: session.overlayActive)` drives `focusAfterReparent()` on the session's `activeSurface`
   so first responder returns to the underlying terminal — the pane re-activating only does a single `makeFirstResponder`,
@@ -688,9 +688,9 @@ paths:
   `handleProcessExit` is idempotent (both the action and `close_surface_cb` can fire).
   Both variants mount in the eager deck, so the caller does NOT need to select the target; `--follow`
   selects it only when the user should be pulled to the overlay.
-  **Exit-status capture (`session.overlay.result` + `agtermctl … --block`).** `makeOverlaySurface` wraps
-  the command in a FIXED `sh -c '( eval "$AGTERM_OVL_CMD" ); echo $? > "$AGTERM_OVL_CODE"'` — the real
-  command + a per-surface temp path ride in env (`AGTERM_OVL_CMD`/`AGTERM_OVL_CODE`,
+  **Exit-status capture (`session.overlay.result` + `rookctl … --block`).** `makeOverlaySurface` wraps
+  the command in a FIXED `sh -c '( eval "$ROOK_OVL_CMD" ); echo $? > "$ROOK_OVL_CODE"'` — the real
+  command + a per-surface temp path ride in env (`ROOK_OVL_CMD`/`ROOK_OVL_CODE`,
   never interpolated), and crucially there is **NO stdout/stderr redirect** so a TUI renders normally;
   only the exit status is captured.
   (libghostty's `GHOSTTY_ACTION_SHOW_CHILD_EXITED.exit_code` reflects the login-shell wrapper — always
@@ -703,7 +703,7 @@ paths:
   `onExit` itself just drives `closeOverlay`.
   `session.overlay.result` (target = session) returns `result.exitCode` once the overlay has closed (`OverlayResultError.stillRunning`
   while up, `noResult` if none ran — both shared constants so the CLI poll matches exactly).
-  `agtermctl session overlay open <command> … --block` wraps open → poll `session.overlay.result` (retry
+  `rookctl session overlay open <command> … --block` wraps open → poll `session.overlay.result` (retry
   while still running; targets the returned id with NO window scope, so a frontmost-window change can't
   desync the poll) → exit with the captured status into ONE blocking command (rejects `--block` + `--wait`
   at parse via `validate()`); the program's OUTPUT is its own concern — a TUI like revdiff renders in
@@ -727,7 +727,7 @@ paths:
   + `ControlArgs.full` in `ControlProtocol.swift`, (2) the `.sessionOverlayResize` dispatcher arm (exactly-one
   + range validation) → the app-side `resizeSessionOverlay` (→ `AppStore.resizeOverlay`) behind `ControlActions`,
   (3) the `session overlay resize --size-percent|--full` subcommand (`Resize`, `validate()`-guarded) in
-  `agtermctlKit`, (4) round-trip in `ControlProtocolTests` + dispatcher routing/validation in `ControlDispatcherTests`
+  `rookctlKit`, (4) round-trip in `ControlProtocolTests` + dispatcher routing/validation in `ControlDispatcherTests`
   + `AppStorePaneTests` (resize clamp/switch/no-overlay) + CLI mapping in `CommandsTests` + the e2e
   `testOverlayResizeSwitchesFloatingAndFull` in `ControlOverlaySplitUITests`.
   The READ side is `ControlSessionNode.overlaySizePercent` on each `tree` node (see the `tree` read-side
@@ -743,7 +743,7 @@ paths:
   precedence from `TerminalZoomSurface.isActive`); an explicit `surface:<session-id>:<left|right|scratch|overlay>`
   id (from `tree`'s `surfaces` nodes) zooms that surface — hidden-but-alive splits/scratches included — and
   `quick` addresses a quick-terminal zoom (the API accepts the id it emits).
-  State lives in the per-window, host-free `TerminalZoomController` (`agtermCore/TerminalZoom.swift`,
+  State lives in the per-window, host-free `TerminalZoomController` (`rookCore/TerminalZoom.swift`,
   registered in `TerminalZoomRegistry`); the app-side arm (`setSurfaceZoom`/`setActiveSurfaceZoom`) only
   resolves the target and shapes the response — ALL mode-vs-state semantics stay in `TerminalZoomController.set`,
   shared with the GUI toggle, so the three callers can't drift.
@@ -771,7 +771,7 @@ paths:
   that pane is visually on screen — documented as a caveat on the node type and in the skill.
   Four-point keep-in-sync audit: (1) `case surfaceZoom = "surface.zoom"` + `ControlSurfaceNode`/`ControlSessionNode.surfaces`
   + `ControlTree.zoomedSurface` in `ControlProtocol.swift`, (2) the `.surfaceZoom` arm (`setSurfaceZoom`) in `ControlServer+SessionActions.swift`
-  + the `surfaces`/`zoomedSurface` population in `AppStore.controlTree`/`buildTree`, (3) the `surface zoom` subcommand in `agtermctlKit`,
+  + the `surfaces`/`zoomedSurface` population in `AppStore.controlTree`/`buildTree`, (3) the `surface zoom` subcommand in `rookctlKit`,
   (4) round-trip in `ControlProtocolTests` (incl. `treeRoundTripsWithZoomedSurface`/`…OmitsZoomedSurfaceWhenNil`)
   + `TerminalZoomTests` + the e2e `ControlSurfaceZoomUITests` (incl. the tree read-back and the
   `--window`-scoped error paths).
@@ -836,16 +836,16 @@ paths:
   Setting a non-idle status is control-driven (the hooks/agents call it;
   no GUI sets active/completed/blocked), but clearing to idle ALSO has a GUI — the **Clear Status** action
   (see the Agent-status glyph note) — so the idle case is keep-in-sync covered by `session.status idle`.
-  Cross-window via the shared `resolveSession` (the install's Stop hook targets its own `$AGTERM_SESSION_ID`,
+  Cross-window via the shared `resolveSession` (the install's Stop hook targets its own `$ROOK_SESSION_ID`,
   which may live in a non-frontmost window).
   The arm (`setSessionStatus`) builds an `AgentIndicator{status, blink, autoReset, color}` (host-free,
   ephemeral — never in `SessionSnapshot`) and drives the single `AppStore.setAgentIndicator(_:forSession:)`
   mutation point (unknown id = clean no-op), returning the id.
   Four-point keep-in-sync audit for `session.status --color`: (1) `ControlArgs.color` (reused) +
-  `AgentIndicator.color` + `ControlSessionStatusUpdate.color` in `agtermCore`, the dispatcher hex-validation,
+  `AgentIndicator.color` + `ControlSessionStatusUpdate.color` in `rookCore`, the dispatcher hex-validation,
   (2) the `.sessionStatus` arm threading `update.color` into the indicator + the two render sites via
   `GhosttyApp.statusColor(for:override:)`, (3) the `session status --color` option (`validate()`-guarded)
-  in `agtermctlKit`, (4) round-trip in `ControlProtocolTests` + dispatcher validation in `ControlDispatcherTests`
+  in `rookctlKit`, (4) round-trip in `ControlProtocolTests` + dispatcher validation in `ControlDispatcherTests`
   + `AgentStatusTests` (indicator color + Equatable) + CLI mapping in `CommandsTests` + the e2e
   `testSessionStatusColorValidatesHex` in `ControlSidebarStatusUITests` (asserts the command path — the
   glyph TINT itself is not accessibility-observable).
@@ -873,11 +873,11 @@ paths:
   the FULL status (state + pane + blink + color) and restore it.
   Four-point keep-in-sync audit for `session.status --pane`: (1) the `StatusPane` enum + `AgentIndicator.statusPane`
   + `AgentIndicator.clearedBy(pane:isInterrupt:)` + `ControlSessionStatusUpdate.pane` + `ControlSessionNode.statusPane`
-  + `SurfaceEnvironment.session(pane:)` (injects `AGTERM_PANE`) in `agtermCore`, plus the dispatcher `StatusPane`
+  + `SurfaceEnvironment.session(pane:)` (injects `ROOK_PANE`) in `rookCore`, plus the dispatcher `StatusPane`
   parse/validation, (2) the `.sessionStatus` arm threading `update.pane` into the indicator + the per-factory
-  `AGTERM_PANE` env + the pane-scoped keystroke-clear closures + the `revealActiveBlockedPane` nav step,
+  `ROOK_PANE` env + the pane-scoped keystroke-clear closures + the `revealActiveBlockedPane` nav step,
   (3) the `session status --pane` option (`validatePaneArgument`-guarded) + the hook wrapper forwarding
-  `$AGTERM_PANE` as `--pane`, (4) round-trip in `ControlProtocolTests` + dispatcher validation in `ControlDispatcherTests`
+  `$ROOK_PANE` as `--pane`, (4) round-trip in `ControlProtocolTests` + dispatcher validation in `ControlDispatcherTests`
   + `AgentStatusTests` (the `clearedBy` truth table) + `SurfaceEnvironmentTests` + `AgentStatusWrapperTests`
   + CLI mapping in `CommandsTests` + the e2e in `PaneAwareStatusUITests`.
   It is control-native for the tag itself (no GUI sets a pane), the same keep-in-sync footing as `--color`/`--sound`.
@@ -888,18 +888,18 @@ paths:
   The glyph is NOT gated by selection — it shows on every non-idle session,
   the selected one included (see below).
   `keymap.reload` re-reads `keymap.conf` and returns the parse-diagnostic count in `result.count` (0
-  reads as a clean reload; `agtermctl keymap reload` prints `ok` then, else `N diagnostic(s)`).
+  reads as a clean reload; `rookctl keymap reload` prints `ok` then, else `N diagnostic(s)`).
   It is the SAME `SettingsModel.reloadKeymap()` path the GUI's File ▸ Reload Keymap menu/palette item
   drives, so the GUI half and the control half can't diverge — control-native only in the count it reports
   back; no `--window` selector (the keymap is app-global — a single app-wide `SettingsModel`,
-  constructed once in `agtermApp.init` and shared with `ControlServer`).
+  constructed once in `rookApp.init` and shared with `ControlServer`).
   Four-point keep-in-sync audit for `keymap.reload`: (1) `case keymapReload = "keymap.reload"` in `ControlProtocol.swift`
   (returns the new `ControlResult.count: Int?`, no target/args), (2) the `.keymapReload` dispatch arm
-  in `ControlServer`, (3) the `keymap reload` subcommand in `agtermctlKit`,
+  in `ControlServer`, (3) the `keymap reload` subcommand in `rookctlKit`,
   (4) round-trip tests in `ControlProtocolTests` plus the e2e in `ControlAPIUITests`.
   See the Keymap section for the parser/menu/monitor design.
-  `config.reload` re-reads the agterm-scoped `ghostty.conf` and returns the ghostty config-diagnostic
-  count in `result.count` (0 reads as a clean reload; `agtermctl config reload` prints `ok` then,
+  `config.reload` re-reads the rook-scoped `ghostty.conf` and returns the ghostty config-diagnostic
+  count in `result.count` (0 reads as a clean reload; `rookctl config reload` prints `ok` then,
   else `N diagnostic(s)`).
   It is the SAME `AppActions.reloadGhosttyConfig()` path the GUI's File ▸ Reload Config menu/palette
   item + the Edit-ghostty overlay close drive (which posts the warning banner on a malformed file),
@@ -909,7 +909,7 @@ paths:
   The arm calls `actions.reloadGhosttyConfig()` then returns `GhosttyApp.shared.lastConfigDiagnosticsCount`.
   Four-point keep-in-sync audit for `config.reload`: (1) `case configReload = "config.reload"` in `ControlProtocol.swift`
   (reuses `ControlResult.count`, no target/args), (2) the `.configReload` dispatch arm (`reloadGhosttyConfig`)
-  in `ControlServer`, (3) the `config reload` subcommand in `agtermctlKit`,
+  in `ControlServer`, (3) the `config reload` subcommand in `rookctlKit`,
   (4) round-trip tests in `ControlProtocolTests` plus the e2e in `ControlAPIUITests`.
   See the Settings section for the config layer + Edit/Reload.
   `sidebar` (mode `show`|`hide`|`toggle`, default toggle, frontmost window — mirrors `quick`,
@@ -924,12 +924,12 @@ paths:
   expressible so pure-`defaultChord`-driven).
   Four-point keep-in-sync audit: (1) `case sidebar` in `ControlProtocol.swift` (reuses `ControlArgs.mode`),
   (2) the `.sidebar` dispatch arm (`setSidebar`) in `ControlServer`, (3) the `sidebar` subcommand in
-  `agtermctlKit`, (4) round-trip in `ControlProtocolTests` + the e2e `testSidebarShowHideToggle` (sidebar
+  `rookctlKit`, (4) round-trip in `ControlProtocolTests` + the e2e `testSidebarShowHideToggle` (sidebar
   hide removes the `session-row`s from the AX tree) in `ControlSidebarStatusUITests`.
   `theme.set` sets + persists a theme (see the Theme picker section) PER SLOT, mirroring the two Settings pickers over the shared `SettingsModel.setLightTheme`/`setDarkTheme`/`setSystemThemes`.
   `args.name` (alias `args.light`; both together is an error) sets the light/single `theme` slot,
   KEEPING the `darkTheme` slot if one is set (they are separate fields, no recompose);
-  nil/empty = ghostty's built-in / "default ghostty" (NOT the seeded `agterm` app default),
+  nil/empty = ghostty's built-in / "default ghostty" (NOT the seeded `rook` app default),
   and a bare `theme set` clears BOTH slots + turns syncing off.
   `args.dark` sets the `darkTheme` slot alone and turns appearance syncing ON (`followSystemAppearance`,
   the light side seeds from the current theme, else `Builtin Light`);
@@ -939,15 +939,15 @@ paths:
   doing nothing is worse than a fail); the response always echoes the full post-change state
   (`result.theme`/`sync`/`light`/`dark`).
   `theme.list` returns `result.themes` = the bundled names + `result.theme` = the plain current one (nil =
-  ghostty built-in; absent on a fresh install means the seeded `agterm` is current) + `result.sync`/`light`/`dark`;
+  ghostty built-in; absent on a fresh install means the seeded `rook` is current) + `result.sync`/`light`/`dark`;
   while syncing `result.theme` is ABSENT — the state rides the three sync fields.
-  `agtermctl theme list` prints one name per line with a leading "default ghostty" row,
+  `rookctl theme list` prints one name per line with a leading "default ghostty" row,
   the active marked `* ` (both sides + a header while syncing), and `theme.set` prints `ok` (non-create mutation).
   App-global like `keymap.reload` (one `SettingsModel`), so NO `--window` selector.
   Four-point keep-in-sync audit: (1) `case themeSet = "theme.set"` + `case themeList = "theme.list"`
   in `ControlProtocol.swift` (reuse `ControlArgs.name`; add `ControlResult.theme`/`themes`),
   (2) the `.themeSet` (`setTheme`, with name validation) + `.themeList` dispatch arms in `ControlServer`,
-  (3) the `theme set [name] [--light] [--dark]` / `theme list` subcommands in `agtermctlKit` (+ `SocketClient.formatThemes`),
+  (3) the `theme set [name] [--light] [--dark]` / `theme list` subcommands in `rookctlKit` (+ `SocketClient.formatThemes`),
   (4) round-trip in `ControlProtocolTests` + the e2e `testThemeListAndSet` in `ControlAPIUITests` and `testThemeSyncWithSystemAppearance` in `ControlAPIThemeUITests`.
   See the Theme picker section for the GUI/preview half.
   `session.flag` (target = session) flags/unflags a session for the flagged working-set view — `args.mode`
@@ -962,7 +962,7 @@ paths:
   Four-point keep-in-sync audit for `session.flag`: (1) `case sessionFlag = "session.flag"` in `ControlProtocol.swift`
   (reuses `ControlArgs.mode`; adds `flagged` to `ControlSessionNode`), (2) the `.sessionFlag` dispatch
   arm (`setSessionFlag`) in `ControlServer`, (3) the `session flag on|off|toggle|clear` subcommand (`FlagCommand`)
-  in `agtermctlKit`, (4) round-trip in `ControlProtocolTests` + the e2e `testSessionFlagAndSidebarModeFlagged`
+  in `rookctlKit`, (4) round-trip in `ControlProtocolTests` + the e2e `testSessionFlagAndSidebarModeFlagged`
   in `ControlSidebarStatusUITests`.
   `session.seen` (target = session) clears a session's unseen-notification badge WITHOUT changing the
   selection, focus, or agent status — the focus-free counterpart to `notify`, which raises the badge over
@@ -979,7 +979,7 @@ paths:
   Four-point keep-in-sync audit for `session.seen`: (1) `case sessionSeen = "session.seen"` +
   `unseen: Int?` on `ControlSessionNode` in `ControlProtocol.swift` (no new `ControlArgs` field),
   (2) the `.sessionSeen` dispatch arm (`markSessionSeen`) in `ControlDispatcher`/`ControlServer` + the
-  `unseen` population in `AppStore.controlTree`, (3) the `session seen` subcommand (`Seen`) in `agtermctlKit`,
+  `unseen` population in `AppStore.controlTree`, (3) the `session seen` subcommand (`Seen`) in `rookctlKit`,
   (4) round-trip (`sessionSeenRoundTrips` + `treeSessionNodeRoundTripsWithUnseen`/`…OmitsUnseenWhenNil`)
   in `ControlProtocolTests` + dispatcher routing in `ControlDispatcherTests` + `AppStoreTests`
   (`controlTreeReportsUnseenCountWhenPositive`/`…OmitsUnseenCountWhenZero`) + CLI mapping in `CommandsTests`
@@ -997,7 +997,7 @@ paths:
   Four-point keep-in-sync audit: (1) `case sidebarMode = "sidebar.mode"` in `ControlProtocol.swift` (reuses
   `ControlArgs.mode`), (2) the `.sidebarMode` dispatch arm (`setSidebarViewMode`) in `ControlServer`,
   (3) the `sidebar mode tree|flagged|toggle` subcommand (`Mode`, alongside the `Visibility` default)
-  in `agtermctlKit`, (4) round-trip in `ControlProtocolTests` + the e2e `testSessionFlagAndSidebarModeFlagged`
+  in `rookctlKit`, (4) round-trip in `ControlProtocolTests` + the e2e `testSessionFlagAndSidebarModeFlagged`
   in `ControlSidebarStatusUITests`.
   `sidebar.expand`/`sidebar.collapse` expand every workspace / collapse all but the active one in a window's
   sidebar TREE — `expand` drives `AppActions.expandAllWorkspaces(in:)`, `collapse` drives `collapseOtherWorkspaces(in:)`
@@ -1005,7 +1005,7 @@ paths:
   UNLIKE `sidebar`/`sidebar.mode` (frontmost-only, no selector), these honor the global `--window` selector
   (`ControlArgs.window`): the arm resolves the target store via `resolvePlacementStore(window)` (frontmost
   by default; a named window must be OPEN, else the closed-window error;
-  no open window at all → `no open window`), then posts a notification (`.agtermExpandWorkspaces`/`.agtermCollapseWorkspaces`)
+  no open window at all → `no open window`), then posts a notification (`.rookExpandWorkspaces`/`.rookCollapseWorkspaces`)
   carrying THAT `AppStore` as the object.
   `WorkspaceSidebar.Coordinator` registers its observer with `object: store`,
   so NotificationCenter delivers ONLY to that window's sidebar Coordinator — this object-scoping (the
@@ -1021,7 +1021,7 @@ paths:
   in `ControlProtocol.swift` (reuse `ControlArgs.window`, no new field),
   (2) the `.sidebarExpand`/`.sidebarCollapse` dispatch arms (`expandWorkspaces(window:)`/`collapseWorkspaces(window:)`)
   in `ControlServer`, (3) the `sidebar expand`/`sidebar collapse` subcommands (`Expand`/`Collapse` on
-  `ClientOptions` for `--window`, alongside the `Visibility` default + `Mode`) in `agtermctlKit`,
+  `ClientOptions` for `--window`, alongside the `Visibility` default + `Mode`) in `rookctlKit`,
   (4) round-trip (incl. the windowed variant) in `ControlProtocolTests` + the e2e `testSidebarExpandCollapse`
   in `ControlSidebarStatusUITests`.
   `workspace.focus` (target = workspace) collapses the sidebar tree to a single workspace — `args.mode`
@@ -1038,7 +1038,7 @@ paths:
   workspace is focused and restore it; omitted on the non-focused ones and absent when nothing is focused.
   Four-point keep-in-sync audit: (1) `case workspaceFocus = "workspace.focus"` in `ControlProtocol.swift`
   (reuses `ControlArgs.mode`), (2) the `.workspaceFocus` dispatch arm (`focusWorkspace`) in `ControlServer`,
-  (3) the `workspace focus on|off|toggle` subcommand (`Focus`) in `agtermctlKit`,
+  (3) the `workspace focus on|off|toggle` subcommand (`Focus`) in `rookctlKit`,
   (4) round-trip in `ControlProtocolTests` + the e2e `testWorkspaceFocusHidesOtherWorkspaces` in `ControlSidebarStatusUITests`
   plus the `FocusWorkspaceUITests` XCUITest.
   `workspace.color` (target = workspace) tints that workspace's sidebar ICON — the positional arg is a
@@ -1066,7 +1066,7 @@ paths:
   (reuses `ControlArgs.color`; adds `color` to `ControlWorkspaceNode`), (2) the `.workspaceColor` arm in
   `ControlDispatcher` (hex validation + the `clear` idiom) → `ControlActions.setWorkspaceColor`
   (app-side `ControlServer+Appearance`), (3) the `workspace color <#rrggbb|clear>` subcommand
-  (`Color`, `validate()`-guarded) in `agtermctlKit`, (4) round-trip + omit-when-nil in `ControlProtocolTests`
+  (`Color`, `validate()`-guarded) in `rookctlKit`, (4) round-trip + omit-when-nil in `ControlProtocolTests`
   + dispatcher validation in `ControlDispatcherTests` + `AppStoreAppearanceTests` (mutator, persistence,
   tree read-back, and the reopen-from-Recent round-trip) + `PersistenceTests` (legacy snapshot without
   the key) + CLI mapping in `CommandsTests` + the e2e `testWorkspaceColorSetAndClear` in
@@ -1107,10 +1107,10 @@ paths:
   mean hand-curating and maintaining a symbol list — symbols and emoji are the agent/CLI surface.
   Four-point keep-in-sync audit: (1) `case workspaceIcon = "workspace.icon"` + `ControlArgs.icon` +
   `ControlWorkspaceNode.icon`/`iconKind` + the host-free `WorkspaceIcon`/`WorkspaceIconStorage` in
-  `agtermCore`, (2) the `.workspaceIcon` arm in `ControlDispatcher` (classification + host-free checks) →
+  `rookCore`, (2) the `.workspaceIcon` arm in `ControlDispatcher` (classification + host-free checks) →
   `ControlActions.setWorkspaceIcon` (app-side `ControlServer+Appearance`: symbol/file checks + the copy),
   (3) the `workspace icon <symbol|emoji|path|clear>` subcommand (`Icon`, `validate()`-guarded, and it
-  absolutizes a relative/`~` path since the app resolves it in ITS own cwd) in `agtermctlKit`,
+  absolutizes a relative/`~` path since the app resolves it in ITS own cwd) in `rookctlKit`,
   (4) round-trip + omit-when-nil in `ControlProtocolTests` + dispatcher classification/rejection in
   `ControlDispatcherTests` + `WorkspaceIconTests` (the tint truth table, the classifier, and the storage's
   idempotence / fresh-name / delete-only-ours rules) + `AppStoreAppearanceTests` (mutator, file cleanup on
@@ -1149,7 +1149,7 @@ paths:
   omitted for a closed window), so a script can enumerate every window's sidebar state.
   BUT `window.list` is served from the background-thread `cachedWindowNodes` cache
   (refreshed after every dispatched command + on frontmost change), and a GUI-only ⌃⌘S toggle is neither —
-  so `AppStore.setSidebarVisible` posts `.agtermSidebarVisibilityChanged` (agtermCore) and `ControlServer`
+  so `AppStore.setSidebarVisible` posts `.rookSidebarVisibilityChanged` (rookCore) and `ControlServer`
   observes it to `refreshWindowCache`, keeping the cached `sidebarVisible` honest.
   A script that reads-then-acts (e.g. the tmux-style zoom that must restore the sidebar only if it was
   visible) should still prefer `tree`'s LIVE `sidebarVisible` over the cached `window.list` one — the tree
@@ -1168,12 +1168,12 @@ paths:
   AND a polling `window.list` is fast-path-served (so it never refreshes its own cache), `ControlServer`
   observes the NSWindow `didMove`/`didResize`/`didEnterFullScreen`/`didExitFullScreen` notifications and
   `refreshWindowCache`s on each (the fullscreen ones fire AFTER the async transition, so the settled
-  `styleMask` is captured) — mirroring the `.agtermSidebarVisibilityChanged` refresh for the GUI-only
+  `styleMask` is captured) — mirroring the `.rookSidebarVisibilityChanged` refresh for the GUI-only
   sidebar toggle, so the read-back stays current.
   The notification is IGNORED, not captured — a non-Sendable `Notification` can't cross into the
   `MainActor.assumeIsolated` block under Swift 6 strict concurrency (the `sending 'note'` error), so the
-  refresh fires for ANY window rather than filtering to an agterm one; harmless, since a non-agterm panel
-  just rebuilds the same cheap agterm nodes.
+  refresh fires for ANY window rather than filtering to an rook one; harmless, since a non-rook panel
+  just rebuilds the same cheap rook nodes.
   The host-free plumbing (the closure + node field) is unit-tested (`controlWindowNodesIncludeGeometryFromClosure`,
   the round-trips); the coordinate conversion + the NSWindow-notification cache refresh are app-side, build-verified.
   Each `ControlWindowNode` ALSO carries `fullscreen`/`zoomed` — the read side of the write-only
@@ -1194,7 +1194,7 @@ paths:
   Four-point keep-in-sync audit for `restore.clear`: (1) `case restoreClear = "restore.clear"` in `ControlProtocol.swift`
   (no target/args; `foreground`/`splitForeground` added to `ControlSessionNode`),
   (2) the `.restoreClear` dispatcher arm → the app-side `ControlActions.clearRestoreCommands` + the foreground population
-  in the tree builder, (3) the `restore clear` subcommand (`Restore`) in `agtermctlKit`,
+  in the tree builder, (3) the `restore clear` subcommand (`Restore`) in `rookctlKit`,
   (4) round-trip (`restoreClearRoundTrips` + `treeSessionNodeRoundTripsWithForeground`/`…OmitsForegroundWhenNil`)
   in `ControlProtocolTests` + the e2e (`testTreeExposesForegroundProcess`,
   `testRestoreClearSucceeds`) in `ControlAPIUITests`.
@@ -1245,12 +1245,12 @@ paths:
   (2) the `.sessionBackground` dispatcher arm — `ControlDispatcher.dispatchSessionBackground` validates + builds the spec,
   the app-side `setSessionBackground` does the filesystem checks (`isSupportedImage`/`fileExists`) + `applyWatermark`
   to the realized surfaces (+ `background:` populated in the tree builder), (3) the
-  `session background image|text|color|clear` subcommands in `agtermctlKit` (shared opacity/color/fit/position
+  `session background image|text|color|clear` subcommands in `rookctlKit` (shared opacity/color/fit/position
   `validate()`; `color` takes color only, no opacity), (4) round-trip in `ControlProtocolTests` (incl.
   `treeSessionNodeRoundTripsWithBackground` + `backgroundWatermarkColorKindSerializes`)
   + `WatermarkConfigTests` (incl. the `color*` overlay cases) + `WatermarkStorageTests` + `CommandsTests`
   (CLI parse + bad-arg rejection) + the e2e `testSessionBackgroundSetClearAndValidation` in `ControlAPIUITests`
   (image/text/color set/clear + tree read-back).
   **Agent-skill mirror (HARD keep-in-sync, 4th surface):** all commands are documented in the bundled
-  `agterm/Resources/agent-skill/` (SKILL.md summary, reference.md detail,
+  `rook/Resources/agent-skill/` (SKILL.md summary, reference.md detail,
   examples.md recipes) and the command count there is bumped to 62 to match.

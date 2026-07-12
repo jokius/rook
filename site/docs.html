@@ -3,36 +3,36 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Documentation — agterm | terminal for AI coding agents</title>
+    <title>Documentation — rook | terminal for AI coding agents</title>
     <meta
       name="description"
-      content="agterm documentation: install, workspaces and sessions, split panes, overlays, the agtermctl control CLI, agent status, keymaps, themes, and window management."
+      content="rook documentation: install, workspaces and sessions, split panes, overlays, the rookctl control CLI, agent status, keymaps, themes, and window management."
     />
     <meta
       name="keywords"
-      content="agterm docs, agtermctl, agterm control api, agterm keymap, agterm agent skill, macOS terminal documentation"
+      content="rook docs, rookctl, rook control api, rook keymap, rook agent skill, macOS terminal documentation"
     />
     <meta name="author" content="umputun" />
-    <link rel="canonical" href="https://agterm.com/docs" />
+    <link rel="canonical" href="https://rook.app/docs" />
     <meta property="og:type" content="article" />
-    <meta property="og:title" content="Documentation — agterm" />
+    <meta property="og:title" content="Documentation — rook" />
     <meta
       property="og:description"
-      content="Install agterm, learn workspaces, sessions, overlays, and the agtermctl control CLI."
+      content="Install rook, learn workspaces, sessions, overlays, and the rookctl control CLI."
     />
-    <meta property="og:url" content="https://agterm.com/docs" />
-    <meta property="og:image" content="https://agterm.com/assets/agterm-og.png" />
+    <meta property="og:url" content="https://rook.app/docs" />
+    <meta property="og:image" content="https://rook.app/assets/rook-og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:site_name" content="agterm" />
+    <meta property="og:site_name" content="rook" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@umputun" />
-    <meta name="twitter:title" content="Documentation — agterm" />
+    <meta name="twitter:title" content="Documentation — rook" />
     <meta
       name="twitter:description"
-      content="Install agterm, learn workspaces, sessions, overlays, and the agtermctl control CLI."
+      content="Install rook, learn workspaces, sessions, overlays, and the rookctl control CLI."
     />
-    <meta name="twitter:image" content="https://agterm.com/assets/agterm-og.png" />
+    <meta name="twitter:image" content="https://rook.app/assets/rook-og.png" />
     <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png" />
@@ -89,7 +89,7 @@
                 font-size: 16px;
                 letter-spacing: -0.01em;
               "
-              >agterm</span
+              >rook</span
             >
             <span
               style="
@@ -115,7 +115,7 @@
             <a href="/" style="color: #949ba4; padding: 8px 12px; border-radius: 7px" class="hv1">← home</a>
             <a href="/commands" style="color: #949ba4; padding: 8px 12px; border-radius: 7px" class="hv1">commands</a>
             <a
-              href="https://github.com/umputun/agterm"
+              href="https://github.com/jokius/rook"
               style="
                 color: #c9cdd2;
                 border: 1px solid rgba(255, 255, 255, 0.16);
@@ -161,7 +161,7 @@
             <a href="#settings" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">Customization</a>
             <div style="height: 16px"></div>
             <span style="color: #4a5158; font-size: 11px; letter-spacing: 0.12em; padding: 4px 12px">SCRIPTING</span>
-            <a href="#agtermctl" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">agtermctl reference</a>
+            <a href="#rookctl" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">rookctl reference</a>
             <a href="/commands" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">Command reference ↗</a>
             <a href="#keymap" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">Customizing keys</a>
             <a href="#ghostty" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">Ghostty config</a>
@@ -200,7 +200,7 @@
               margin: 0 0 20px;
             "
           >
-            agterm
+            rook
           </h1>
           <p style="font-size: 19px; line-height: 1.6; color: #bfbab0; margin: 0 0 8px">
             A native macOS terminal for working with AI coding agents across many sessions at once.
@@ -222,7 +222,7 @@
               Overview
             </h2>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 16px">
-              agterm is intentionally opinionated: rather than scattering shells across tabs, it organizes them into named
+              rook is intentionally opinionated: rather than scattering shells across tabs, it organizes them into named
               workspaces, each holding the sessions for one project or context. Several agent-driven sessions run side by side and
               you move between them without losing track of which is which.
             </p>
@@ -232,8 +232,8 @@
               it works as a capable general-purpose terminal too.
             </p>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 24px">
-              For the real terminal work — rendering, VT parsing, and shell I/O — agterm embeds
-              <a href="https://ghostty.org" style="color: #6d82f3">Ghostty</a>'s engine (libghostty); everything above is agterm's
+              For the real terminal work — rendering, VT parsing, and shell I/O — rook embeds
+              <a href="https://ghostty.org" style="color: #6d82f3">Ghostty</a>'s engine (libghostty); everything above is rook's
               own.
             </p>
             <div
@@ -260,7 +260,7 @@
                   Programmatic control
                 </div>
                 <p style="font-size: 13.5px; color: #949ba4; margin: 0; line-height: 1.55">
-                  agtermctl drives almost everything over a local socket.
+                  rookctl drives almost everything over a local socket.
                 </p>
               </div>
               <div
@@ -284,7 +284,7 @@
                   Agent skill
                 </div>
                 <p style="font-size: 13.5px; color: #949ba4; margin: 0; line-height: 1.55">
-                  An installable skill teaches Claude Code or Codex to drive agterm through agtermctl.
+                  An installable skill teaches Claude Code or Codex to drive rook through rookctl.
                 </p>
               </div>
               <div
@@ -331,7 +331,7 @@
             >
               <strong style="color: #6d82f3; font-family: &quot;JetBrains Mono&quot;, monospace">Available now</strong> — Signed,
               notarized builds are published on the
-              <a href="https://github.com/umputun/agterm/releases" style="color: #6d82f3">releases page</a>. Install via Homebrew
+              <a href="https://github.com/jokius/rook/releases" style="color: #6d82f3">releases page</a>. Install via Homebrew
               or the direct download below; building from source is optional.
             </div>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 20px">
@@ -361,20 +361,20 @@
                 overflow-x: auto;
               "
             >
-              <span style="color: #6d82f3">$ </span>brew install --cask umputun/apps/agterm
+              <span style="color: #6d82f3">$ </span>brew install --cask umputun/apps/rook
             </div>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 14px 0 0">
               The cask also installs the
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">agtermctl</span> command-line tool,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">rookctl</span> command-line tool,
               so cask users shouldn't run the in-app installer as well.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 14px 0 0">
               Homebrew upgrade note (July 2026). A recent Homebrew change (installed-cask metadata
               stored as JSON) can make
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">brew upgrade</span>
-              fail for agterm with
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">It seems there is already an App at '/Applications/agterm.app'</span>.
-              It affects third-party tap casks in general, not only agterm. Recover with a one-time
+              fail for rook with
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">It seems there is already an App at '/Applications/rook.app'</span>.
+              It affects third-party tap casks in general, not only rook. Recover with a one-time
               reinstall, which rewrites the install receipt:
             </p>
             <div
@@ -390,7 +390,7 @@
                 overflow-x: auto;
               "
             >
-              <span style="color: #6d82f3">$ </span>brew reinstall --cask --force agterm
+              <span style="color: #6d82f3">$ </span>brew reinstall --cask --force rook
             </div>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 14px 0 0">
               Regular
@@ -411,8 +411,8 @@
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 0">
               Download the latest
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.dmg</span> from the
-              <a href="https://github.com/umputun/agterm/releases" style="color: #6d82f3">releases page</a>, open it, and drag
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agterm.app</span> into
+              <a href="https://github.com/jokius/rook/releases" style="color: #6d82f3">releases page</a>, open it, and drag
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rook.app</span> into
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">/Applications</span>.
             </p>
             <h3
@@ -427,7 +427,7 @@
               Optional Help-menu installers
             </h3>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 0 0 14px">
-              None are needed to use agterm as a terminal; each connects it to a wider workflow, and you can run any of them later.
+              None are needed to use rook as a terminal; each connects it to a wider workflow, and you can run any of them later.
             </p>
             <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px">
               <li style="font-size: 15px; line-height: 1.6; color: #cbc6bc; padding-left: 22px; position: relative">
@@ -435,7 +435,7 @@
                   style="position: absolute; left: 0; top: 1px; color: #6d82f3; font-family: &quot;JetBrains Mono&quot;, monospace"
                   >›</span
                 ><strong style="color: #e6e1d7">Install Command Line Tool…</strong> puts the bundled
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl</span> on your PATH (a
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl</span> on your PATH (a
                 symlink in <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">/usr/local/bin</span>)
                 so you can script the app. The Homebrew cask already installs it.
               </li>
@@ -451,8 +451,8 @@
                 <span
                   style="position: absolute; left: 0; top: 1px; color: #6d82f3; font-family: &quot;JetBrains Mono&quot;, monospace"
                   >›</span
-                ><strong style="color: #e6e1d7">Install Agent Skill…</strong> teaches Claude Code or Codex how to drive agterm
-                through <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl</span>, so an
+                ><strong style="color: #e6e1d7">Install Agent Skill…</strong> teaches Claude Code or Codex how to drive rook
+                through <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl</span>, so an
                 agent inside a session can build its own layout, run overlays, and manage windows without you explaining the API.
                 It drives the app through the CLI, so install that one too.
               </li>
@@ -492,7 +492,7 @@
               >scripts/setup.sh<br /><span style="color: #6b727a"># generate the Xcode project, build Debug, launch</span
               ><br /><span style="color: #6d82f3">$ </span>scripts/run.sh<br /><span style="color: #6b727a"
                 ># host-free unit tests, no Xcode needed</span
-              ><br /><span style="color: #6d82f3">$ </span>cd agtermCore &amp;&amp; swift test
+              ><br /><span style="color: #6d82f3">$ </span>cd rookCore &amp;&amp; swift test
             </div>
           </section>
 
@@ -580,7 +580,7 @@
                     font-family: &quot;JetBrains Mono&quot;, monospace;
                   "
                   >›</span
-                >Paste or drop an image — a screenshot, a browser's Copy Image — and agterm writes it to a temporary PNG and
+                >Paste or drop an image — a screenshot, a browser's Copy Image — and rook writes it to a temporary PNG and
                 pastes that path, so the coding agent in the session can read the picture and attach it.
               </li>
               <li style="font-size: 15.5px; line-height: 1.65; color: #cbc6bc; padding-left: 22px; position: relative">
@@ -701,7 +701,7 @@
                   Runs one program in a temporary terminal over a session and disappears when the program exits, leaving the
                   session unchanged. Mostly driven from the control API to launch an interactive program (a diff viewer, a process
                   monitor) — full-size or as a floating panel. See the
-                  <a href="#agtermctl" style="color: #6d82f3">agtermctl reference</a>.
+                  <a href="#rookctl" style="color: #6d82f3">rookctl reference</a>.
                 </p>
               </div>
               <div
@@ -717,7 +717,7 @@
                   hiding the sidebar and collapsing the title bar to a slim strip with the traffic lights and an exit button
                   (⌘W leaves zoom too). A view mode, not a layout change: exiting
                   restores split ratios, focus, and visibility exactly as they were, and everything else keeps running behind it.
-                  Scripts can zoom any surface by id with <code style="color: #e6e1d7">agtermctl surface zoom</code>. Distinct
+                  Scripts can zoom any surface by id with <code style="color: #e6e1d7">rookctl surface zoom</code>. Distinct
                   from macOS window zoom and full screen, which size the window itself.
                 </p>
               </div>
@@ -740,7 +740,7 @@
               Navigation
             </h2>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 20px">
-              agterm is built to run from the keyboard. Every action has a shortcut and appears in the menus. Three fuzzy palettes
+              rook is built to run from the keyboard. Every action has a shortcut and appears in the menus. Three fuzzy palettes
               (type to filter, Enter to run, Esc to dismiss) and a Ctrl-Tab MRU switcher cover the rest.
             </p>
             <div
@@ -922,12 +922,12 @@
             </h2>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0">
               A program in any session can raise a desktop notification (via OSC 9 / 777, or
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl notify</span>). It surfaces
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl notify</span>). It surfaces
               as a macOS banner and an unseen-count badge on the sidebar row (rolled up onto a collapsed workspace); clicking the
-              banner brings agterm forward and focuses the exact pane that raised it, and focusing a session clears its badge — or
-              clear it headlessly with <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl session seen</span>
+              banner brings rook forward and focuses the exact pane that raised it, and focusing a session clears its badge — or
+              clear it headlessly with <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl session seen</span>
               so an orchestrator driving a session over the socket can acknowledge it without pulling focus
-              (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl tree --json</span> reports each session's <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">unseen</span> count).
+              (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl tree --json</span> reports each session's <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">unseen</span> count).
               Banners and count badges toggle independently in General settings. For a coding agent that just needs to say it is
               waiting, <a href="#status" style="color: #6d82f3">agent status</a> is usually the better fit.
             </p>
@@ -1014,8 +1014,8 @@
             </figure>
           </section>
 
-          <!-- AGTERMCTL -->
-          <section id="agtermctl" style="scroll-margin-top: 88px; padding-top: 56px">
+          <!-- ROOKCTL -->
+          <section id="rookctl" style="scroll-margin-top: 88px; padding-top: 56px">
             <h2
               style="
                 font-family: &quot;JetBrains Mono&quot;, monospace;
@@ -1027,7 +1027,7 @@
                 border-bottom: 1px solid rgba(255, 255, 255, 0.08);
               "
             >
-              agtermctl reference
+              rookctl reference
             </h2>
             <div
               style="
@@ -1045,8 +1045,8 @@
               </p>
             </div>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 16px">
-              agterm can be driven from a script over a local unix-domain socket through the companion CLI,
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">agtermctl</span>. This is for
+              rook can be driven from a script over a local unix-domain socket through the companion CLI,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">rookctl</span>. This is for
               fire-and-forget scripting that manages workspaces and sessions, injects text, and invokes control actions — there is
               no output streaming and no event subscription.
             </p>
@@ -1093,35 +1093,35 @@
                 color: #e6e1d7;
               "
             >
-              <span style="color: #6b727a"># print the workspace/session tree with ids</span><br />agtermctl tree<br /><br /><span
+              <span style="color: #6b727a"># print the workspace/session tree with ids</span><br />rookctl tree<br /><br /><span
                 style="color: #6b727a"
                 ># create a workspace, capture its id, open a session in it</span
-              ><br /><span style="color: #6d82f3">ws</span>=$(agtermctl workspace new work)<br />agtermctl session new --workspace
-              <span style="color: #f2b45c">"$ws"</span> --cwd ~/src/agterm<br /><br /><span style="color: #6b727a"
+              ><br /><span style="color: #6d82f3">ws</span>=$(rookctl workspace new work)<br />rookctl session new --workspace
+              <span style="color: #f2b45c">"$ws"</span> --cwd ~/src/rook<br /><br /><span style="color: #6b727a"
                 ># run a command as the session's process (argv-style; wrap in sh -c for shell syntax)</span
-              ><br />agtermctl session new --command <span style="color: #f2b45c">"ssh user@host"</span><br />agtermctl session new
+              ><br />rookctl session new --command <span style="color: #f2b45c">"ssh user@host"</span><br />rookctl session new
               --name <span style="color: #f2b45c">myhost</span> --workspace-name
               <span style="color: #f2b45c">servers</span> --create-workspace<br /><br /><span style="color: #6b727a"
                 ># step / reorder / relocate</span
-              ><br />agtermctl session go --to next
-              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# next|prev|first|last</span><br />agtermctl session move --to up
-              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# reorder: up|down|top|bottom</span><br />agtermctl session move
+              ><br />rookctl session go --to next
+              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# next|prev|first|last</span><br />rookctl session move --to up
+              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# reorder: up|down|top|bottom</span><br />rookctl session move
               <span style="color: #f2b45c">"$ws"</span> <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;# relocate to a workspace</span
-              ><br />agtermctl session new --after active
-              <span style="color: #6b727a">&nbsp;&nbsp;# create right after the current session (--before to precede)</span><br />agtermctl session move --after
+              ><br />rookctl session new --after active
+              <span style="color: #6b727a">&nbsp;&nbsp;# create right after the current session (--before to precede)</span><br />rookctl session move --after
               <span style="color: #f2b45c">9f3c</span> <span style="color: #6b727a">&nbsp;&nbsp;# place after an anchor (its workspace is used; relocates cross-workspace)</span
-              ><br />agtermctl session move <span style="color: #f2b45c">"$ws"</span> --target 9f3c --target abcd
+              ><br />rookctl session move <span style="color: #f2b45c">"$ws"</span> --target 9f3c --target abcd
               <span style="color: #6b727a">&nbsp;&nbsp;# move a batch as one ordered block</span
-              ><br />agtermctl session close --target 9f3c --target abcd
+              ><br />rookctl session close --target 9f3c --target abcd
               <span style="color: #6b727a">&nbsp;&nbsp;# one grace-period undo for the batch</span
-              ><br />agtermctl workspace move --to top
-              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# reorder a workspace</span><br />agtermctl workspace focus on
+              ><br />rookctl workspace move --to top
+              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# reorder a workspace</span><br />rookctl workspace focus on
               <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# collapse tree to active ws (on|off|toggle)</span
-              ><br />agtermctl workspace color <span style="color: #f2b45c">"#ff8800"</span>
+              ><br />rookctl workspace color <span style="color: #f2b45c">"#ff8800"</span>
               <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# tint the workspace's sidebar icon (or clear)</span
-              ><br />agtermctl workspace icon hammer.fill
+              ><br />rookctl workspace icon hammer.fill
               <span style="color: #6b727a">&nbsp;&nbsp;# set its icon (SF Symbol, emoji, or image file)</span>
-              <br />agtermctl session reveal --target <span style="color: #f2b45c">9f3c</span>
+              <br />rookctl session reveal --target <span style="color: #f2b45c">9f3c</span>
               <span style="color: #6b727a">&nbsp;# reveal the focused pane's cwd in Finder</span>
             </div>
 
@@ -1150,20 +1150,20 @@
               "
             >
               <span style="color: #6b727a"># inject text (every newline is a real Return; use $'…\n' or --stdin)</span
-              ><br />agtermctl session type --target 9f3c <span style="color: #f2b45c">$'make test\n'</span><br />echo
-              <span style="color: #f2b45c">'make test'</span> | agtermctl session type --stdin<br /><br /><span
+              ><br />rookctl session type --target 9f3c <span style="color: #f2b45c">$'make test\n'</span><br />echo
+              <span style="color: #f2b45c">'make test'</span> | rookctl session type --stdin<br /><br /><span
                 style="color: #6b727a"
                 ># route to a pane: left (default) | right (split) | scratch (even when hidden)</span
-              ><br />agtermctl session type --pane right <span style="color: #f2b45c">$'ls\n'</span><br /><br /><span
+              ><br />rookctl session type --pane right <span style="color: #f2b45c">$'ls\n'</span><br /><br /><span
                 style="color: #6b727a"
                 ># a never-shown session needs --select to realize its surface first</span
-              ><br />agtermctl session type --target <span style="color: #f2b45c">"$id"</span> --select
+              ><br />rookctl session type --target <span style="color: #f2b45c">"$id"</span> --select
               <span style="color: #f2b45c">$'echo hi\n'</span><br /><br /><span style="color: #6b727a"
                 ># read a pane's selection (does not touch the clipboard) or its output</span
-              ><br /><span style="color: #6d82f3">sel</span>=$(agtermctl session copy --target 9f3c)<br />agtermctl session text
+              ><br /><span style="color: #6d82f3">sel</span>=$(rookctl session copy --target 9f3c)<br />rookctl session text
               --pane scratch --target 9f3c<br /><br /><span style="color: #6b727a"
                 ># paste the system clipboard (⌘V), or select the whole buffer (⌘A) then copy it</span
-              ><br />agtermctl session paste --target 9f3c<br />agtermctl session select-all --target 9f3c
+              ><br />rookctl session paste --target 9f3c<br />rookctl session select-all --target 9f3c
             </div>
 
             <h3
@@ -1190,16 +1190,16 @@
                 color: #e6e1d7;
               "
             >
-              agtermctl session split toggle<br />agtermctl session resize --split-ratio 0.7
-              <span style="color: #6b727a">&nbsp;# or --grow-left/--grow-right D</span><br />agtermctl session scratch toggle
-              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;# on|off|toggle</span><br />agtermctl session filetree toggle<span style="color: #6b727a">&nbsp;&nbsp;# on|off|toggle|refresh|reroot &lt;path&gt;</span><br />agtermctl session flag on
-              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# on|off|toggle|clear</span><br />agtermctl session seen --target 9f3c
-              <span style="color: #6b727a">&nbsp;# clear the unseen badge, focus-free</span><br />agtermctl
-              sidebar mode flagged <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# tree|flagged|toggle</span><br />agtermctl quick
-              toggle <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# show|hide|toggle</span><br />agtermctl quick type <span style="color: #f2b45c">'ls -la'</span>
-              <span style="color: #6b727a">&nbsp;# or --stdin; quick text reads it back</span><br />agtermctl surface zoom <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# fill the window with the active surface (show|hide|toggle; --target surface:&lt;id&gt;:right)</span><br />agtermctl font inc <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# main pane font size</span><br />agtermctl font dec --pane right <span style="color: #6b727a">&nbsp;# just the split pane (left|right|scratch)</span
-              ><br /><br /><span style="color: #6b727a"># open the search bar, print the "N of M" counter</span><br />agtermctl
-              session search <span style="color: #f2b45c">"error"</span><br />agtermctl session search --next
+              rookctl session split toggle<br />rookctl session resize --split-ratio 0.7
+              <span style="color: #6b727a">&nbsp;# or --grow-left/--grow-right D</span><br />rookctl session scratch toggle
+              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;# on|off|toggle</span><br />rookctl session filetree toggle<span style="color: #6b727a">&nbsp;&nbsp;# on|off|toggle|refresh|reroot &lt;path&gt;</span><br />rookctl session flag on
+              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# on|off|toggle|clear</span><br />rookctl session seen --target 9f3c
+              <span style="color: #6b727a">&nbsp;# clear the unseen badge, focus-free</span><br />rookctl
+              sidebar mode flagged <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# tree|flagged|toggle</span><br />rookctl quick
+              toggle <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# show|hide|toggle</span><br />rookctl quick type <span style="color: #f2b45c">'ls -la'</span>
+              <span style="color: #6b727a">&nbsp;# or --stdin; quick text reads it back</span><br />rookctl surface zoom <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# fill the window with the active surface (show|hide|toggle; --target surface:&lt;id&gt;:right)</span><br />rookctl font inc <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# main pane font size</span><br />rookctl font dec --pane right <span style="color: #6b727a">&nbsp;# just the split pane (left|right|scratch)</span
+              ><br /><br /><span style="color: #6b727a"># open the search bar, print the "N of M" counter</span><br />rookctl
+              session search <span style="color: #f2b45c">"error"</span><br />rookctl session search --next
               <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;# --prev | --close</span>
             </div>
 
@@ -1227,23 +1227,23 @@
                 color: #e6e1d7;
               "
             >
-              <span style="color: #6b727a"># full overlay on a session (hides the shell beneath)</span><br />agtermctl session
+              <span style="color: #6b727a"># full overlay on a session (hides the shell beneath)</span><br />rookctl session
               overlay open <span style="color: #f2b45c">"revdiff HEAD~3"</span> --target 9f3c<br /><br /><span
                 style="color: #6b727a"
                 ># floating framed panel at 70% of the pane, optionally tinted</span
-              ><br />agtermctl session overlay open <span style="color: #f2b45c">"htop"</span> --size-percent 70<br />agtermctl
+              ><br />rookctl session overlay open <span style="color: #f2b45c">"htop"</span> --size-percent 70<br />rookctl
               session overlay open <span style="color: #f2b45c">"revdiff HEAD~3"</span> --size-percent 80 --background-color
               <span style="color: #f2b45c">"#2a1a3a"</span><br /><br /><span style="color: #6b727a"
                 ># switch the user to the target as the overlay opens</span
-              ><br />agtermctl session overlay open <span style="color: #f2b45c">"revdiff HEAD~3"</span> --size-percent 80
+              ><br />rookctl session overlay open <span style="color: #f2b45c">"revdiff HEAD~3"</span> --size-percent 80
               --target 9f3c --follow<br /><br /><span style="color: #6b727a"
                 ># keep it open after exit, or block until it exits and inherit its status</span
-              ><br />agtermctl session overlay open <span style="color: #f2b45c">"make test"</span> --wait<br />agtermctl session
+              ><br />rookctl session overlay open <span style="color: #f2b45c">"make test"</span> --wait<br />rookctl session
               overlay open <span style="color: #f2b45c">"make test"</span> --block<br /><br /><span style="color: #6b727a"
                 ># resize an open overlay in place — floating percent, or back to full (the program keeps running)</span
-              ><br />agtermctl session overlay resize --size-percent 60 --target 9f3c<br />agtermctl session overlay resize --full
-              --target 9f3c<br /><br />agtermctl session overlay close --target
-              9f3c<br />agtermctl session overlay result
+              ><br />rookctl session overlay resize --size-percent 60 --target 9f3c<br />rookctl session overlay resize --full
+              --target 9f3c<br /><br />rookctl session overlay close --target
+              9f3c<br />rookctl session overlay result
               <span style="color: #6b727a">&nbsp;&nbsp;# last overlay's exit status</span>
             </div>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
@@ -1263,7 +1263,7 @@
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--full</span> switches it back — without
               restarting the program. A
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">(overlay)</span> tag in
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl tree</span> marks a session
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl tree</span> marks a session
               whose overlay is open.
             </p>
 
@@ -1291,17 +1291,17 @@
                 color: #e6e1d7;
               "
             >
-              agtermctl window list <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;# id  name  [open]  [active]</span
-              ><br /><span style="color: #6d82f3">w</span>=$(agtermctl window new work)<br />agtermctl window select
+              rookctl window list <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;# id  name  [open]  [active]</span
+              ><br /><span style="color: #6d82f3">w</span>=$(rookctl window new work)<br />rookctl window select
               <span style="color: #f2b45c">"$w"</span> <span style="color: #6b727a">&nbsp;# raise it (opening if closed)</span
-              ><br />agtermctl window rename <span style="color: #f2b45c">"$w"</span> personal<br />agtermctl window close
+              ><br />rookctl window rename <span style="color: #f2b45c">"$w"</span> personal<br />rookctl window close
               <span style="color: #f2b45c">"$w"</span> <span style="color: #6b727a">&nbsp;&nbsp;# close its window (bundle kept)</span
-              ><br />agtermctl window delete <span style="color: #f2b45c">"$w"</span>
+              ><br />rookctl window delete <span style="color: #f2b45c">"$w"</span>
               <span style="color: #6b727a">&nbsp;# delete (last window can't be deleted)</span><br /><br /><span
                 style="color: #6b727a"
                 ># --window targets a specific window's tree on session/workspace/tree/font</span
-              ><br />agtermctl tree --window <span style="color: #f2b45c">"$w"</span><br />agtermctl session new --window
-              <span style="color: #f2b45c">"$w"</span> --cwd ~/src/agterm
+              ><br />rookctl tree --window <span style="color: #f2b45c">"$w"</span><br />rookctl session new --window
+              <span style="color: #f2b45c">"$w"</span> --cwd ~/src/rook
             </div>
 
             <h3
@@ -1328,10 +1328,10 @@
                 color: #e6e1d7;
               "
             >
-              agtermctl keymap reload
-              <span style="color: #6b727a">&nbsp;# re-read keymap.conf, returns the diagnostic count</span><br />agtermctl config
+              rookctl keymap reload
+              <span style="color: #6b727a">&nbsp;# re-read keymap.conf, returns the diagnostic count</span><br />rookctl config
               reload <span style="color: #6b727a">&nbsp;# re-read the ghostty config, returns the diagnostic count</span
-              ><br />agtermctl notify --title <span style="color: #f2b45c">Build</span> --body
+              ><br />rookctl notify --title <span style="color: #f2b45c">Build</span> --body
               <span style="color: #f2b45c">"tests passed"</span>
             </div>
 
@@ -1348,12 +1348,12 @@
               "
             >
               <strong style="color: #5ea1f2; font-family: &quot;JetBrains Mono&quot;, monospace">In-session env</strong> — a shell
-              inside agterm gets <span style="font-family: &quot;JetBrains Mono&quot;, monospace">AGTERM_ENABLED</span>,
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">AGTERM_WINDOW_ID</span>,
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">AGTERM_WORKSPACE_ID</span>,
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">AGTERM_SESSION_ID</span>,
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">AGTERM_SOCKET</span> (the live socket path), and
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">AGTERM_PANE</span> (which pane the shell runs in —
+              inside rook gets <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ROOK_ENABLED</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ROOK_WINDOW_ID</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ROOK_WORKSPACE_ID</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ROOK_SESSION_ID</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ROOK_SOCKET</span> (the live socket path), and
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ROOK_PANE</span> (which pane the shell runs in —
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">left</span> (main),
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">right</span> (split), or
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">scratch</span>; unset in an overlay), so a
@@ -1377,8 +1377,8 @@
               Customizing keys
             </h2>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 20px">
-              agterm reads a user-editable, kitty-flavored keymap file at
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">~/.config/agterm/keymap.conf</span
+              rook reads a user-editable, kitty-flavored keymap file at
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">~/.config/rook/keymap.conf</span
               >. It rebinds built-in menu shortcuts and defines custom shell commands bound to keys (and listed in the action
               palette). The file is optional — a commented starter is written on first launch, and the directory can be changed in
               <strong style="color: #e6e1d7">Settings ▸ Key Mapping</strong>. Two verbs; blank lines and
@@ -1410,7 +1410,7 @@
                 >command</span
               >
               <span style="color: #f2b45c">"Lazygit"</span
-              >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ctrl+a&gt;g&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;agtermctl session overlay open lazygit
+              >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ctrl+a&gt;g&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rookctl session overlay open lazygit
               --socket {AGT_SOCKET}<br /><span style="color: #5ea1f2">command</span>
               <span style="color: #f2b45c">"Deploy"</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;./deploy.sh
             </div>
@@ -1521,7 +1521,7 @@
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">/bin/sh -c</span> with no controlling terminal, so
               it suits fire-and-forget launches (GUI apps, scripts) — not interactive TUIs. Run a TUI like
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">lazygit</span> in an overlay
-              (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">agtermctl session overlay open</span>) or a scratch
+              (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">rookctl session overlay open</span>) or a scratch
               terminal, which have a real TTY. A non-zero exit posts a notification banner.
             </div>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 20px 0 0">
@@ -1533,7 +1533,7 @@
               (falling back to <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">vi</span>) and
               reloads on quit. Apply edits made elsewhere with
               <strong style="color: #e6e1d7">File ▸ Reload Keymap</strong> or
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl keymap reload</span>. A
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl keymap reload</span>. A
               malformed line never discards the rest — it surfaces in the diagnostics list in Settings ▸ Key Mapping while the good
               lines still apply.
             </p>
@@ -1594,7 +1594,7 @@
               Ghostty config
             </h2>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 18px">
-              agterm builds its terminal config from four sources, each overriding the one before it:
+              rook builds its terminal config from four sources, each overriding the one before it:
             </p>
             <div
               style="
@@ -1610,15 +1610,15 @@
               "
             >
               ghostty defaults → ~/.config/ghostty/config → <span style="color: #e6e1d7">&lt;config dir&gt;/ghostty.conf</span> →
-              agterm Settings<br /><span style="color: #6b727a"
+              rook Settings<br /><span style="color: #6b727a"
                 >&nbsp;&nbsp;(lowest)&nbsp;&nbsp;&nbsp;&nbsp;(global, OFF by
-                default)&nbsp;&nbsp;&nbsp;&nbsp;(agterm-scoped)&nbsp;&nbsp;&nbsp;&nbsp;(UI wins)</span
+                default)&nbsp;&nbsp;&nbsp;&nbsp;(rook-scoped)&nbsp;&nbsp;&nbsp;&nbsp;(UI wins)</span
               >
             </div>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
-              agterm is self-contained: <strong style="color: #e6e1d7">by default it does not read your global</strong>
+              rook is self-contained: <strong style="color: #e6e1d7">by default it does not read your global</strong>
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">~/.config/ghostty/config</span>, so a
-              config written for the standalone Ghostty.app never silently changes agterm. Turn on
+              config written for the standalone Ghostty.app never silently changes rook. Turn on
               <strong style="color: #e6e1d7">Settings ▸ General ▸ Use my global Ghostty config</strong> to fold it in.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
@@ -1626,16 +1626,16 @@
                 >&lt;config dir&gt;/ghostty.conf</span
               >
               (default <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
-                >~/.config/agterm/ghostty.conf</span
-              >) is the place to customize agterm. It sits next to
+                >~/.config/rook/ghostty.conf</span
+              >) is the place to customize rook. It sits next to
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">keymap.conf</span>, is always loaded,
-              and is scoped to agterm so the standalone Ghostty.app never reads it. Put any ghostty config key there — the keys
-              agterm manages from Settings (font, theme, opacity, blur, scroll speed) still win. A common use:
+              and is scoped to rook so the standalone Ghostty.app never reads it. Put any ghostty config key there — the keys
+              rook manages from Settings (font, theme, opacity, blur, scroll speed) still win. A common use:
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">macos-option-as-alt = true</span>. The
               full key reference is at <a href="https://ghostty.org/docs/config" style="color: #6d82f3">ghostty.org/docs/config</a>.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
-              Programs can read and write the macOS clipboard over OSC 52. agterm prompts before a program
+              Programs can read and write the macOS clipboard over OSC 52. rook prompts before a program
               <strong style="color: #e6e1d7">reads</strong> your clipboard (a read hands its contents back to the program); a normal
               ⌘V paste is never prompted. Clipboard <strong style="color: #e6e1d7">writes</strong> go through by default, matching
               other terminals so a remote <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
@@ -1666,7 +1666,7 @@
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               Open the file with <strong style="color: #e6e1d7">File ▸ Edit ghostty.conf…</strong> (a 95% editor overlay, same as
               Edit Keymap). Apply edits made elsewhere with <strong style="color: #e6e1d7">File ▸ Reload Config</strong> or
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl config reload</span>. A
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl config reload</span>. A
               malformed line is skipped and the good ones still apply; the returned diagnostic count covers every config source.
             </p>
           </section>
@@ -1787,13 +1787,13 @@
                 color: #e6e1d7;
               "
             >
-              <span style="color: #6b727a"># state is idle | active | completed | blocked</span><br />agtermctl session status
-              active --target <span style="color: #5ea1f2">"$AGTERM_SESSION_ID"</span><br />agtermctl session status blocked
-              --sound default --target <span style="color: #5ea1f2">"$AGTERM_SESSION_ID"</span><br />agtermctl session status
-              completed --auto-reset --target <span style="color: #5ea1f2">"$AGTERM_SESSION_ID"</span><br />agtermctl session
-              status blocked --color <span style="color: #5ea1f2">'#ff0000'</span> --target <span style="color: #5ea1f2">"$AGTERM_SESSION_ID"</span><br />agtermctl session
-              status blocked --pane right --target <span style="color: #5ea1f2">"$AGTERM_SESSION_ID"</span><br />agtermctl session
-              status idle --target <span style="color: #5ea1f2">"$AGTERM_SESSION_ID"</span>
+              <span style="color: #6b727a"># state is idle | active | completed | blocked</span><br />rookctl session status
+              active --target <span style="color: #5ea1f2">"$ROOK_SESSION_ID"</span><br />rookctl session status blocked
+              --sound default --target <span style="color: #5ea1f2">"$ROOK_SESSION_ID"</span><br />rookctl session status
+              completed --auto-reset --target <span style="color: #5ea1f2">"$ROOK_SESSION_ID"</span><br />rookctl session
+              status blocked --color <span style="color: #5ea1f2">'#ff0000'</span> --target <span style="color: #5ea1f2">"$ROOK_SESSION_ID"</span><br />rookctl session
+              status blocked --pane right --target <span style="color: #5ea1f2">"$ROOK_SESSION_ID"</span><br />rookctl session
+              status idle --target <span style="color: #5ea1f2">"$ROOK_SESSION_ID"</span>
               <span style="color: #6b727a">&nbsp;# clear it</span>
             </div>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
@@ -1837,7 +1837,7 @@
               amber when any is blocked. Clicking it — or ⌃⇧I, <strong style="color: #e6e1d7">Navigate ▸ Go to Attention…</strong>,
               or the action palette's "Show Attention" — opens the <strong style="color: #e6e1d7">attention list</strong>: this
               window's non-idle sessions, sorted blocked → active → completed. Over the control channel,
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl tree --json</span> reports
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl tree --json</span> reports
               each session's <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">status</span> and
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">statusPane</span> (which pane set it).
             </p>
@@ -1852,12 +1852,12 @@
               and re-arms the timer for the next one. The opt-in <strong style="color: #e6e1d7">Don't auto-follow away from a
               running session</strong> (off by default) holds the selection put while the current session is
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">active</span>. Over the control
-              channel, <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl tree --json</span>
+              channel, <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl tree --json</span>
               reports the window's <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">idleMs</span>
               (ms since your last input, live) and
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">autoFollowMs</span> (the configured
               timeout in ms, omitted when Disabled);
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl window list --json</span>
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl window list --json</span>
               reports <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">autoFollowMs</span> per
               window (as of the last refresh), but not the live
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">idleMs</span>.
@@ -1866,7 +1866,7 @@
               To wire it up automatically, <strong style="color: #e6e1d7">Help ▸ Install Agent Status Hooks…</strong> installs a
               hooks package: a generic bash/zsh/fish shell integration (flags
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">active</span> while a command
-              matching <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">AGTERM_AGENT_RE</span> runs;
+              matching <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ROOK_AGENT_RE</span> runs;
               the default set is codex, gemini, cursor-agent, aider, opencode, crush, goose), and four Claude Code hooks (prompt →
               active, tool run → active, Stop → completed, permission prompt → blocked). For Codex it prints a
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">notify</span> line to add to
@@ -1947,7 +1947,7 @@
             </p>
             <div style="display: flex; flex-wrap: wrap; gap: 12px">
               <a
-                href="https://github.com/umputun/agterm/blob/master/docs/troubleshooting.md"
+                href="https://github.com/jokius/rook/blob/master/docs/troubleshooting.md"
                 style="
                   font-family: &quot;JetBrains Mono&quot;, monospace;
                   font-size: 13.5px;
@@ -1960,7 +1960,7 @@
                 >troubleshooting.md ↗</a
               >
               <a
-                href="https://github.com/umputun/agterm/issues/new"
+                href="https://github.com/jokius/rook/issues/new"
                 style="
                   font-family: &quot;JetBrains Mono&quot;, monospace;
                   font-size: 13.5px;
@@ -1973,7 +1973,7 @@
                 >Open an issue ↗</a
               >
               <a
-                href="https://github.com/umputun/agterm/discussions/new"
+                href="https://github.com/jokius/rook/discussions/new"
                 style="
                   font-family: &quot;JetBrains Mono&quot;, monospace;
                   font-size: 13.5px;
@@ -1999,14 +1999,14 @@
               color: #6b727a;
             "
           >
-            agterm embeds <strong style="color: #949ba4">libghostty</strong>, the terminal engine from
+            rook embeds <strong style="color: #949ba4">libghostty</strong>, the terminal engine from
             <a href="https://github.com/ghostty-org/ghostty" style="color: #949ba4" class="hv11">Ghostty</a> (MIT) — rendering, VT
-            parsing, and shell I/O, built from upstream source at a pinned commit. The way agterm drives libghostty's C API from a
+            parsing, and shell I/O, built from upstream source at a pinned commit. The way rook drives libghostty's C API from a
             SwiftUI/AppKit app was learned from
             <a href="https://github.com/thdxg/macterm" style="color: #949ba4" class="hv11">macterm</a> (MIT), and SwiftUI guidance
             came from the
             <a href="https://github.com/AvdLee/SwiftUI-Agent-Skill" style="color: #949ba4" class="hv11">SwiftUI Agent Skill</a>
-            (MIT). The model, sidebar, persistence, control channel, and multi-window code are original to agterm.
+            (MIT). The model, sidebar, persistence, control channel, and multi-window code are original to rook.
           </div>
         </main>
       </div>
@@ -2027,12 +2027,12 @@
           "
         >
           <a href="/" style="display: flex; align-items: center; gap: 10px; color: #949ba4; font-size: 13.5px" class="hv7"
-            >← agterm.com</a
+            >← rook.app</a
           >
           <div style="display: flex; gap: 24px; font-size: 13px">
-            <a href="https://github.com/umputun/agterm" style="color: #949ba4" class="hv7">GitHub</a>
-            <a href="https://github.com/umputun/agterm/issues" style="color: #949ba4" class="hv7">Issues</a>
-            <a href="https://github.com/umputun/agterm/discussions" style="color: #949ba4" class="hv7">Discussions</a>
+            <a href="https://github.com/jokius/rook" style="color: #949ba4" class="hv7">GitHub</a>
+            <a href="https://github.com/jokius/rook/issues" style="color: #949ba4" class="hv7">Issues</a>
+            <a href="https://github.com/jokius/rook/discussions" style="color: #949ba4" class="hv7">Discussions</a>
           </div>
         </div>
       </div>

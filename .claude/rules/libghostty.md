@@ -1,14 +1,14 @@
 ---
 paths:
-  - "agterm/Ghostty/GhosttySurfaceView*.swift"
-  - "agterm/Ghostty/GhosttyApp.swift"
-  - "agterm/Ghostty/GhosttyCallbacks.swift"
-  - "agterm/Ghostty/GhosttyResources.swift"
-  - "agterm/ContentView.swift"
-  - "agterm/Views/WindowContentView.swift"
-  - "agterm/Views/SplitRatioAccessor.swift"
-  - "agterm/Views/TerminalView.swift"
-  - "agterm/Views/TerminalSearchBar.swift"
+  - "rook/Ghostty/GhosttySurfaceView*.swift"
+  - "rook/Ghostty/GhosttyApp.swift"
+  - "rook/Ghostty/GhosttyCallbacks.swift"
+  - "rook/Ghostty/GhosttyResources.swift"
+  - "rook/ContentView.swift"
+  - "rook/Views/WindowContentView.swift"
+  - "rook/Views/SplitRatioAccessor.swift"
+  - "rook/Views/TerminalView.swift"
+  - "rook/Views/TerminalSearchBar.swift"
 ---
 
 ## libghostty gotchas
@@ -17,13 +17,13 @@ paths:
   The non-terminal chrome (sidebar row text + icons, title-bar text + buttons,
   the bottom add-buttons) uses the theme's colors instead of system label colors:
   `GhosttyApp.resolveThemeColors` reads `background`/`foreground` via `ghostty_config_get` and mirrors
-  `terminalForegroundColor` into the views (refreshed on `.agtermAppearanceChanged`,
+  `terminalForegroundColor` into the views (refreshed on `.rookAppearanceChanged`,
   like `terminalColor`).
   But `ghostty_config_get` returns the non-optional `background`/`foreground` and **returns false for
   the optional `selection-background`/`selection-foreground`** (verified:
   `selBg=false` even when the theme sets them).
   So the selection colors are resolved by `resolveSelectionColors()` — parsing the same config sources
-  `loadConfig` loads (defaults → `~/.config/ghostty/config` → the agterm settings conf,
+  `loadConfig` loads (defaults → `~/.config/ghostty/config` → the rook settings conf,
   last-wins) for `theme`/explicit `selection-*`, then reading the named theme file under `Bundle.main/ghostty/themes/<name>`.
   The selected sidebar row draws the theme's `selection-background` pill with `selection-foreground`
   text (a luminance-contrast black/white fallback when only the background is set).
@@ -35,13 +35,13 @@ paths:
   So `ghosttyConfigLines()` emits the dual value RAW while following (no `isDark` param, no side-pick) and
   ghostty resolves the active side.
   The switch is NOT fully autonomous on `set_color_scheme`: `ghostty_surface/app_set_color_scheme` only
-  RECORD the new conditional state and emit a SOFT `reload_config` action (which agterm does not handle,
+  RECORD the new conditional state and emit a SOFT `reload_config` action (which rook does not handle,
   so it is dropped); libghostty re-resolves only when the host re-feeds the config via `update_config`.
-  agterm therefore triggers the reload ITSELF on a flip.
+  rook therefore triggers the reload ITSELF on a flip.
   The appearance side is single-sourced from the APP-level `NSApplication.effectiveAppearance`, observed
   via KVO in `SystemAppearanceObserver` (the same mechanism Ghostty and the AppKit community use — Apple
   exposes no notification API for appearance).
-  The observer posts `.agtermSystemAppearanceChanged` with the KVO-delivered `isDark` (`change.newValue`,
+  The observer posts `.rookSystemAppearanceChanged` with the KVO-delivered `isDark` (`change.newValue`,
   the SETTLED value, never re-read at receive time), and `SettingsModel.appearanceChanged` threads that
   `isDark` straight into `reloadConfigPreservingSessionZoom` → `GhosttyApp.reloadConfig(surfaces:isDark:)`,
   which sets the app + each surface scheme from it and re-feeds the config via `update_config` (NOT through
@@ -102,7 +102,7 @@ paths:
   transparent over the terminal-colored/translucent window backing.
   The row draws the themed pill in `drawBackground(in:)` for every state,
   and the Coordinator's `refreshSelectionAppearance()` repaints the pills + re-tints the row text on
-  selection change (AppKit won't redraw rows on its own with `.none`) and on `.agtermAppearanceChanged`.
+  selection change (AppKit won't redraw rows on its own with `.none`) and on `.rookAppearanceChanged`.
   **The row view is the single source of truth for the cell's selection tint.**
   The pill reads `isSelected` live at draw time, but the text/icon color is applied imperatively
   (`SidebarCellView.setColors`), so the two can desync when a re-tint event is missed —
@@ -185,7 +185,7 @@ paths:
   Raw image bits (a ⌘⇧4 screenshot, Copy Image, an image dragged out of a browser) carry no URL and no
   string, so ⌘V used to insert NOTHING at all (the upstream-ghostty behavior).
   `pasteboardText` now falls through to `pasteboardImagePath`, which writes the bits to
-  `<NSTemporaryDirectory()>/agterm-paste-<uuid>.png` and returns that shell-escaped path — the de-facto
+  `<NSTemporaryDirectory()>/rook-paste-<uuid>.png` and returns that shell-escaped path — the de-facto
   terminal convention (iTerm2/kitty/WezTerm/cmux all do this), because a pty has NO channel for image
   bytes (the kitty graphics protocol is OUTPUT-only) and a coding agent recognizes an image path in its
   prompt and attaches the file itself.
@@ -226,21 +226,21 @@ paths:
   (Ctrl or Option) is held AND the layout's own character is non-ASCII.
   Both guards are load-bearing: unmodified typing keeps reporting the REAL character (so Cyrillic text
   input is untouched), and a latin layout is never rewritten (Dvorak/Colemak key POSITIONS are the user's
-  deliberate choice — `KeyCodepoint.unshifted` in `agtermCore` owns that rule and is unit-tested).
-  Ghostty.app computes this field the same way agterm used to (`characters(byApplyingModifiers: [])`),
-  so this is an UPSTREAM behavior agterm fixes on its own side — do not expect a libghostty bump to
+  deliberate choice — `KeyCodepoint.unshifted` in `rookCore` owns that rule and is unit-tested).
+  Ghostty.app computes this field the same way rook used to (`characters(byApplyingModifiers: [])`),
+  so this is an UPSTREAM behavior rook fixes on its own side — do not expect a libghostty bump to
   make it redundant.
   NOT XCUITest-able (XCUITest cannot switch the input source), so it is verified by a real keystroke on a
   real layout: run `printf '\033[>1u'; stty -isig; cat -v` in a session (turns the kitty protocol on and
   PRINTS the bytes instead of acting on them), press Ctrl-C on both layouts, and read the buffer back with
-  `agtermctl session text` — both must show `^[[99;5u`.
+  `rookctl session text` — both must show `^[[99;5u`.
   That probe is the whole diagnosis in one line; reach for it before theorizing.
 - **Search bar placement (NSSplitView-overrun rule).**
   The underlying rule: nothing may change `sessionDetail`'s ZStack SHAPE when a per-session toggle flips —
   adding/removing a child (or flipping a pane modifier) inside that HSplitView-hosting subtree re-hosts the
   `NSSplitView` and overruns it UP into the transparent titlebar.
   Two surfaces obey it in two different ways.
-  The SEARCH BAR (`TerminalSearchBar`, `agterm/Views/`) stays OUT of `sessionDetail` entirely: it is anchored
+  The SEARCH BAR (`TerminalSearchBar`, `rook/Views/`) stays OUT of `sessionDetail` entirely: it is anchored
   on `detailPane` via `.overlay(alignment: .topTrailing) { searchBarLayer }`, NEVER inside any session's
   `sessionDetail` subtree, so toggling it can't perturb the split at all.
   The bar reads `store.activeSession?.searchActive` and shows only when set.
@@ -306,7 +306,7 @@ paths:
   `working_directory` (and `initial_input`) `const char*` buffers must outlive `ghostty_surface_new`;
   they are held in a `nonisolated(unsafe)` array and freed only in `destroySurface()`.
 - **Cursor shape is a config default, not set in code.**
-  `agterm/Resources/ghostty-defaults.conf` (loaded first in `GhosttyApp.loadConfig`,
+  `rook/Resources/ghostty-defaults.conf` (loaded first in `GhosttyApp.loadConfig`,
   so a user's `~/.config/ghostty/config` still overrides it) pins a steady block cursor with `cursor-style = block`
   + `shell-integration-features = no-cursor,no-title`.
   The shell-integration `cursor` feature re-emits a DECSCUSR bar (`\e[5 q`) on every prompt and resets
@@ -329,7 +329,7 @@ paths:
   See [[ui-tests]] for the test pattern.
 - **Cursor focus = window-key AND first-responder (`GhosttySurfaceView.liveFocus`).** libghostty draws
   a solid (blinking) cursor only on a surface told it is focused via `ghostty_surface_set_focus`,
-  a hollow outline otherwise. agterm reports `liveFocus = window.isKeyWindow && window.firstResponder === self`
+  a hollow outline otherwise. rook reports `liveFocus = window.isKeyWindow && window.firstResponder === self`
   (the LIVE responder, NOT a cached flag), pushed through `updateGhosttyFocus()`.
   The key-window gate is LOAD-BEARING: AppKit's first responder is PER-WINDOW and does NOT resign when
   a window merely loses key, so without it EVERY window's active surface would keep a blinking cursor
@@ -371,14 +371,14 @@ paths:
   Like the cursor-focus case, this input plumbing is not accessibility-observable and is verified by hand,
   not a UI test.
 - **OSC 52 clipboard access is gated in OUR callbacks, not by a ghostty-internal dialog.**
-  A program reading (`\e]52;c;?\a`) or writing (`\e]52;c;<base64>\a`) the system clipboard reaches agterm
+  A program reading (`\e]52;c;?\a`) or writing (`\e]52;c;<base64>\a`) the system clipboard reaches rook
   through `read_clipboard_cb`/`confirm_read_clipboard_cb` and `write_clipboard_cb` (`GhosttyCallbacks`).
   libghostty delegates the `ask` policy to the host: the write callback carries a `confirm` bool (true
   when `clipboard-write = ask`), and the read confirm callback carries a `ghostty_clipboard_request_e`
   (`GHOSTTY_CLIPBOARD_REQUEST_OSC_52_READ` for a program read, `..._PASTE` for ⌘V) — only `OSC_52_READ`
   is gated, so pastes never prompt.
   `ClipboardPromptController` (`@MainActor`) owns an app-session-scoped host-free `ClipboardPromptPolicy`
-  (`ask`/`allow`/`deny` remembered per direction until agterm quits, shared across every window and
+  (`ask`/`allow`/`deny` remembered per direction until rook quits, shared across every window and
   terminal session: the "don't ask again this session" choice) and shows an `NSAlert` sheet.
   Coalescing is keyed by (requesting surface, direction), so a program looping OSC 52 collapses to one
   prompt while a DIFFERENT surface's concurrent request gets its OWN prompt, so one Allow never authorizes
@@ -393,7 +393,7 @@ paths:
   same-tick OSC 52 read observe the stale clipboard.
   Read gating rides ghostty's own `clipboard-read = ask` default (verified: the confirm callback fires
   with no explicit config); write stays `allow` by default (matches mainstream terminals, so a legit
-  remote yank isn't interrupted) and opts into `ask`/`deny` via the agterm-scoped `ghostty.conf`.
+  remote yank isn't interrupted) and opts into `ask`/`deny` via the rook-scoped `ghostty.conf`.
   The deferred read completion captures the `GhosttySurfaceView` (NOT the raw surface pointer) and
   re-reads `view.surface` on the main actor before completing, skipping the call when it is nil: a
   session/window/pane close (or `session.close` over the control socket) can `ghostty_surface_free` the

@@ -7,11 +7,11 @@
 #   scripts/release.sh <version> --publish  # also: gh release + cask bump/push
 #
 # Signing identity: auto-detected from the keychain ("Developer ID Application"),
-# or override with AGTERM_SIGN_IDENTITY. With no identity it produces an AD-HOC
-# DMG (not notarized) — a dry run by default, but set AGTERM_ALLOW_UNSIGNED=1 to
+# or override with ROOK_SIGN_IDENTITY. With no identity it produces an AD-HOC
+# DMG (not notarized) — a dry run by default, but set ROOK_ALLOW_UNSIGNED=1 to
 # --publish it as an unsigned release. Notary creds come from a keychain profile created
-# with `xcrun notarytool store-credentials` (default name: agterm-notary,
-# override with AGTERM_NOTARY_PROFILE).
+# with `xcrun notarytool store-credentials` (default name: rook-notary,
+# override with ROOK_NOTARY_PROFILE).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
@@ -27,14 +27,14 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 fi
 
 TAG="v$VERSION"
-DMG="$BUILD_DIR/agterm-$VERSION.dmg"
-APP="$BUILD_DIR/DerivedData/Build/Products/Release/agterm.app"
-NOTARY_PROFILE="${AGTERM_NOTARY_PROFILE:-agterm-notary}"
-TAP_REPO="umputun/homebrew-apps"
+DMG="$BUILD_DIR/rook-$VERSION.dmg"
+APP="$BUILD_DIR/DerivedData/Build/Products/Release/rook.app"
+NOTARY_PROFILE="${ROOK_NOTARY_PROFILE:-rook-notary}"
+TAP_REPO="jokius/homebrew-apps"
 
 # resolve the signing identity: explicit override, else the first Developer ID
 # Application identity in the keychain, else ad-hoc dry-run.
-SIGN_ID="${AGTERM_SIGN_IDENTITY:-}"
+SIGN_ID="${ROOK_SIGN_IDENTITY:-}"
 if [ -z "$SIGN_ID" ]; then
   SIGN_ID="$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/{print $2; exit}')"
 fi
@@ -46,9 +46,9 @@ else
   echo "==> WARNING: no Developer ID Application identity found — building AD-HOC (dry-run, not notarized)"
 fi
 
-if [ "$PUBLISH" = "1" ] && [ "$SIGNED" = "0" ] && [ "${AGTERM_ALLOW_UNSIGNED:-0}" != "1" ]; then
+if [ "$PUBLISH" = "1" ] && [ "$SIGNED" = "0" ] && [ "${ROOK_ALLOW_UNSIGNED:-0}" != "1" ]; then
   echo "refusing to --publish an ad-hoc (unsigned) build" >&2
-  echo "set AGTERM_ALLOW_UNSIGNED=1 to publish the interim unsigned build (CI does this)" >&2
+  echo "set ROOK_ALLOW_UNSIGNED=1 to publish the interim unsigned build (CI does this)" >&2
   exit 1
 fi
 
@@ -87,8 +87,8 @@ release_notes() {
 
 Signed with a Developer ID certificate and notarized by Apple, so macOS Gatekeeper opens it with no extra steps. Apple Silicon (arm64) only, macOS 14 or later.
 
-- **Homebrew:** \`brew install --cask umputun/apps/agterm\`
-- **Direct download:** open the \`.dmg\` and drag \`agterm.app\` into \`/Applications\`.
+- **Homebrew:** \`brew install --cask umputun/apps/rook\`
+- **Direct download:** open the \`.dmg\` and drag \`rook.app\` into \`/Applications\`.
 EOF
 }
 
@@ -100,7 +100,7 @@ xcodegen generate >/dev/null
 # timestamp, so trying to inject Developer ID at build time is racy. Instead we
 # re-sign authoritatively below, AFTER xcodebuild returns.
 GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-xcodebuild -project agterm.xcodeproj -scheme agterm -configuration Release \
+xcodebuild -project rook.xcodeproj -scheme rook -configuration Release \
   -derivedDataPath "$BUILD_DIR/DerivedData" \
   MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$VERSION" GIT_COMMIT="$GIT_COMMIT" \
   build
@@ -111,15 +111,15 @@ xcodebuild -project agterm.xcodeproj -scheme agterm -configuration Release \
 # nested helper first (inside-out), then re-sign + seal the app bundle.
 if [ "$SIGNED" = "1" ]; then
   echo "==> signing Developer ID (timestamped)"
-  codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/MacOS/agtermctl"
+  codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/MacOS/rookctl"
   codesign --force --options runtime --timestamp \
-    --entitlements "$ROOT/agterm/agterm.entitlements" --sign "$SIGN_ID" "$APP"
+    --entitlements "$ROOT/rook/rook.entitlements" --sign "$SIGN_ID" "$APP"
   codesign --verify --deep --strict "$APP"
 fi
 
 # ── notarize + staple the app ─────────────────────────────────────────────────
 if [ "$SIGNED" = "1" ]; then
-  ZIP="$BUILD_DIR/agterm-$VERSION.zip"
+  ZIP="$BUILD_DIR/rook-$VERSION.zip"
   ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
   notarize "$ZIP"
   rm -f "$ZIP"
@@ -134,7 +134,7 @@ rm -rf "$STAGING"; mkdir -p "$STAGING"
 cp -R "$APP" "$STAGING/"
 ln -s /Applications "$STAGING/Applications"
 rm -f "$DMG"
-hdiutil create -volname agterm -srcfolder "$STAGING" -ov -format UDZO "$DMG"
+hdiutil create -volname rook -srcfolder "$STAGING" -ov -format UDZO "$DMG"
 rm -rf "$STAGING"
 
 # ── sign + notarize + staple the DMG ──────────────────────────────────────────
@@ -171,18 +171,18 @@ gh release upload "$TAG" "$DMG" --clobber
 SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
 TAP_DIR="$(mktemp -d)"
 gh repo clone "$TAP_REPO" "$TAP_DIR" -- --depth=1 >/dev/null
-CASK="$TAP_DIR/Casks/agterm.rb"
+CASK="$TAP_DIR/Casks/rook.rb"
 if [ ! -f "$CASK" ]; then
   mkdir -p "$TAP_DIR/Casks"
-  cp "$ROOT/packaging/agterm.rb" "$CASK" # first publish: seed from the in-repo source of truth
+  cp "$ROOT/packaging/rook.rb" "$CASK" # first publish: seed from the in-repo source of truth
 fi
 sed -i '' -E "s/^( *version )\".*\"/\1\"$VERSION\"/" "$CASK"
 sed -i '' -E "s/^( *sha256 )\".*\"/\1\"$SHA\"/" "$CASK"
-git -C "$TAP_DIR" add Casks/agterm.rb
+git -C "$TAP_DIR" add Casks/rook.rb
 if git -C "$TAP_DIR" diff --cached --quiet; then
   echo "==> cask already at $VERSION, nothing to push"
 else
-  git -C "$TAP_DIR" commit -m "agterm $VERSION"
+  git -C "$TAP_DIR" commit -m "rook $VERSION"
   git -C "$TAP_DIR" push
   echo "==> cask bumped to $VERSION"
 fi

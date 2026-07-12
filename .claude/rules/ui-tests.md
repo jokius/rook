@@ -1,16 +1,16 @@
 ---
 paths:
-  - "agtermUITests/**/*.swift"
+  - "rookUITests/**/*.swift"
 ---
 
 ## UI tests
 
-- `agtermUITests/` is an XCUITest target that launches the real app and drives the sidebar (rename,
-  close, move, drag, add-session) through the accessibility API — the coverage the host-free `agtermCore`
+- `rookUITests/` is an XCUITest target that launches the real app and drives the sidebar (rename,
+  close, move, drag, add-session) through the accessibility API — the coverage the host-free `rookCore`
   unit tests can't provide.
-  Run with `xcodebuild test -project agterm.xcodeproj -scheme agterm -destination 'platform=macOS'`.
-- Tests pass `AGTERM_STATE_DIR` (a temp dir) via launch environment to isolate persistence;
-  the app honors it in `agtermApp.restoredStore()`.
+  Run with `xcodebuild test -project rook.xcodeproj -scheme rook -destination 'platform=macOS'`.
+- Tests pass `ROOK_STATE_DIR` (a temp dir) via launch environment to isolate persistence;
+  the app honors it in `rookApp.restoredStore()`.
   The native `Open Directory…` panel is system UI, verified manually rather than in XCUITest.
 - **Launch the app with `app.launchForUITest()` — never bare `app.launch()`.**
   Apple bug **FB11763863**: on macOS 15+/Xcode 16+ (incl.
@@ -25,7 +25,7 @@ paths:
   the same event a dock click sends — and SwiftUI then creates the window.
   `XCUIApplication.activate()` / `NSApp.activate()` / `orderFrontRegardless()` / `.defaultLaunchBehavior(.presented)`
   do NOT help (the window is never created, not just un-focused).
-  `launchForUITest()` (in `XCUIApplicationSidebarIsolation.swift`) feeds the `AGTERM_UITEST_FORCE_SIDEBAR_VISIBLE`
+  `launchForUITest()` (in `XCUIApplicationSidebarIsolation.swift`) feeds the `ROOK_UITEST_FORCE_SIDEBAR_VISIBLE`
   sentinel via launch **environment** (NOT `launchArguments` — args trip a related variant),
   launches, and `activate()`s.
   The reopen re-triggers macOS state restoration, so the `Settings` window is marked **non-restorable**
@@ -38,7 +38,7 @@ paths:
   that silently drops the first tab click; `settingsControl` re-clicks each tick until the expected control
   is hittable, which is what makes the Settings tests non-flaky.
 - **Add a UI test when you add UI functionality**
-  — don't ship UI behavior with only `agtermCore` model-level unit tests.
+  — don't ship UI behavior with only `rookCore` model-level unit tests.
   For behavior the accessibility tree can't observe (the Metal `GhosttySurfaceView`,
   transient non-persisted state), drive it through an observable side effect:
   e.g. the split test types `tty > <file>` into the focused pane and compares the written tty to verify
@@ -46,7 +46,7 @@ paths:
 - **Simulating a macOS light/dark flip: the `debug.appearance` control seam.**
   macOS XCUITest has no API to change the system appearance, so `AppearanceFlipUITests` drives the
   UI-test-only `debug.appearance` command (`light`|`dark`), which sets `NSApp.appearance` AND posts
-  `.agtermSystemAppearanceChanged` directly, driving the REAL flip path (scheme sync → debounced
+  `.rookSystemAppearanceChanged` directly, driving the REAL flip path (scheme sync → debounced
   zoom-preserving reload) end to end.
   Production follows the appearance via an app-level KVO observer on `NSApplication.effectiveAppearance`
   (`SystemAppearanceObserver`); the seam posts the notification itself so the test does not depend on
@@ -78,8 +78,8 @@ paths:
   Gotcha: `FileManager.default.homeDirectoryForCurrentUser` resolves DIFFERENTLY in the XCUITest runner
   process vs the app, so assert a cwd second line against a stable marker like `/Users/`,
   NOT the runner's own home.
-  (`agtermctl session.type` is the control-channel equivalent of the typed injection;
-  `agtermctl tree --json` now carries the raw `title`, which an e2e can poll instead of reading the AX
+  (`rookctl session.type` is the control-channel equivalent of the typed injection;
+  `rookctl tree --json` now carries the raw `title`, which an e2e can poll instead of reading the AX
   tree.
   See `SessionSubtitleUITests` + `ControlAPIUITests.testTreeExposesOscTitle`.)
 - **Driving an `NSOutlineView` row drag from XCUITest needs three things,
@@ -108,7 +108,7 @@ paths:
   The maintainer works on other projects on the same machine WHILE the agent runs, so a UI pass does not
   merely risk colliding with a hand-off (the note below): it interrupts whatever they are actually doing,
   synthesizing keystrokes into their windows for minutes.
-  This covers `xcodebuild test` on `agtermUITests`, synthetic `CGEvent`s, and programmatic keyboard-layout
+  This covers `xcodebuild test` on `rookUITests`, synthetic `CGEvent`s, and programmatic keyboard-layout
   switching (`TISSelectInputSource`) alike.
   So: run everything that is SAFE (build, `make lint`, `swift test`, a dev-instance launch) on your own,
   then TELL the user a UI run is pending and OFFER it — never launch it silently, never "just quickly".
@@ -128,10 +128,10 @@ paths:
   not the on-screen event synthesis).
   Host-free `swift test` is fine anytime (no screen interaction).
 - **Test cadence — ASK before a full UI run; don't default to it.**
-  The host-free `cd agtermCore && swift test` is fast (~0.2 s) — always run it.
+  The host-free `cd rookCore && swift test` is fast (~0.2 s) — always run it.
   The XCUITest suite is SLOW (~75 s for one class, ~460 s for all 77) and re-runs unaffected tests,
   so a full UI run is NOT a default pre-commit gate.
-  For an isolated change, run ONLY the affected target/case (`xcodebuild test … -only-testing:agtermUITests/SplitUITests`,
+  For an isolated change, run ONLY the affected target/case (`xcodebuild test … -only-testing:rookUITests/SplitUITests`,
   or a single method like `…/SidebarUITests/testRenameSession`).
   Before committing UI-affecting work, ASK which UI-test scope is wanted and RECOMMEND one:
   focused for self-contained changes; full only for foundational/cross-concern work (app launch,
@@ -139,7 +139,7 @@ paths:
   Don't burn minutes re-running the whole suite when the change is self-contained.
 - **After editing a TEST file, rebuild the test bundle with `build-for-testing` — `test-without-building`
   runs the STALE bundle.**
-  `xcodebuild build` (or `make build`) builds only the APP target, NOT the `agtermUITests` bundle.
+  `xcodebuild build` (or `make build`) builds only the APP target, NOT the `rookUITests` bundle.
   So `xcodebuild build` then `test-without-building` runs the OLD compiled test against the NEW app —
   the source edit is silently ignored.
   The symptom is confusing: the run reports `Executed 0 tests` with a crash/`Restarting after unexpected

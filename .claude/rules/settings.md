@@ -1,20 +1,20 @@
 ---
 paths:
-  - "agterm/SettingsModel.swift"
-  - "agterm/Views/SettingsView.swift"
-  - "agterm/SettingsCatalog.swift"
-  - "agterm/Views/WindowAppearance.swift"
-  - "agterm/NSColor+AgtermHex.swift"
-  - "agtermCore/Sources/agtermCore/AppSettings.swift"
-  - "agtermCore/Sources/agtermCore/SettingsStore.swift"
-  - "agtermUITests/SettingsUITests.swift"
+  - "rook/SettingsModel.swift"
+  - "rook/Views/SettingsView.swift"
+  - "rook/SettingsCatalog.swift"
+  - "rook/Views/WindowAppearance.swift"
+  - "rook/NSColor+RookHex.swift"
+  - "rookCore/Sources/rookCore/AppSettings.swift"
+  - "rookCore/Sources/rookCore/SettingsStore.swift"
+  - "rookUITests/SettingsUITests.swift"
 ---
 
 ## Settings
 
-- Settings persist in agtermCore: `AppSettings` (Codable value type, optional fields,
+- Settings persist in rookCore: `AppSettings` (Codable value type, optional fields,
   NO version field — optionality is the forward-compat) + `SettingsStore` (JSON at `<stateDir>/settings.json`,
-  `AGTERM_STATE_DIR`-isolated, mirrors `PersistenceStore`).
+  `ROOK_STATE_DIR`-isolated, mirrors `PersistenceStore`).
   Fields: `fontFamily`/`fontSize`/`theme`/`darkTheme`/`followSystemAppearance` + `backgroundOpacity` (0...1) / `backgroundBlur` (CGS radius)
   + `notificationsEnabled` / `toolbarMode` / `notificationBadgeEnabled` / `attentionButtonEnabled`
   + the agent-status glyph colors `activeStatusColorHex`/`blockedStatusColorHex`/`completedStatusColorHex`
@@ -48,8 +48,8 @@ paths:
   `theme`/`darkTheme`/`followSystemAppearance` are the macOS light/dark appearance-sync state: `theme` is the single/light-slot theme, `darkTheme` the dark slot, `followSystemAppearance` (nil = off) the toggle; when following, `ghosttyConfigLines()` emits ghostty's raw dual `theme = light:NAME,dark:NAME` conditional and libghostty resolves the side at runtime — `ghosttyConfigLines()` takes NO `isDark` arg (see the Theme picker rule; `ThemeResolution` is gone, the dual value is reduced to the active side for the sidebar selection colors by `ThemeName.resolved(from:isDark:)`).
   The three `*StatusColorHex` (`#RRGGBB`, nil = active `#DBD9E6` muted lavender-grey + system amber/green)
   color the sidebar agent-status glyph: `SettingsModel` passes the hex to `GhosttyApp.setAgentStatusColors`
-  which resolves to `NSColor` (so `SettingsModel` stays AppKit-free, the `NSColor`↔hex helper is `NSColor+AgtermHex`),
-  `StatusIconView` reads it when drawing, and a change rides `.agtermAppearanceChanged` → the Coordinator's
+  which resolves to `NSColor` (so `SettingsModel` stays AppKit-free, the `NSColor`↔hex helper is `NSColor+RookHex`),
+  `StatusIconView` reads it when drawing, and a change rides `.rookAppearanceChanged` → the Coordinator's
   `reapplyStatusGlyphs()` sweep (the colors are global, not per-row, so `reconcile`'s diff can't see
   them).
   Settings → Agent Status drives them with a Reset-to-defaults button (clears all three
@@ -79,7 +79,7 @@ paths:
   defaults (discrete 3 / precision 1) — a consequence is it overrides any `mouse-scroll-multiplier` in
   the user's own `~/.config/ghostty/config`; and `rightClickPaste` — nil/on emits `right-click-action = paste`,
   off emits `right-click-action = ignore`, so the toggle OWNS the key (the settings conf loads last, so
-  it wins over a `right-click-action` in the user's own `ghostty.conf` — for agterm, which has no terminal
+  it wins over a `right-click-action` in the user's own `ghostty.conf` — for rook, which has no terminal
   context menu, paste-or-off is the whole meaningful choice).
   The General → Mouse scroll-speed slider (1...10, default 3) maps 3 back to nil so `settings.json` stays
   minimal; the emitted value is 3 either way.
@@ -89,20 +89,20 @@ paths:
   `theme.set`/`config.reload` touch settings over the socket — the right-click FORWARDING itself is unconditional
   in `GhosttySurfaceView`, this key only decides libghostty's action).
   The Appearance → Window inactive-pane-mute slider (0...10, default 5) maps 5 back to nil the same way;
-  it drives `GhosttyApp.inactivePaneMuteStrength` (mirrored into `WindowContentView` view state on `.agtermAppearanceChanged`,
+  it drives `GhosttyApp.inactivePaneMuteStrength` (mirrored into `WindowContentView` view state on `.rookAppearanceChanged`,
   like `toolbarMode`/`notificationBadgeEnabled`), and `ContentView.paneDim` washes the inactive split
   pane with `terminalColor` at `AppSettings.muteOpacity(strength:)` (host-free,
   unit-tested: 0→0 renders nothing, 5→0.4 = the historical default, 10→0.8) so the inactive pane's TEXT
   mutes toward the background (`bg→bg` unchanged, `text→bg` dimmer) while the background stays put —
   the way other terminals dim an inactive pane.
-  NOT a ghostty key, so `writeGhosttyConfig` no-ops and no surface reload fires (only the `.agtermAppearanceChanged`
+  NOT a ghostty key, so `writeGhosttyConfig` no-ops and no surface reload fires (only the `.rookAppearanceChanged`
   re-render).
   Caveat: in translucent-window mode the surface background is transparent,
   so the wash tints the inactive pane's see-through area slightly toward the theme color (the old `Color.black`
   dim darkened it instead — not a regression).
   The Appearance → Window → Sidebar Tint slider (0...10, default 5 = neutral) maps 5 back to nil the
   same way; it drives `GhosttyApp.sidebarBackgroundShift` (mirrored into `WindowContentView.sidebarShift`
-  on `.agtermAppearanceChanged`, like `inactivePaneMuteStrength`), and `ContentView.sidebarTintWash`
+  on `.rookAppearanceChanged`, like `inactivePaneMuteStrength`), and `ContentView.sidebarTintWash`
   washes the sidebar column with black (darker, >5) or white (lighter, <5) at `abs(AppSettings.sidebarShiftAmount(strength:))`
   (host-free, unit-tested: signed, ±0.30 at the ends, 5→0) — a `.background` BEHIND the transparent outline
   + bottom bar, so the whole column (NOT the title strip, deliberately left uniform with the terminal)
@@ -111,7 +111,7 @@ paths:
   and works identically over an opaque OR a translucent+blurred backdrop,
   so it composes with opacity/blur instead of fighting it; `WindowAppearance.syncSidebarBackground` keeps
   the sidebar see-through (no AppKit fill — the wash is the single tint layer).
-  NOT a ghostty key (only the `.agtermAppearanceChanged` re-render).
+  NOT a ghostty key (only the `.rookAppearanceChanged` re-render).
   Translucency is composited at the AppKit window level, NOT by the renderer:
   when `backgroundOpacity < 1`, `ghosttyConfigLines()` pins `background-opacity = 0` + `background-blur = 0`
   so ghostty draws fully transparent and the window's tinted background is the single translucent layer
@@ -139,7 +139,7 @@ paths:
 - `GhosttyApp.reloadConfig` keeps the new config as `self.config` and does NOT free the previous one:
   `update_config` has no documented ownership contract and the existing code never frees on success,
   so this matches that (crash-safe over a negligible leak on a rare settings change).
-- The terminal color isn't observable, so a settings change posts `.agtermAppearanceChanged`:
+- The terminal color isn't observable, so a settings change posts `.rookAppearanceChanged`:
   `ContentView` mirrors the color into `terminalColor` view state (the quick terminal's opaque backing
   re-renders with the new color) and `TitleProbeView` re-applies the window appearance.
   Without this the chrome only refreshed when the window next re-keyed.
@@ -176,7 +176,7 @@ paths:
   reload).
   The badge toggle (`AppSettings.notificationBadgeEnabled`, nil = on) is mirrored into the non-observable
   `GhosttyApp.notificationBadgeEnabled` flag by `SettingsModel.applyNotificationBadgeEnabled`;
-  because that flag isn't `@Observable`, a flip rides the `.agtermAppearanceChanged` notification the
+  because that flag isn't `@Observable`, a flip rides the `.rookAppearanceChanged` notification the
   same way `toolbarMode` does — the sidebar Coordinator's `appearanceChanged` calls `reconcile()`,
   and the gated `RowContent.unseen` (0 when off via `effectiveUnseen`) reloads the affected badge rows.
   NOT a ghostty config key.
@@ -188,34 +188,34 @@ paths:
   at full opacity it restores the original opaque/solid path and clears the blur.
   The macOS-26 `NavigationSplitView` sidebar is a Liquid Glass container (`NSContainerConcentricGlassEffectView : NSGlassEffectView`)
   that WRAPS the sidebar content (an ancestor, so it can't be hidden), and is NOT flattenable to the
-  window tint; `sidebarGlass(in:)` finds it by walking up from the tagged `agterm-sidebar-scroll` view,
+  window tint; `sidebarGlass(in:)` finds it by walking up from the tagged `rook-sidebar-scroll` view,
   and when translucent sets its `style = .clear` (the see-through variant) + `tintColor = terminalColor.withAlphaComponent(opacity)`
   so the sidebar reads as the same translucent surface (its blur stays Liquid Glass,
   not the window CGS blur — close, not pixel-identical).
   All of this re-applies on every `sync`, which `TitleProbeView` already drives on window key/main/fullscreen
-  transitions + `.agtermAppearanceChanged`.
+  transitions + `.rookAppearanceChanged`.
 - **`configDirectory` + the keymap (see the Keymap section).**
   `AppSettings.configDirectory: String?` (nil = the default) holds the directory that contains `keymap.conf`.
   `SettingsModel` resolves it through the host-free `ConfigPaths.configDirectory(setting:stateDir:home:)`
-  (explicit setting → `<AGTERM_STATE_DIR>/config` for test isolation → `~/.config/agterm`) and `ConfigPaths.keymapPath(...)`
+  (explicit setting → `<ROOK_STATE_DIR>/config` for test isolation → `~/.config/rook`) and `ConfigPaths.keymapPath(...)`
   (`<dir>/keymap.conf`), loads + `parseKeymap`s it at init into the `@Observable` `keymap`/`keymapDiagnostics`,
   and on first launch writes a fully-commented starter `keymap.conf` (`ensureStarterKeymap` — never overwrites
   an existing file; documents every `BuiltinAction` raw name + default chord and the `{AGT_X}` token
   list, so a fresh file rebinds nothing).
   `setConfigDirectory(_:)` persists + reloads; the Key Mapping tab's directory picker drives it.
   Unlike the other settings, a keymap change is NOT a ghostty config rewrite (no `persistAndApply`/surface
-  reload) — it posts `.agtermKeymapChanged` (co-located in `GhosttyApp.swift`'s `Notification.Name` extension)
+  reload) — it posts `.rookKeymapChanged` (co-located in `GhosttyApp.swift`'s `Notification.Name` extension)
   and the `@Observable keymap` drives the rest.
-- **`<configDir>/ghostty.conf` (agterm-scoped ghostty config, co-located with `keymap.conf`).** A config
-  layer between the (opt-in) global ghostty config and agterm's UI settings,
-  and the agterm customization point: `GhosttyApp.loadConfig` loads `ghostty-defaults.conf` → `~/.config/ghostty/config`
+- **`<configDir>/ghostty.conf` (rook-scoped ghostty config, co-located with `keymap.conf`).** A config
+  layer between the (opt-in) global ghostty config and rook's UI settings,
+  and the rook customization point: `GhosttyApp.loadConfig` loads `ghostty-defaults.conf` → `~/.config/ghostty/config`
   (ONLY when `inheritGlobalGhosttyConfig` is on — OFF by default; see that field) → `<configDir>/ghostty.conf`
   → `ghostty-settings.conf` (UI), each overriding the last, so `ghostty.conf` overrides the bundled defaults
-  (and the global config when inherited) for ANY key, but agterm's UI-managed keys (font/theme/opacity/blur/scroll)
+  (and the global config when inherited) for ANY key, but rook's UI-managed keys (font/theme/opacity/blur/scroll)
   still WIN because the settings conf loads LAST.
   The scoped `ghostty.conf` is ALWAYS loaded; skipped only when absent (the starter is comment-only,
   so a fresh install is a no-op).
-  Scoped to agterm only — the standalone Ghostty.app never reads it.
+  Scoped to rook only — the standalone Ghostty.app never reads it.
   `GhosttyApp.resolveConfigInputs()` (a FUNCTION, not a computed property,
   since it reads `settings.json` via `SettingsStore().load()`) returns `ConfigInputs{scopedURL, inheritGlobalConfig}`
   — resolving the scoped path SELF-CONTAINED (`configDirectory` + `ConfigPaths.configDirectory(setting:stateDir:home:)`
@@ -230,7 +230,7 @@ paths:
   a note that the UI keys win) — never overwrites an existing file, seeded at `SettingsModel.init` AFTER
   `loadConfig` already ran (harmless, all comments).
   **Edit/Reload mirror the keymap surfaces** (the keymap's `editorCommand(forKeymapPath:)` was generalized
-  to `editorCommand(forPath:)`, `$0` label `agterm-config-edit`, shared by both).
+  to `editorCommand(forPath:)`, `$0` label `rook-config-edit`, shared by both).
   `AppActions.editGhosttyConfig` (File ▸ Edit ghostty.conf… + the ⌃⇧P palette,
   GUI-only, keep-in-sync EXEMPT like Edit Keymap) opens `ghostty.conf` in `$EDITOR` via a 95% overlay;
   the target + the file's opening contents ride `ghosttyEditOverlaySession`/`ghosttyEditOverlaySnapshot`
@@ -240,7 +240,7 @@ paths:
   `AppActions.reloadGhosttyConfig` (`@discardableResult -> Int`, returning the diagnostic count;
   File ▸ Reload Config + the palette + the overlay close + the `config.reload` control command) → `SettingsModel.reloadGhosttyConfig`
   → `GhosttyApp.reloadConfig(surfaces:isDark:)` (`@discardableResult -> Int`, returning + caching `lastConfigDiagnosticsCount`; `isDark` = the side to resolve the dual theme to, from `currentIsDark()` on the explicit path)
-  + `resetSessionFontSizesAllWindows()` + `.agtermAppearanceChanged`; a non-zero count posts `NotificationManager.notifyConfigDiagnostics(count:)`
+  + `resetSessionFontSizesAllWindows()` + `.rookAppearanceChanged`; a non-zero count posts `NotificationManager.notifyConfigDiagnostics(count:)`
   from `SettingsModel.reloadGhosttyConfig` (mirroring `reloadKeymap`, so EVERY caller surfaces it — incl.
   a Key Mapping directory change via `setConfigDirectory`, which now reloads BOTH co-located files).
   The count spans ALL config sources (libghostty diagnostics carry NO source-file attribution),
@@ -249,7 +249,7 @@ paths:
   The EXPLICIT Reload Config / `config.reload` reload is UNCONDITIONAL (`ghostty.conf` is edited externally,
   so there is always something to re-read) and clears per-session ⌘+/⌘− zoom like any config reload;
   only the editor round-trip is guarded by the unchanged-file check.
-  The whole-config diagnostics banner ALSO fires at launch (`agtermApp` posts `notifyConfigDiagnostics`
+  The whole-config diagnostics banner ALSO fires at launch (`rookApp` posts `notifyConfigDiagnostics`
   when `GhosttyApp.shared.lastConfigDiagnosticsCount > 0` after the first config build).
   See the Control API catalog for the `config.reload` four-point audit.
 - **`restoreRunningCommand` (re-run the foreground command on restart, opt-in,
@@ -326,10 +326,10 @@ paths:
 - **`inheritGlobalGhosttyConfig` (load the user's global `~/.config/ghostty/config`,
   opt-in, General tab).** `AppSettings.inheritGlobalGhosttyConfig: Bool?` (nil = OFF) gates whether `loadConfig`
   reads the user's GLOBAL ghostty config (see the `<configDir>/ghostty.conf` bullet for the layering).
-  OFF by default so agterm is self-contained: a config written for the standalone Ghostty.app does NOT
-  silently change agterm, which also keeps bug reports legible (the colors a user sees are agterm's own
+  OFF by default so rook is self-contained: a config written for the standalone Ghostty.app does NOT
+  silently change rook, which also keeps bug reports legible (the colors a user sees are rook's own
   unless they opt in).
-  The agterm-scoped `<configDir>/ghostty.conf` is ALWAYS loaded regardless and is the documented customization
+  The rook-scoped `<configDir>/ghostty.conf` is ALWAYS loaded regardless and is the documented customization
   point.
   Resolved at config-LOAD time (via `resolveConfigInputs`), NOT a live `GhosttyApp` mirror and NOT a
   `ghosttyConfigLines()` key — so `setInheritGlobalGhosttyConfig` saves `settings.json` then calls `reloadGhosttyConfig()`
@@ -347,7 +347,7 @@ paths:
   NOT a ghostty key (`writeGhosttyConfig` no-ops, no surface reload).
   It is the non-observable chrome-mirror pattern: `SettingsModel.setAttentionButtonEnabled` saves + `applyAttentionButtonEnabled`
   pushes `settings.attentionButtonEnabled ?? false` into the `GhosttyApp.attentionButtonEnabled` flag
-  (alongside `applyToolbarMode`/`applyNotificationBadgeEnabled`), so a flip rides `.agtermAppearanceChanged`
+  (alongside `applyToolbarMode`/`applyNotificationBadgeEnabled`), so a flip rides `.rookAppearanceChanged`
   and `WindowContentView` re-reads the mirror to re-render the titlebar live — exactly like `toolbarMode`/`notificationBadgeEnabled`.
   The Notifications tab's Notifications-section `Toggle("Show attention indicator")` uses the default-OFF binding (get
   `?? false`, set `$0 ? true : nil`, mirroring `restoreRunningCommand`/`inheritGlobalGhosttyConfig`,

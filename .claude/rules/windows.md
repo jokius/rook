@@ -1,15 +1,15 @@
 ---
 paths:
-  - "agtermCore/Sources/agtermCore/WindowLibrary.swift"
-  - "agtermCore/Sources/agtermCore/WindowGeometry.swift"
-  - "agtermCore/Sources/agtermCore/QuitPrompt.swift"
-  - "agterm/WindowRegistry.swift"
-  - "agterm/AppDelegate.swift"
-  - "agterm/Views/WindowAccessor.swift"
-  - "agterm/Views/WindowControlArea.swift"
-  - "agterm/Views/QuickTerminal.swift"
-  - "agtermUITests/MultiWindowUITests.swift"
-  - "agtermUITests/QuickTerminalUITests.swift"
+  - "rookCore/Sources/rookCore/WindowLibrary.swift"
+  - "rookCore/Sources/rookCore/WindowGeometry.swift"
+  - "rookCore/Sources/rookCore/QuitPrompt.swift"
+  - "rook/WindowRegistry.swift"
+  - "rook/AppDelegate.swift"
+  - "rook/Views/WindowAccessor.swift"
+  - "rook/Views/WindowControlArea.swift"
+  - "rook/Views/QuickTerminal.swift"
+  - "rookUITests/MultiWindowUITests.swift"
+  - "rookUITests/QuickTerminalUITests.swift"
 ---
 
 ## Windows (multi-window)
@@ -22,7 +22,7 @@ Strict 1:1 — a bundle shows in exactly one on-screen window, never two windows
 never two bundles in one window.
 **No** shared/cross-window live state and **no** cross-window session drag (out of scope by the 1:1 model).
 
-- **Model (`agtermCore`, host-free).**
+- **Model (`rookCore`, host-free).**
   `WindowLibrary.swift` holds `WindowInfo {id: UUID, name: String}` (named `WindowInfo`,
   NOT `Window`, to avoid the SwiftUI/AppKit clash) and the persisted Codables `WindowsIndex {version, frontmost: UUID?, windows: [WindowEntry]}`
   / `WindowEntry {id, name, isOpen}` (the index carries its OWN `version`,
@@ -36,11 +36,11 @@ never two bundles in one window.
   store per open window, lazily loaded.
   `store(for:)` returns an open window's store; `loadStore(for:)` lazily builds/caches it from `windows/<id>.json`;
   `newWindow(name:)` seeds a fresh window (one "workspace 1" + one `$HOME` session — the seeding that
-  used to live in the dropped `agtermApp.restoredStore()`); `closeWindow`/`renameWindow`/`removeWindow`
+  used to live in the dropped `rookApp.restoredStore()`); `closeWindow`/`renameWindow`/`removeWindow`
   (`canRemoveWindow` = count > 1, keep-at-least-one) mutate + persist; `openIDs()` is the persisted open-set
   for launch reopen.
 - **Persistence layout**
-  under `<stateDir>` (`AGTERM_STATE_DIR`-aware, else `~/Library/Application Support/agterm`):
+  under `<stateDir>` (`ROOK_STATE_DIR`-aware, else `~/Library/Application Support/rook`):
   `windows.json` is the index, `windows/<uuid>.json` is each window's `Snapshot` (the same shape `workspaces.json`
   had), and the legacy `workspaces.json` is left dormant after migration.
   `PersistenceStore` gained an optional `fileName:` init param (default `workspaces.json`) so a per-window
@@ -76,7 +76,7 @@ never two bundles in one window.
   uniform across 14 and 15.
   `reopenWindows()` in the scene `.task` opens one window per *remaining* open id (SwiftUI auto-opened
   the first), once via the `hasReopened` latch.
-  `TitleProbeView` sets `frameAutosaveName("agterm-window-<id>")` so AppKit restores geometry per window.
+  `TitleProbeView` sets `frameAutosaveName("rook-window-<id>")` so AppKit restores geometry per window.
 - **Frontmost-store resolution + quit-flush.**
   `AppActions` takes the `WindowLibrary`, not a fixed store: its mutating methods resolve `library.activeStore`
   (the frontmost open store, falling back to the first open store; backed by `activeWindowID`,
@@ -111,7 +111,7 @@ never two bundles in one window.
   Keep-in-sync EXEMPT — a quit-confirm modal is GUI-only chrome with nothing to drive over the socket
   (there is no `app.quit` control command).
 - **`WindowRegistry`**
-  (`agterm/WindowRegistry.swift`, app-side, `@MainActor` singleton) maps a `WindowInfo.ID` to its live `NSWindow`
+  (`rook/WindowRegistry.swift`, app-side, `@MainActor` singleton) maps a `WindowInfo.ID` to its live `NSWindow`
   — `WindowLibrary` is host-free (no AppKit), so the NSWindow handles live app-side.
   `TitleProbeView` registers/unregisters on attach/close; `raise(_:)` brings an already-open window forward
   (the dedup-by-id raise path), `close(_:)` runs `performClose` (driving the standard `willClose` teardown,
@@ -127,35 +127,35 @@ never two bundles in one window.
   `allControllers()`.
   Zero `QuickTerminalController.shared` references remain.
 - **Cross-window notification reveal.**
-  The notification identity (`TerminalNotification.identity`/`parseIdentity` in agtermCore) is now `"<windowID>:<sessionID>:<paneRole>"`
+  The notification identity (`TerminalNotification.identity`/`parseIdentity` in rookCore) is now `"<windowID>:<sessionID>:<paneRole>"`
   — the windowID lets a banner clicked after its window closed know which window to reopen.
   The capture side (`NotificationManager.notify`/`clearDelivered`) resolves the firing window via `library.windowID(forSession:)`.
   `AppActions.reveal(windowID:sessionID:pane:)` uses `library.store(forSession:)`;
-  if the owning window is closed it reopens it via the `actions.openWindow` closure (`agtermApp` wires
+  if the owning window is closed it reopens it via the `actions.openWindow` closure (`rookApp` wires
   it to `WindowRegistry.raise` else `enqueueClaim` + `openWindow(id:)`),
   polls for the store to load, then `selectSession` + focus the pane (stale-safe:
   unknown window/session → just activate).
   `reveal` stays a keep-in-sync exemption (internal click-routing, not on toolbar/menu/palette).
-- **Spawned-shell `AGTERM_*` env (per surface).**
+- **Spawned-shell `ROOK_*` env (per surface).**
   `GhosttySurfaceView.init` takes `env: [String: String] = [:]`; it strdups each key/value into the existing
   `configCStrings` and builds a `nonisolated(unsafe) var envVars: [ghostty_env_var_s]` field set as `config.env_vars`/`config.env_var_count`
   — the struct array must outlive `ghostty_surface_new` and can't live in `configCStrings` (wrong element
   type), so `ghostty_surface_new` is called *inside* the `envVars.withUnsafeMutableBufferPointer` closure
   (no env → plain path) and the array is cleared in `destroySurface`/`deinit` alongside the strdup frees.
-  Tree surfaces (main/split/overlay, via `agtermApp.surfaceEnv(for:)`) inject `AGTERM_ENABLED=1`,
-  `AGTERM_WINDOW_ID` (`library.windowID(forSession:)`), `AGTERM_WORKSPACE_ID` (`store.workspace(forSession:)`),
-  `AGTERM_SESSION_ID`, `AGTERM_SOCKET`; split/overlay inherit the parent session's ids.
-  The quick terminal (`quickTerminalEnv(for:)`) gets only `AGTERM_ENABLED` + `AGTERM_WINDOW_ID` + `AGTERM_SOCKET`
+  Tree surfaces (main/split/overlay, via `rookApp.surfaceEnv(for:)`) inject `ROOK_ENABLED=1`,
+  `ROOK_WINDOW_ID` (`library.windowID(forSession:)`), `ROOK_WORKSPACE_ID` (`store.workspace(forSession:)`),
+  `ROOK_SESSION_ID`, `ROOK_SOCKET`; split/overlay inherit the parent session's ids.
+  The quick terminal (`quickTerminalEnv(for:)`) gets only `ROOK_ENABLED` + `ROOK_WINDOW_ID` + `ROOK_SOCKET`
   (scratch, not in the tree).
-  `AGTERM_SOCKET` is the path `ControlServer` *actually bound* (`ControlServer.boundSocketPath`,
-  nil before bind → the var is omitted), so a test-overridden `AGTERM_CONTROL_SOCKET` and the injected
+  `ROOK_SOCKET` is the path `ControlServer` *actually bound* (`ControlServer.boundSocketPath`,
+  nil before bind → the var is omitted), so a test-overridden `ROOK_CONTROL_SOCKET` and the injected
   env agree.
 - **`window.zoom` (maximize-to-screen toggle, control + double-click-header GUI).** `WindowRegistry.zoom(_:)`
   drives the standard `NSWindow.zoom(nil)` — toggles between the normal frame and the screen's visible frame
   (NOT native fullscreen); a second call restores.
   Unlike `resize`/`move` it has a GUI surface: a custom-titlebar SwiftUI view can't receive the OS
   double-click handling, so `WindowControlArea` (an `NSViewRepresentable` behind `customTitlebar`'s decorative
-  regions in `agterm/Views/WindowControlArea.swift`) handles `mouseDown` — `clickCount == 2` runs the user's configured title-bar
+  regions in `rook/Views/WindowControlArea.swift`) handles `mouseDown` — `clickCount == 2` runs the user's configured title-bar
   action, else `performDrag` (also making the FULL header draggable, not just the native top band);
   `mouseDownCanMoveWindow = false` so our handler sees the double-click.
   The double-click honors the macOS **Desktop & Dock ▸ "Double-click a window's title bar to"** setting
@@ -163,7 +163,7 @@ never two bundles in one window.
   Minimize → `performMiniaturize`, "Do Nothing" → no-op; the key is absent until the user changes it from the
   macOS default (Zoom), so an untouched system still zooms (the prior behavior).
   So the GUI double-click is NOT always-zoom — only the `window.zoom` control command unconditionally zooms.
-  A UITest env override (`AGTERM_UITEST_DOUBLECLICK_ACTION`, read ahead of the system default) pins the action
+  A UITest env override (`ROOK_UITEST_DOUBLECLICK_ACTION`, read ahead of the system default) pins the action
   so the gesture tests are hermetic regardless of the host setting; it rides the environment, not launch
   arguments (FB11763863 — see `ui-tests.md`).
   The header's decorative parts (the traffic-light spacer, the divider gap, the title text) opt out via
@@ -173,7 +173,7 @@ never two bundles in one window.
   `NSWindow.isZoomed`), so a script can toggle idempotently.
   Four-point keep-in-sync audit: (1) `case windowZoom = "window.zoom"` in `ControlProtocol.swift`,
   (2) the `.windowZoom` dispatch arm (`windowZoom`) in `ControlServer` → `WindowRegistry.shared.zoom`,
-  (3) the `window zoom <id>` subcommand in `agtermctlKit`, (4) `.windowZoom` in `windowCommandsRoundTrip`
+  (3) the `window zoom <id>` subcommand in `rookctlKit`, (4) `.windowZoom` in `windowCommandsRoundTrip`
   (`ControlProtocolTests`) + the e2e `testWindowZoom` plus the gesture tests
   `testDoubleClickHeaderZoomsAndRestores` / `testDoubleClickHeaderHonorsNoneSetting` /
   `testHeaderButtonsStillReceiveClicksOverControlArea` / `testDragHeaderMovesWindow` in `ControlWindowUITests`.
@@ -189,9 +189,9 @@ never two bundles in one window.
   The control command instead resolves a window id like `zoom` (`active`/prefix/id) and requires the window
   OPEN (closed → the `window not open` error).
   **AppKit auto-injects its OWN "Enter Full Screen" item (Globe+F / ⌃⌘F) into the View menu for any
-  fullscreen-capable window and RE-INJECTS it every time the menu opens, so agterm's own item would render
+  fullscreen-capable window and RE-INJECTS it every time the menu opens, so rook's own item would render
   a DUPLICATE.** `AppDelegate` strips the native one — `removeNativeFullScreenMenuItem` removes the menu item
-  whose action is `toggleFullScreen:` (agterm's item uses a SwiftUI closure action, a different selector, so
+  whose action is `toggleFullScreen:` (rook's item uses a SwiftUI closure action, a different selector, so
   only the native one matches).
   It runs once at launch AND on every `NSMenu.didBeginTrackingNotification` (the point AppKit re-injects it) —
   a launch-time one-shot does NOT stick because of the re-injection; a menu delegate is NOT used (it would
@@ -205,7 +205,7 @@ never two bundles in one window.
   (2) the `.windowFullscreen` dispatch arm (`windowFullscreen`) in `ControlServer` →
   `WindowRegistry.shared.fullscreen`, plus `AppActions.toggleFullscreen()`, the View menu item, and
   `PaletteCommand.toggleFullscreen`,
-  (3) the `window fullscreen <id>` subcommand in `agtermctlKit`, (4) `.windowFullscreen` in
+  (3) the `window fullscreen <id>` subcommand in `rookctlKit`, (4) `.windowFullscreen` in
   `windowCommandsRoundTrip` (`ControlProtocolTests`) +
   `windowCommandsRouteParsedInputsAndKeepActionResponses` (`ControlDispatcherTests`) + the CLI mapping in
   `CommandsTests` + the e2e `testWindowFullscreen` in `ControlWindowUITests`.
@@ -221,10 +221,10 @@ never two bundles in one window.
   standard teardown), `window.rename`, `window.delete` (`canRemoveWindow` keep-at-least-one → error,
   not a GUI confirm).
   `window.list` is answered from the background-thread `cachedWindowNodes` cache (see the fast-path note
-  above), refreshed after every dispatched command + on `.agtermWindowFrontmostChanged`.
+  above), refreshed after every dispatched command + on `.rookWindowFrontmostChanged`.
   `sidebarVisible` is the first frequently-GUI-mutated field on that node, so a GUI-only ⌃⌘S sidebar
   toggle (no control command, no frontmost change) would otherwise leave it stale — `AppStore.setSidebarVisible`
-  posts `.agtermSidebarVisibilityChanged` and `ControlServer` observes it to `refreshWindowCache`.
+  posts `.rookSidebarVisibilityChanged` and `ControlServer` observes it to `refreshWindowCache`.
   The live, never-cached copy of `sidebarVisible` is on `tree`'s top level (main-actor per request);
   prefer it for read-then-act scripts.
   The node's `geometry`/`fullscreen`/`zoomed` are the SAME problem writ larger — live NSWindow state that a
@@ -236,8 +236,8 @@ never two bundles in one window.
   The notification is IGNORED (`_ in`), NOT captured: a non-Sendable `Notification` can't cross into the
   `MainActor.assumeIsolated` region under Swift 6 (the `sending 'note'` error — which a Debug build compiles
   clean but the Release WMO rejects, so verify app-target concurrency changes with a Release build), so the
-  refresh can't filter to an agterm window by the notification's object; a non-agterm panel firing it just
-  rebuilds the same cheap agterm nodes.
+  refresh can't filter to an rook window by the notification's object; a non-rook panel firing it just
+  rebuilds the same cheap rook nodes.
   `window.resize` (`args.width`/`height` → the window's frame size in points) and `window.move` (`args.x`/`y`
   → the top-left relative to display `args.display`, default the window's current display;
   y from the display top, so multiple displays are addressed by index) drive the app-side `WindowRegistry.resize`/`move`
@@ -246,7 +246,7 @@ never two bundles in one window.
   Both CLAMP the request via the host-free `WindowGeometry` (`clampSize` into `[window.minSize, screen.visibleFrame]`,
   `clampOrigin` keeps a grabbable on-screen strip) applied INSIDE `WindowRegistry` (the only place with
   the live `NSWindow`/`NSScreen`); `ControlServer` keeps only the `>0` guard.
-  `WindowGeometry` is agtermCore's first CoreGraphics types (CG ≠ AppKit/Metal,
+  `WindowGeometry` is rookCore's first CoreGraphics types (CG ≠ AppKit/Metal,
   Foundation-provided on Darwin).
   Window-id resolution reuses the pure `ControlResolve.resolve` over `library.windows` (active=frontmost
   / exact / prefix / ambiguous / not-found); a window need NOT be open to be a `window.*` target.

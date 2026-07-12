@@ -1,15 +1,15 @@
-# agterm
+# rook
 
 > Native macOS terminal on libghostty for running many AI coding agents in named workspaces
 
-agterm is a native macOS terminal, built on libghostty (Ghostty's engine), for running many AI coding agents at once. Instead of scattering sessions across tabs, it groups them into named workspaces, shows each agent's status on its sidebar row, and exposes almost every action to a scriptable control CLI — so a screen of concurrent agents stays legible and it's obvious which one needs you. It is also a fast, modern general-purpose terminal for everyday work.
+rook is a native macOS terminal, built on libghostty (Ghostty's engine), for running many AI coding agents at once. Instead of scattering sessions across tabs, it groups them into named workspaces, shows each agent's status on its sidebar row, and exposes almost every action to a scriptable control CLI — so a screen of concurrent agents stays legible and it's obvious which one needs you. It is also a fast, modern general-purpose terminal for everyday work.
 
 ## Key Features
 
 - Two-level vertical sidebar: workspaces grouping their sessions, with drag-reorder, a flagged working-set view, and single-workspace focus
 - Agent-status glyphs on sidebar rows: active, blocked, completed, idle — auto-wired for Claude Code and Codex
-- agtermctl control CLI over a local unix-domain socket: create, rename, move, and type into sessions, run overlays, move windows, capture output, post notifications tied to a session
-- Installable agent skill that teaches Claude Code and Codex the control model and the full agtermctl command set
+- rookctl control CLI over a local unix-domain socket: create, rename, move, and type into sessions, run overlays, move windows, capture output, post notifications tied to a session
+- Installable agent skill that teaches Claude Code and Codex the control model and the full rookctl command set
 - Surfaces per session: split panes (two shells), a per-session scratch terminal, a window-wide quick terminal, and floating/full overlays
 - Multi-window: a library of windows (e.g. "work" and "personal"), one per screen, restored on next launch
 - 512 bundled themes with a live-preview picker, fully rebindable kitty-flavored keymap.conf, and full session persistence
@@ -17,19 +17,19 @@ agterm is a native macOS terminal, built on libghostty (Ghostty's engine), for r
 
 ## Docs
 
-- [Documentation](https://agterm.com/docs): full reference — install, keybindings, keymap.conf, ghostty config, themes, control API
-- [Control API commands](https://agterm.com/commands): the complete agtermctl command catalog
-- [README](https://github.com/umputun/agterm/blob/master/README.md): the same documentation in the source repository
-- [Architecture](https://github.com/umputun/agterm/blob/master/ARCHITECTURE.md): module split, surface ownership, and the libghostty C boundary
+- [Documentation](https://rook.app/docs): full reference — install, keybindings, keymap.conf, ghostty config, themes, control API
+- [Control API commands](https://rook.app/commands): the complete rookctl command catalog
+- [README](https://github.com/jokius/rook/blob/master/README.md): the same documentation in the source repository
+- [Architecture](https://github.com/jokius/rook/blob/master/ARCHITECTURE.md): module split, surface ownership, and the libghostty C boundary
 
 ## Install
 
-- [Releases](https://github.com/umputun/agterm/releases): signed and notarized DMG downloads (Apple Silicon, macOS 14+)
-- [Homebrew cask](https://github.com/umputun/homebrew-apps): `brew install --cask umputun/apps/agterm`
+- [Releases](https://github.com/jokius/rook/releases): signed and notarized DMG downloads (Apple Silicon, macOS 14+)
+- [Homebrew cask](https://github.com/jokius/homebrew-apps): `brew install --cask umputun/apps/rook`
 
 ## Optional
 
-- [Home page](https://agterm.com): feature overview and screenshots
-- [Source](https://github.com/umputun/agterm): MIT licensed, embeds libghostty from Ghostty (MIT)
-- [Issues](https://github.com/umputun/agterm/issues): bug reports
-- [Discussions](https://github.com/umputun/agterm/discussions): questions and feature requests
+- [Home page](https://rook.app): feature overview and screenshots
+- [Source](https://github.com/jokius/rook): MIT licensed, embeds libghostty from Ghostty (MIT)
+- [Issues](https://github.com/jokius/rook/issues): bug reports
+- [Discussions](https://github.com/jokius/rook/discussions): questions and feature requests

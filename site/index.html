@@ -3,36 +3,36 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>agterm — macOS terminal for running many AI agents at once</title>
+    <title>rook — macOS terminal for running many AI agents at once</title>
     <meta
       name="description"
       content="Native macOS terminal built on libghostty that keeps many concurrent AI coding agents organized in named workspaces, with at-a-glance status and a scriptable CLI."
     />
     <meta
       name="keywords"
-      content="agterm, macOS terminal, terminal for AI agents, Claude Code terminal, Codex terminal, libghostty, ghostty, agtermctl, concurrent AI agents, agentic terminal"
+      content="rook, macOS terminal, terminal for AI agents, Claude Code terminal, Codex terminal, libghostty, ghostty, rookctl, concurrent AI agents, agentic terminal"
     />
     <meta name="author" content="umputun" />
-    <link rel="canonical" href="https://agterm.com/" />
+    <link rel="canonical" href="https://rook.app/" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="agterm — macOS terminal for running many AI agents at once" />
+    <meta property="og:title" content="rook — macOS terminal for running many AI agents at once" />
     <meta
       property="og:description"
       content="Native macOS terminal built on libghostty that keeps many concurrent AI coding agents organized in named workspaces, with at-a-glance status and a scriptable CLI."
     />
-    <meta property="og:url" content="https://agterm.com/" />
-    <meta property="og:image" content="https://agterm.com/assets/agterm-og.png" />
+    <meta property="og:url" content="https://rook.app/" />
+    <meta property="og:image" content="https://rook.app/assets/rook-og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:site_name" content="agterm" />
+    <meta property="og:site_name" content="rook" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@umputun" />
-    <meta name="twitter:title" content="agterm — macOS terminal for running many AI agents at once" />
+    <meta name="twitter:title" content="rook — macOS terminal for running many AI agents at once" />
     <meta
       name="twitter:description"
       content="Native macOS terminal built on libghostty that keeps concurrent AI coding agents organized, with at-a-glance status and a scriptable CLI."
     />
-    <meta name="twitter:image" content="https://agterm.com/assets/agterm-og.png" />
+    <meta name="twitter:image" content="https://rook.app/assets/rook-og.png" />
     <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png" />
@@ -45,15 +45,15 @@
       {
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
-        "name": "agterm",
+        "name": "rook",
         "description": "Native macOS terminal built on libghostty for running many AI coding agents at once, organizing sessions into named workspaces with at-a-glance agent status and a scriptable control CLI.",
-        "url": "https://agterm.com",
+        "url": "https://rook.app",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "macOS 14+",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "author": { "@type": "Person", "name": "Umputun", "url": "https://github.com/umputun" },
-        "codeRepository": "https://github.com/umputun/agterm",
-        "downloadUrl": "https://github.com/umputun/agterm/releases",
+        "codeRepository": "https://github.com/jokius/rook",
+        "downloadUrl": "https://github.com/jokius/rook/releases",
         "softwareVersion": "0.11.0"
       }
     </script>
@@ -64,50 +64,50 @@
         "mainEntity": [
           {
             "@type": "Question",
-            "name": "What is agterm?",
+            "name": "What is rook?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "agterm is a native macOS terminal, built on libghostty, for running many AI coding agents at once. It organizes sessions into named workspaces and shows each agent's status on its sidebar row, so a screen of concurrent agents stays legible."
+              "text": "rook is a native macOS terminal, built on libghostty, for running many AI coding agents at once. It organizes sessions into named workspaces and shows each agent's status on its sidebar row, so a screen of concurrent agents stays legible."
             }
           },
           {
             "@type": "Question",
-            "name": "Does agterm work with Claude Code and Codex?",
+            "name": "Does rook work with Claude Code and Codex?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Yes. agterm auto-wires agent status for Claude Code and Codex, and ships an installable agent skill that teaches them its control model and the full agtermctl command set."
+              "text": "Yes. rook auto-wires agent status for Claude Code and Codex, and ships an installable agent skill that teaches them its control model and the full rookctl command set."
             }
           },
           {
             "@type": "Question",
-            "name": "Is agterm free?",
+            "name": "Is rook free?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Yes. agterm is free and installs on Apple Silicon macOS 14 or later with: brew install --cask umputun/apps/agterm."
+              "text": "Yes. rook is free and installs on Apple Silicon macOS 14 or later with: brew install --cask umputun/apps/rook."
             }
           },
           {
             "@type": "Question",
-            "name": "What is agtermctl?",
+            "name": "What is rookctl?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "agtermctl is a bundled CLI that drives agterm over a local socket: create and type into sessions, run overlays, move windows, and post notifications tied to a specific session."
+              "text": "rookctl is a bundled CLI that drives rook over a local socket: create and type into sessions, run overlays, move windows, and post notifications tied to a specific session."
             }
           },
           {
             "@type": "Question",
-            "name": "Is agterm built on Ghostty?",
+            "name": "Is rook built on Ghostty?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "agterm embeds Ghostty's rendering engine through libghostty. It is a separate app with its own workspace and session model, not a fork of the Ghostty app."
+              "text": "rook embeds Ghostty's rendering engine through libghostty. It is a separate app with its own workspace and session model, not a fork of the Ghostty app."
             }
           },
           {
             "@type": "Question",
-            "name": "Does agterm require macOS?",
+            "name": "Does rook require macOS?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Yes. agterm is a native macOS app for Apple Silicon, macOS 14 or later, signed and notarized."
+              "text": "Yes. rook is a native macOS app for Apple Silicon, macOS 14 or later, signed and notarized."
             }
           }
         ]
@@ -116,7 +116,7 @@
   </head>
   <body>
     <div
-      id="agterm-root"
+      id="rook-root"
       style="
         background: #191d20;
         color: #e6e1d7;
@@ -163,7 +163,7 @@
                 font-size: 16px;
                 letter-spacing: -0.01em;
               "
-              >agterm</span
+              >rook</span
             >
           </a>
           <div
@@ -181,7 +181,7 @@
             <a href="/docs" style="color: #949ba4; padding: 8px 12px; border-radius: 7px" class="hv1">docs</a>
             <a href="/commands" style="color: #949ba4; padding: 8px 12px; border-radius: 7px" class="hv1">commands</a>
             <a
-              href="https://github.com/umputun/agterm"
+              href="https://github.com/jokius/rook"
               style="
                 margin-left: 6px;
                 color: #c9cdd2;
@@ -230,7 +230,7 @@
           A terminal for running <span style="color: var(--accent, #6d82f3)">many agents</span> at once.
         </h1>
         <p style="font-size: clamp(17px, 2vw, 21px); line-height: 1.55; color: #bfbab0; max-width: 60ch; margin: 0 0 38px">
-          agterm organizes AI coding sessions into named workspaces instead of scattering them across tabs — so a screen full of
+          rook organizes AI coding sessions into named workspaces instead of scattering them across tabs — so a screen full of
           concurrent agents stays legible, and it's obvious which one needs you. And when there's no agent in sight, it's simply a
           fast, modern terminal for everyday work.
         </p>
@@ -251,7 +251,7 @@
             "
           >
             <span style="color: var(--accent, #6d82f3)">$</span>
-            <span style="color: #e6e1d7">brew install --cask umputun/apps/agterm</span>
+            <span style="color: #e6e1d7">brew install --cask umputun/apps/rook</span>
             <button
               onclick="cp(this)"
               style="
@@ -297,7 +297,7 @@
           <div class="hero-gallery">
             <img
               src="/assets/screenshot-main.webp"
-              alt="agterm main window: two-level sidebar grouping sessions under workspaces"
+              alt="rook main window: two-level sidebar grouping sessions under workspaces"
               width="1187"
               height="696"
               fetchpriority="high"
@@ -442,7 +442,7 @@
         </h2>
         <p style="font-size: 18px; line-height: 1.55; color: #bfbab0; max-width: 58ch; margin: 0 0 56px">
           Running several coding agents means many long-lived sessions, each progressing on its own. A tabbed terminal loses track
-          of them quickly. agterm doesn't.
+          of them quickly. rook doesn't.
         </p>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px">
@@ -487,7 +487,7 @@
               Programmatic control
             </h3>
             <p style="font-size: 15px; line-height: 1.6; color: #949ba4; margin: 0">
-              A bundled CLI, <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">agtermctl</span>,
+              A bundled CLI, <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">rookctl</span>,
               drives almost everything over a local socket: create sessions, type into them, run overlays, move windows, or post a
               notification tied to a specific session.
             </p>
@@ -566,8 +566,8 @@
               Driven by agents
             </h3>
             <p style="font-size: 15px; line-height: 1.6; color: #949ba4; margin: 0">
-              An installable agent skill teaches Claude Code or Codex the control model and the full agtermctl command set — so an
-              agent running inside agterm builds its own layout, runs overlays, and manages windows without you explaining the
+              An installable agent skill teaches Claude Code or Codex the control model and the full rookctl command set — so an
+              agent running inside rook builds its own layout, runs overlays, and manages windows without you explaining the
               API.
             </p>
           </div>
@@ -836,7 +836,7 @@
                   line-height: 1.7;
                 "
               >
-                ▸ agterm &nbsp;·&nbsp; radio-t &nbsp;·&nbsp; go-pkgz
+                ▸ rook &nbsp;·&nbsp; radio-t &nbsp;·&nbsp; go-pkgz
               </div>
             </div>
             <div style="border: 1px solid rgba(255, 255, 255, 0.1); background: #15191c; border-radius: 10px; overflow: hidden">
@@ -1050,7 +1050,7 @@
                 A genuinely good terminal, first.
               </h2>
               <p style="font-size: 18px; line-height: 1.6; color: #bfbab0; margin: 0">
-                None of this is limited to agents. agterm is built on Ghostty's engine — the same fast, GPU-accelerated rendering
+                None of this is limited to agents. rook is built on Ghostty's engine — the same fast, GPU-accelerated rendering
                 and VT parsing — and works as a capable general-purpose terminal for everyday multi-project work. The workspaces,
                 palettes, and keyboard-first navigation help just as much whether you're running coding agents or just juggling a
                 dozen shells.
@@ -1116,7 +1116,7 @@
                 margin-bottom: 16px;
               "
             >
-              // agtermctl
+              // rookctl
             </div>
             <h2
               style="
@@ -1131,8 +1131,8 @@
               Every ability, scriptable.
             </h2>
             <p style="font-size: 18px; line-height: 1.55; color: #bfbab0; margin: 0">
-              Almost everything you can do in agterm by hand,
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">agtermctl</span> can do over a
+              Almost everything you can do in rook by hand,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">rookctl</span> can do over a
               local socket — no hidden UI-only actions. That turns the terminal into something you program around your own flow: a
               script or an agent builds and steers its own layout, and you extend the app's behavior without ever touching its
               source.
@@ -1261,18 +1261,18 @@
                 color: #e6e1d7;
               "
             ><span style="color:#6b727a;"># create a workspace and open a session in it</span>
-<span style="color:var(--accent,#6d82f3);">ws</span>=$(agtermctl workspace new work)
-agtermctl session new --workspace <span style="color:#f2b45c;">"$ws"</span> --cwd ~/src/agterm
+<span style="color:var(--accent,#6d82f3);">ws</span>=$(rookctl workspace new work)
+rookctl session new --workspace <span style="color:#f2b45c;">"$ws"</span> --cwd ~/src/rook
 
 <span style="color:#6b727a;"># inject a command into a session by id prefix</span>
-agtermctl session type --target 9f3c <span style="color:#f2b45c;">$'make test\n'</span>
+rookctl session type --target 9f3c <span style="color:#f2b45c;">$'make test\n'</span>
 
 <span style="color:#6b727a;"># run a diff review in a floating overlay, block for its status</span>
-agtermctl session overlay open <span style="color:#f2b45c;">"revdiff HEAD~3"</span> --block
+rookctl session overlay open <span style="color:#f2b45c;">"revdiff HEAD~3"</span> --block
 
 <span style="color:#6b727a;"># flag this session for your attention when it finishes</span>
-agtermctl session status completed --auto-reset \
-  --target <span style="color:#5ea1f2;">"$AGTERM_SESSION_ID"</span></pre>
+rookctl session status completed --auto-reset \
+  --target <span style="color:#5ea1f2;">"$ROOK_SESSION_ID"</span></pre>
           </div>
           <p style="font-size: 16px; line-height: 1.6; color: #949ba4; margin: 0; max-width: 64ch">
             Bind any of it to a key or the action palette through
@@ -1281,10 +1281,10 @@ agtermctl session status completed --auto-reset \
             around <em style="color: #cbc6bc; font-style: normal">your</em> workflow instead of adapting to the app's.
           </p>
           <a
-            href="/docs#agtermctl"
+            href="/docs#rookctl"
             style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 14px; color: #5ea1f2; justify-self: start"
             class="hv4"
-            >full agtermctl reference →</a
+            >full rookctl reference →</a
           >
         </div>
       </div>
@@ -1313,7 +1313,7 @@ agtermctl session status completed --auto-reset \
             margin: 0 0 44px;
           "
         >
-          Get agterm.
+          Get rook.
         </h2>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px">
@@ -1340,11 +1340,11 @@ agtermctl session status completed --auto-reset \
                 overflow-x: auto;
               "
             >
-              <span style="color: var(--accent, #6d82f3)">$ </span>brew install --cask umputun/apps/agterm
+              <span style="color: var(--accent, #6d82f3)">$ </span>brew install --cask umputun/apps/rook
             </div>
             <p style="font-size: 14px; line-height: 1.6; color: #949ba4; margin: 16px 0 0">
               The cask also installs the
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">agtermctl</span> CLI, so cask users
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">rookctl</span> CLI, so cask users
               shouldn't run the in-app installer too.
             </p>
           </div>
@@ -1362,11 +1362,11 @@ agtermctl session status completed --auto-reset \
             <p style="font-size: 14px; line-height: 1.6; color: #949ba4; margin: 0 0 16px">
               Grab the latest <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">.dmg</span> from
               releases, open it, and drag
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">agterm.app</span> into
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">rook.app</span> into
               /Applications.
             </p>
             <a
-              href="https://github.com/umputun/agterm/releases"
+              href="https://github.com/jokius/rook/releases"
               style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13px; color: #5ea1f2"
               class="hv4"
               >releases page →</a
@@ -1438,7 +1438,7 @@ agtermctl session status completed --auto-reset \
           </p>
           <div style="display: flex; gap: 14px; justify-content: center; flex-wrap: wrap">
             <a
-              href="https://github.com/umputun/agterm"
+              href="https://github.com/jokius/rook"
               style="
                 font-family: &quot;JetBrains Mono&quot;, monospace;
                 font-size: 15px;
@@ -1492,7 +1492,7 @@ agtermctl session status completed --auto-reset \
                 <rect x="26" y="54" width="20" height="20" rx="5" stroke="#fff" stroke-width="5"></rect>
                 <rect x="54" y="54" width="20" height="20" rx="5" stroke="#fff" stroke-width="5"></rect>
               </svg>
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; font-weight: 700; font-size: 15px">agterm</span>
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; font-weight: 700; font-size: 15px">rook</span>
             </div>
             <p style="font-size: 13.5px; color: #6b727a; line-height: 1.6; margin: 0">
               Terminal for agentic flow. Embeds libghostty, the terminal engine from
@@ -1517,14 +1517,14 @@ agtermctl session status completed --auto-reset \
             <div style="display: flex; flex-direction: column; gap: 11px">
               <span style="color: #4a5158; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase">Docs</span>
               <a href="/docs#install" style="color: #949ba4" class="hv7">Getting started</a>
-              <a href="/docs#agtermctl" style="color: #949ba4" class="hv7">agtermctl</a>
+              <a href="/docs#rookctl" style="color: #949ba4" class="hv7">rookctl</a>
               <a href="/docs#keymap" style="color: #949ba4" class="hv7">Keymap</a>
             </div>
             <div style="display: flex; flex-direction: column; gap: 11px">
               <span style="color: #4a5158; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase">Project</span>
-              <a href="https://github.com/umputun/agterm" style="color: #949ba4" class="hv7">GitHub</a>
-              <a href="https://github.com/umputun/agterm/issues" style="color: #949ba4" class="hv7">Issues</a>
-              <a href="https://github.com/umputun/agterm/discussions" style="color: #949ba4" class="hv7">Discussions</a>
+              <a href="https://github.com/jokius/rook" style="color: #949ba4" class="hv7">GitHub</a>
+              <a href="https://github.com/jokius/rook/issues" style="color: #949ba4" class="hv7">Issues</a>
+              <a href="https://github.com/jokius/rook/discussions" style="color: #949ba4" class="hv7">Discussions</a>
             </div>
           </div>
         </div>
@@ -1542,7 +1542,7 @@ agtermctl session status completed --auto-reset \
               justify-content: space-between;
             "
           >
-            <span>agterm.com · terminal for agentic flow</span
+            <span>rook.app · terminal for agentic flow</span
             ><span>by <a href="https://github.com/umputun" style="color: #6b727a" class="hv4">Umputun</a></span>
           </div>
         </div>
@@ -1550,7 +1550,7 @@ agtermctl session status completed --auto-reset \
     </div>
     <script>
       function cp(b) {
-        navigator.clipboard.writeText("brew install --cask umputun/apps/agterm").then(function () {
+        navigator.clipboard.writeText("brew install --cask umputun/apps/rook").then(function () {
           var t = b.textContent;
           b.textContent = "copied";
           setTimeout(function () {

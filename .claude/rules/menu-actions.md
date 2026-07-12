@@ -1,23 +1,23 @@
 ---
 paths:
-  - "agterm/AppActions*.swift"
-  - "agterm/agtermApp*.swift"
-  - "agterm/Views/Palette.swift"
-  - "agterm/Views/PaneShortcuts.swift"
-  - "agterm/Views/SessionSwitcher.swift"
-  - "agtermCore/Sources/agtermCore/RecencyStack.swift"
-  - "agtermCore/Sources/agtermCore/Fuzzy.swift"
-  - "agtermUITests/MenuUITests.swift"
-  - "agtermUITests/PaletteUITests.swift"
-  - "agtermUITests/SessionNavUITests.swift"
-  - "agtermUITests/SessionSwitcherUITests.swift"
-  - "agtermUITests/SplitUITests.swift"
+  - "rook/AppActions*.swift"
+  - "rook/rookApp*.swift"
+  - "rook/Views/Palette.swift"
+  - "rook/Views/PaneShortcuts.swift"
+  - "rook/Views/SessionSwitcher.swift"
+  - "rookCore/Sources/rookCore/RecencyStack.swift"
+  - "rookCore/Sources/rookCore/Fuzzy.swift"
+  - "rookUITests/MenuUITests.swift"
+  - "rookUITests/PaletteUITests.swift"
+  - "rookUITests/SessionNavUITests.swift"
+  - "rookUITests/SessionSwitcherUITests.swift"
+  - "rookUITests/SplitUITests.swift"
 ---
 
 ## Menu bar and actions
 
 - User actions live in `AppActions` (app target, `@MainActor`), shared by the toolbar/bottom-bar buttons
-  (`WindowContentView`), the menu bar (`agtermApp`'s `.commands`), and the control channel (`ControlServer`)
+  (`WindowContentView`), the menu bar (`rookApp`'s `.commands`), and the control channel (`ControlServer`)
   so the three never drift.
   Trivial one-liners (quick-terminal toggle) call the controller/store directly;
   `AppActions` owns the ones with real logic — new-session placement, the directory picker,
@@ -30,7 +30,7 @@ paths:
   (`toggle_fullscreen`, ⌃⌘F → `AppActions.toggleFullscreen()`, native `NSWindow.toggleFullScreen` on the
   key window; the `window.fullscreen` control command is a fourth driver of native full screen, via
   `WindowRegistry.fullscreen` with id resolution (not through `toggleFullscreen()`) — see control-api / windows).
-  agterm ships its OWN Toggle Full Screen item so full screen is rebindable/palette/control-drivable;
+  rook ships its OWN Toggle Full Screen item so full screen is rebindable/palette/control-drivable;
   `AppDelegate` strips AppKit's auto-injected native "Enter Full Screen" item (re-injected on every menu
   open) so the two don't render as a duplicate — see the `window.fullscreen` note in windows.md.
   **Navigate** (a separate top-level `CommandMenu("Navigate")`, placed right after the View group so
@@ -45,8 +45,8 @@ paths:
 - **Keep-in-sync convention (HARD).**
   Any new user action added to `AppActions`/`AppStore` is not "done" until it is also drivable from the
   control socket.
-  Shipping a new action requires all four of: (1) a `Command` case (plus any args) in `agtermCore`'s
-  control protocol, (2) a dispatch arm in `ControlServer`, (3) an `agtermctl` subcommand,
+  Shipping a new action requires all four of: (1) a `Command` case (plus any args) in `rookCore`'s
+  control protocol, (2) a dispatch arm in `ControlServer`, (3) an `rookctl` subcommand,
   (4) protocol round-trip plus end-to-end tests for it.
   This extends the toolbar/menu-bar "never drift" rule to the third surface — the control channel.
   See the Control API section below.
@@ -99,7 +99,7 @@ paths:
   and the focus-aware `Session.displayName`/`focusedCwd` make the sidebar row AND the title bar track
   whichever pane is focused — guarded on `splitFocused` alone (NOT `isSplit`),
   so it follows a hidden-but-focused split pane.
-  `effectiveCwd` stays the PRIMARY pane's (non-focus-aware) for seeding new panes + the `AGTERM_SESSION_PWD`
+  `effectiveCwd` stays the PRIMARY pane's (non-focus-aware) for seeding new panes + the `ROOK_SESSION_PWD`
   token; `Session.activeSurface` is the focused pane's surface (the focus helpers + the collapsed detail
   pane target it).
   **Opening a NEW split moves focus to the new (right) pane** (`AppStore.toggleSplit` sets `splitFocused = true`
@@ -136,7 +136,7 @@ paths:
   Each pane persists its OWN cwd: `SessionSnapshot.splitCwd` + `Session.initialSplitCwd` seed the split
   shell on restore.
   The split's DIVIDER RATIO persists per-session too: `SessionSnapshot.splitRatio` (a 0...1 left-pane
-  fraction) is captured by `SplitRatioAccessor` (`agterm/Views/SplitRatioAccessor.swift`) — a `.background` `NSViewRepresentable`
+  fraction) is captured by `SplitRatioAccessor` (`rook/Views/SplitRatioAccessor.swift`) — a `.background` `NSViewRepresentable`
   on the PRIMARY pane (a background, not a third arranged pane; unconditional so it never perturbs the
   split shape) that introspects the AppKit `NSSplitView` under the SwiftUI `HSplitView`,
   since no SwiftUI API exposes the divider position.
@@ -238,7 +238,7 @@ paths:
   The sidebar Coordinator takes `AppActions` so the row menu routes through it rather than duplicating
   the confirm.
 - The command palettes (`Palette.swift`: `PaletteController` + `CommandPalette`) feed off `AppActions.paletteActions()`/`paletteSessions()`
-  and the host-free `fuzzyScore` (agtermCore, unit-tested).
+  and the host-free `fuzzyScore` (rookCore, unit-tested).
   The visible list is a `@State` array recomputed on query/mode change — NOT a computed property — so
   the rendered rows and the Enter target can't drift out of sync; results sort by score then title. ⌃P
   opens the session switcher, ⌃⇧P the action palette (the session/action shortcut split is deliberate).
@@ -276,14 +276,14 @@ paths:
   the next runloop tick via `DispatchQueue.main.async` — a no-op for the already-focused menu/hotkey/⌃P
   opens (no competing responder).
 - Inline rename has no direct handle from the menu/palette into the sidebar's editor,
-  so `AppActions.renameActive{Session,Workspace}()` post `.agtermBeginRenameSession`/`.agtermBeginRenameWorkspace`;
+  so `AppActions.renameActive{Session,Workspace}()` post `.rookBeginRenameSession`/`.rookBeginRenameWorkspace`;
   `WorkspaceSidebar.Coordinator` observes them and calls `beginEditing` on the selected row (async,
   so the row is on screen after any palette overlay closes).
   `AppActions.renamePending` keeps `focusActiveSession` (the palette/quick-terminal close focus-restore)
   off the rename field for ~0.6 s.
 - The Ctrl-Tab session switcher (`SessionSwitcher` + `SessionSwitcherOverlay`) cycles a most-recently-used
   list.
-  `AppStore.sessionRecency` (`RecencyStack<UUID>` in agtermCore — host-free,
+  `AppStore.sessionRecency` (`RecencyStack<UUID>` in rookCore — host-free,
   unit-tested) is pushed on every selection and pruned on close;
   the switcher snapshots it on `begin()` so cycling never reorders it (only the commit does,
   via `selectSession`).

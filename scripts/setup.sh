@@ -20,15 +20,15 @@ ZIG_FORMULA="zig@0.15"  # ghostty pins minimum_zig_version 0.15.2; keg-only so i
 XCFRAMEWORK_DIR="GhosttyKit.xcframework"
 # terminfo/ is the marker: it must extract as a SIBLING of ghostty/ so libghostty's
 # TERMINFO=dirname(GHOSTTY_RESOURCES_DIR)/terminfo derivation resolves xterm-ghostty.
-RESOURCES_MARKER="agterm/Resources/terminfo"
+RESOURCES_MARKER="rook/Resources/terminfo"
 
-# stage agterm's own bundled theme(s) from the committed source into the (gitignored,
+# stage rook's own bundled theme(s) from the committed source into the (gitignored,
 # setup-regenerated) ghostty themes dir. idempotent and called on both the cached and the
 # fresh-build path so the theme survives a themes-dir wipe and shows in the Appearance picker.
 stage_custom_themes() {
-  local dst="agterm/Resources/ghostty/themes"
+  local dst="rook/Resources/ghostty/themes"
   [[ -d "$dst" ]] || return 0
-  cp agterm/Resources/custom-themes/* "$dst/"
+  cp rook/Resources/custom-themes/* "$dst/"
 }
 
 need_xc=true
@@ -76,11 +76,11 @@ fi
 
 if $need_res; then
   echo "staging ghostty resources..."
-  rm -rf agterm/Resources/ghostty agterm/Resources/terminfo
-  mkdir -p agterm/Resources/ghostty
-  cp -R "$BUILD_DIR/zig-out/share/ghostty/shell-integration" agterm/Resources/ghostty/
-  cp -R "$BUILD_DIR/zig-out/share/ghostty/themes" agterm/Resources/ghostty/
-  cp -R "$BUILD_DIR/zig-out/share/terminfo" agterm/Resources/terminfo
+  rm -rf rook/Resources/ghostty rook/Resources/terminfo
+  mkdir -p rook/Resources/ghostty
+  cp -R "$BUILD_DIR/zig-out/share/ghostty/shell-integration" rook/Resources/ghostty/
+  cp -R "$BUILD_DIR/zig-out/share/ghostty/themes" rook/Resources/ghostty/
+  cp -R "$BUILD_DIR/zig-out/share/terminfo" rook/Resources/terminfo
 fi
 
 stage_custom_themes
