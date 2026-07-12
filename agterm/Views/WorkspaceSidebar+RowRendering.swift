@@ -52,10 +52,15 @@ extension WorkspaceSidebar.Coordinator {
             // roll-up badge so an unseen notification stays visible when the workspace is collapsed
             // (gated by the Settings badge toggle, like the session badge below)
             applyBadge(toCell: cell, count: effectiveUnseen(workspace?.unseenCount ?? 0))
-            cell.imageView?.image = workspaceIcon
-            // the workspace's own icon color, when set; a malformed hex falls back to the theme tint. the
-            // icon is a TEMPLATE image, so contentTintColor (applied in setColors) recolors it.
-            cell.iconTint = NSColor(agtermHex: workspace?.colorHex)
+            // the workspace's own icon (symbol / emoji / image file), else the default grid glyph — which
+            // is also the fallback for an unresolvable symbol or a missing file.
+            let icon = workspace?.icon
+            cell.imageView?.image = WorkspaceIconImage.image(for: icon) ?? workspaceIcon
+            // the workspace's color, but ONLY on an icon it can apply to: a raster image and a color emoji
+            // carry their own colors, so tinting would paint over the picture. The default glyph and a
+            // symbol/SVG are templates, so contentTintColor (applied in setColors) recolors them.
+            let tintable = icon?.isTintable ?? true
+            cell.iconTint = tintable ? NSColor(agtermHex: workspace?.colorHex) : nil
             cell.imageView?.setAccessibilityIdentifier("workspace-icon")
         case .session:
             field.stringValue = rowLabel(forSession: node.id)

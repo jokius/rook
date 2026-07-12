@@ -124,7 +124,7 @@ paths:
   The skill is a REFERENCE/knowledge skill (both user-invocable via `/agterm` and model-triggered,
   `allowed-tools: Bash(agtermctl *)`; the agent-neutral `description` carries the trigger nouns since
   Codex may ignore the extra `when_to_use` field — unknown frontmatter is harmless),
-  authored at `agterm/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 61-command
+  authored at `agterm/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 62-command
   summary + the image-display helper + a troubleshooting/reporting pointer;
   `reference.md` full per-command detail + keymap format; `examples.md` agtermctl recipes;
   `troubleshooting.md` diagnosing the common problems (keymap editor, custom actions,
@@ -202,9 +202,9 @@ paths:
   rules, then remaining targets resolve inside that same store so one command never mutates multiple windows.
   The top-level `target` also carries the first explicit batch target so a new CLI talking to a still-running
   pre-batch server degrades to a named session instead of accidentally acting on `active`.
-- **Command catalog (61 commands):**
+- **Command catalog (62 commands):**
   - `tree`
-  - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.color`
+  - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.color`/`workspace.icon`
   - `session.new`/`session.close`/`session.select`/`session.rename`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.flag`/`session.seen`/`session.background`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
   - `surface.zoom`
   - `quick`/`quick.type`/`quick.text`
@@ -229,7 +229,7 @@ paths:
   Setting echoes the resulting effective side in `result.text`; the BARE form (no name) reads the side
   the last config feed applied (`SettingsModel.lastAppliedIsDark`), which the test polls to prove the
   flip actually drove the reload.
-  `AppearanceFlipUITests` is its only consumer; the public command count stays 61.
+  `AppearanceFlipUITests` is its only consumer; the public command count stays 62.
 
   `workspace.delete` honors keep-at-least-one and returns an error instead of the GUI confirm alert (nothing
   blocks on a modal).
@@ -1046,12 +1046,58 @@ paths:
   Four-point keep-in-sync audit: (1) `case workspaceColor = "workspace.color"` in `ControlProtocol.swift`
   (reuses `ControlArgs.color`; adds `color` to `ControlWorkspaceNode`), (2) the `.workspaceColor` arm in
   `ControlDispatcher` (hex validation + the `clear` idiom) → `ControlActions.setWorkspaceColor`
-  (app-side `ControlServer+SessionActions`), (3) the `workspace color <#rrggbb|clear>` subcommand
+  (app-side `ControlServer+Appearance`), (3) the `workspace color <#rrggbb|clear>` subcommand
   (`Color`, `validate()`-guarded) in `agtermctlKit`, (4) round-trip + omit-when-nil in `ControlProtocolTests`
   + dispatcher validation in `ControlDispatcherTests` + `AppStoreAppearanceTests` (mutator, persistence,
   tree read-back, and the reopen-from-Recent round-trip) + `PersistenceTests` (legacy snapshot without
   the key) + CLI mapping in `CommandsTests` + the e2e `testWorkspaceColorSetAndClear` in
   `ControlSidebarStatusUITests`.
+  `workspace.icon` (target = workspace) sets that workspace's sidebar ICON.
+  The positional argument is CLASSIFIED by the host-free `WorkspaceIcon.kind(forRawIcon:)` — a path (it
+  contains `/` or ends in a supported image extension), else a single emoji grapheme, else an SF Symbol
+  name (dot-separated ASCII, so the three can't collide) — and the literal `clear` restores the default
+  glyph.
+  The split of validation follows the module boundary: the DISPATCHER owns the host-free half (the
+  classification, the supported-format check, and `WatermarkConfig.isValidImagePath`), while the two checks
+  that need the host live in `ControlServer+Appearance` — an SF Symbol name must RESOLVE
+  (`NSImage(systemSymbolName:)`, else the icon would silently fall back to the default glyph while the
+  command reported success — the `session.status --sound` precedent) and an image file must EXIST.
+  An image is COPIED into `<stateDir>/workspace-icons/` (`WorkspaceIconStorage.install`, host-free
+  Foundation) so the icon survives the user moving or deleting the original.
+  Three rules make that storage correct, each fixing a real bug: install is IDEMPOTENT when handed a path
+  already in the icons dir (the `tree` read-back hands a script the COPY's path, and feeding it back is the
+  documented record-then-restore — without the short-circuit, source == destination and the copy would be
+  deleted); the destination gets a FRESH name (`<workspaceID>-<8 hex>.<ext>`, not `<workspaceID>.<ext>` —
+  a name derived from the id alone would make a swapped file produce an IDENTICAL spec, which the store's
+  delta guard, the sidebar's `RowContent` diff, and the image memo would each swallow, so the command would
+  report `ok` and show the old picture until relaunch); and the previous file is deleted ONLY on
+  replace/clear, NEVER on `removeWorkspace` (a closed workspace reopens from the PERSISTED recent-closed
+  list, so its icon must come back with it — deleting there would strip it).
+  Rendering is `WorkspaceIconImage` (app target, memoized by spec): a symbol via the existing `rowIcon`
+  factory, an image via `NSImage(contentsOf:)`, an emoji rasterized into an `NSImage`; anything that fails
+  to resolve degrades to the default glyph rather than an empty row.
+  **The workspace COLOR applies only to a TINTABLE icon** (`WorkspaceIcon.isTintable`): a symbol and an SVG
+  load as TEMPLATE images so `contentTintColor` recolors them, while a raster image (PNG/JPEG) and a color
+  emoji carry their own colors — tinting those would paint over the picture, so the color is deliberately
+  ignored there.
+  Its READ side is `ControlWorkspaceNode.icon` + `iconKind` (`symbol`|`emoji`|`image`, both omitted when
+  there is no custom icon), so a script can record the icon and restore it by feeding the value back.
+  GUI half: the workspace row's context menu — Icon… (an `NSOpenPanel` limited to svg/png/jpeg) and Reset
+  Appearance (clears icon + color), shown only when something is set.
+  There is deliberately NO SF Symbol picker: no public API enumerates SF Symbols, so a GUI picker would
+  mean hand-curating and maintaining a symbol list — symbols and emoji are the agent/CLI surface.
+  Four-point keep-in-sync audit: (1) `case workspaceIcon = "workspace.icon"` + `ControlArgs.icon` +
+  `ControlWorkspaceNode.icon`/`iconKind` + the host-free `WorkspaceIcon`/`WorkspaceIconStorage` in
+  `agtermCore`, (2) the `.workspaceIcon` arm in `ControlDispatcher` (classification + host-free checks) →
+  `ControlActions.setWorkspaceIcon` (app-side `ControlServer+Appearance`: symbol/file checks + the copy),
+  (3) the `workspace icon <symbol|emoji|path|clear>` subcommand (`Icon`, `validate()`-guarded, and it
+  absolutizes a relative/`~` path since the app resolves it in ITS own cwd) in `agtermctlKit`,
+  (4) round-trip + omit-when-nil in `ControlProtocolTests` + dispatcher classification/rejection in
+  `ControlDispatcherTests` + `WorkspaceIconTests` (the tint truth table, the classifier, and the storage's
+  idempotence / fresh-name / delete-only-ours rules) + `AppStoreAppearanceTests` (mutator, file cleanup on
+  replace, tree read-back, reopen-from-Recent) + `PersistenceTests` (a poisoned `icon.kind` decodes lossily
+  to nil instead of wiping the tree) + CLI mapping in `CommandsTests` + the e2e
+  `testWorkspaceIconSetAndClear` in `ControlSidebarStatusUITests`.
   `tree` now also surfaces, on each `ControlSessionNode`, `foreground`/`splitForeground` — the LIVE foreground-process
   argv of the main + split panes (nil/omitted at the shell prompt), the SAME `ForegroundProcess.command(for:shellBasename:)`
   capture the restore-running-command feature uses (`ghostty_surface_foreground_pid` → `sysctl(KERN_PROCARGS2)`
@@ -1188,4 +1234,4 @@ paths:
   (image/text/color set/clear + tree read-back).
   **Agent-skill mirror (HARD keep-in-sync, 4th surface):** all commands are documented in the bundled
   `agterm/Resources/agent-skill/` (SKILL.md summary, reference.md detail,
-  examples.md recipes) and the command count there is bumped to 61 to match.
+  examples.md recipes) and the command count there is bumped to 62 to match.

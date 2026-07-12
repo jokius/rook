@@ -184,7 +184,7 @@ The theme picker (View ▸ Select Theme…, or the action palette) previews each
 
 `agterm` can be driven from a script over a local unix-domain socket through a companion CLI, `agtermctl`. This is for personal scripting — fire-and-forget commands that manage workspaces and sessions, inject text, and invoke control actions. There is no terminal-output streaming and no event subscription.
 
-The sections below cover the common cases. All 61 commands, with every argument, return value, and error, are documented in the **[Command reference](https://agterm.com/commands)**.
+The sections below cover the common cases. All 62 commands, with every argument, return value, and error, are documented in the **[Command reference](https://agterm.com/commands)**.
 
 The app bundles `agtermctl` inside `agterm.app`. The easiest way to put it on your PATH is **Help ▸ Install Command Line Tool…**, which symlinks the bundled binary into `/usr/local/bin` (the first entry in macOS's default PATH). When that directory is user-writable it installs silently; otherwise it asks once for an administrator password.
 
@@ -229,6 +229,7 @@ agtermctl session seen --target 9f3c             # clear a session's unseen-noti
 agtermctl sidebar mode flagged                   # show only the flagged sessions as a flat list (tree|flagged|toggle)
 agtermctl workspace focus on                     # collapse the sidebar tree to the active workspace (on|off|toggle)
 agtermctl workspace color "#ff8800"              # tint the workspace's sidebar icon (#rrggbb, or clear); persisted
+agtermctl workspace icon hammer.fill             # set the workspace's sidebar icon (SF Symbol, emoji, svg/png/jpeg path, or clear)
 agtermctl session search "error"                 # open the search bar and highlight matches; prints the "N of M" counter
 agtermctl session search --next                  # step to the next match (--prev steps back, --close hides the bar)
 agtermctl quick toggle                           # toggle the quick terminal (show|hide|toggle)

@@ -202,12 +202,52 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
 
     /// The `color` field of one workspace node in a freshly built tree (nil when omitted).
     private func workspaceColor(ofWorkspace id: String) throws -> String? {
+        try workspaceNode(id)["color"] as? String
+    }
+
+    // workspace.icon sets the sidebar icon from an SF Symbol name, an emoji, or an image file, and reads
+    // back on the tree node as `icon` + `iconKind` so a script can restore it. An unknown symbol errors
+    // rather than silently falling back to the default glyph.
+    func testWorkspaceIconSetAndClear() throws {
+        XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 10), "seeded session row")
+
+        let ws = try XCTUnwrap((try workspaceNodes()).first, "should have a workspace")
+        let wsID = try XCTUnwrap(ws["id"] as? String, "should have a seeded workspace id")
+        XCTAssertNil(ws["icon"], "a workspace on the default glyph must omit `icon`")
+
+        // an SF Symbol name
+        let symbol = try sendCommand(#"{"cmd":"workspace.icon","target":"\#(wsID)","args":{"icon":"hammer.fill"}}"#)
+        XCTAssertEqual(symbol["ok"] as? Bool, true, "workspace.icon should succeed: \(symbol)")
+        XCTAssertEqual(try workspaceNode(wsID)["icon"] as? String, "hammer.fill")
+        XCTAssertEqual(try workspaceNode(wsID)["iconKind"] as? String, "symbol")
+
+        // an emoji is classified on its own, no flag needed
+        let emoji = try sendCommand(#"{"cmd":"workspace.icon","target":"\#(wsID)","args":{"icon":"🚀"}}"#)
+        XCTAssertEqual(emoji["ok"] as? Bool, true, "an emoji icon should succeed: \(emoji)")
+        XCTAssertEqual(try workspaceNode(wsID)["iconKind"] as? String, "emoji")
+
+        // an unknown symbol errors instead of silently rendering the default glyph, and leaves the icon alone
+        let bad = try sendCommand(#"{"cmd":"workspace.icon","target":"\#(wsID)","args":{"icon":"definitely.not.a.symbol"}}"#)
+        XCTAssertEqual(bad["ok"] as? Bool, false, "an unknown SF Symbol should error: \(bad)")
+        XCTAssertTrue((bad["error"] as? String ?? "").contains("unknown SF Symbol"), "should name the problem: \(bad)")
+        XCTAssertEqual(try workspaceNode(wsID)["iconKind"] as? String, "emoji", "a rejected icon must not overwrite")
+
+        // clear restores the default glyph
+        let cleared = try sendCommand(#"{"cmd":"workspace.icon","target":"\#(wsID)","args":{"icon":"clear"}}"#)
+        XCTAssertEqual(cleared["ok"] as? Bool, true, "workspace.icon clear should succeed: \(cleared)")
+        XCTAssertNil(try workspaceNode(wsID)["icon"], "a cleared workspace must omit `icon` again")
+        XCTAssertNil(try workspaceNode(wsID)["iconKind"])
+    }
+
+    private func workspaceNodes() throws -> [[String: Any]] {
         let tree = try sendCommand(#"{"cmd":"tree"}"#)
         let result = try XCTUnwrap(tree["result"] as? [String: Any], "tree should carry a result")
         let t = try XCTUnwrap(result["tree"] as? [String: Any], "result should carry a tree")
-        let nodes = try XCTUnwrap(t["workspaces"] as? [[String: Any]], "tree should carry workspaces")
-        let node = try XCTUnwrap(nodes.first { $0["id"] as? String == id }, "workspace \(id) should be in the tree")
-        return node["color"] as? String
+        return try XCTUnwrap(t["workspaces"] as? [[String: Any]], "tree should carry workspaces")
+    }
+
+    private func workspaceNode(_ id: String) throws -> [String: Any] {
+        try XCTUnwrap((try workspaceNodes()).first { $0["id"] as? String == id }, "workspace \(id) should be in the tree")
     }
 
     // sidebar.collapse collapses every workspace except the active session's — the others' session rows

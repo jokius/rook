@@ -24,6 +24,10 @@ public protocol ControlActions {
     /// Sets the workspace's sidebar icon color; `hex` is a validated `#rrggbb`, or nil to reset it to the
     /// theme default. The dispatcher owns the validation — this only resolves the target and mutates.
     func setWorkspaceColor(_ target: String?, window: String?, hex: String?) -> ControlResponse
+    /// Sets the workspace's sidebar icon, or clears it with nil. The dispatcher has classified the raw
+    /// argument and checked what it can host-free; the app still owns the two AppKit/filesystem steps —
+    /// validating an SF Symbol name (`NSImage(systemSymbolName:)`) and copying an image into the state dir.
+    func setWorkspaceIcon(_ target: String?, window: String?, icon: WorkspaceIcon?) -> ControlResponse
     func setSessionFlag(_ target: String?, window: String?, mode: String?) -> ControlResponse
     func markSessionSeen(_ target: String?, window: String?) -> ControlResponse
     func setSessionStatus(_ target: String?, window: String?, update: ControlSessionStatusUpdate) -> ControlResponse
@@ -148,7 +152,7 @@ public struct ControlDispatcher {
                 .sessionText:
             return await dispatchSessionSurfaceCommand(request)
         case .workspaceNew, .workspaceSelect, .workspaceRename, .workspaceDelete,
-                .workspaceMove, .workspaceFocus, .workspaceColor:
+                .workspaceMove, .workspaceFocus, .workspaceColor, .workspaceIcon:
             return dispatchWorkspaceCommand(request)
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarExpand,
@@ -318,6 +322,8 @@ public struct ControlDispatcher {
             return actions.focusWorkspace(request.target, window: request.args?.window, mode: request.args?.mode)
         case .workspaceColor:
             return dispatchWorkspaceColor(request)
+        case .workspaceIcon:
+            return dispatchWorkspaceIcon(request)
         default:
             preconditionFailure("unexpected workspace command: \(request.cmd.rawValue)")
         }
@@ -337,6 +343,31 @@ public struct ControlDispatcher {
             return ControlResponse(ok: false, error: "invalid color (expected #rrggbb)")
         }
         return actions.setWorkspaceColor(request.target, window: request.args?.window, hex: raw)
+    }
+
+    /// `workspace.icon <target> <symbol|emoji|path|clear>` — the literal `clear` (and an omitted icon)
+    /// restores the default glyph. Otherwise the raw value is CLASSIFIED (`WorkspaceIcon.kind(forRawIcon:)`):
+    /// a path (it contains `/` or ends in an image extension), a single emoji, else an SF Symbol name.
+    ///
+    /// Only the host-free checks live here: an image must be a supported format with no control characters
+    /// in its path. Whether the file EXISTS and whether a symbol name RESOLVES are app-side (filesystem +
+    /// AppKit), like the `session.status --sound` name check.
+    private func dispatchWorkspaceIcon(_ request: ControlRequest) -> ControlResponse {
+        let raw = request.args?.icon?.trimmedOrNil
+        guard let raw, raw != "clear" else {
+            return actions.setWorkspaceIcon(request.target, window: request.args?.window, icon: nil)
+        }
+        let kind = WorkspaceIcon.kind(forRawIcon: raw)
+        if kind == .image {
+            guard WorkspaceIcon.isSupportedImage(raw) else {
+                return ControlResponse(ok: false, error: "unsupported icon image (svg, png, or jpeg)")
+            }
+            guard WatermarkConfig.isValidImagePath(raw) else {
+                return ControlResponse(ok: false, error: "image path must not contain control characters")
+            }
+        }
+        return actions.setWorkspaceIcon(request.target, window: request.args?.window,
+                                        icon: WorkspaceIcon(kind: kind, value: raw))
     }
 
     private func dispatchSessionSurfaceCommand(_ request: ControlRequest) async -> ControlResponse {

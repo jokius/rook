@@ -19,6 +19,7 @@ public enum Command: String, Codable, Sendable {
     case workspaceMove = "workspace.move"
     case workspaceFocus = "workspace.focus"
     case workspaceColor = "workspace.color"
+    case workspaceIcon = "workspace.icon"
     case sessionType = "session.type"
     case sessionStatus = "session.status"
     case sessionFlag = "session.flag"
@@ -117,6 +118,10 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// tint for `workspace.color` — PERSISTED there (unlike the ephemeral status tint), with the literal
     /// `clear` resetting it to the theme default.
     public var color: String?
+    /// The sidebar icon for `workspace.icon`: an SF Symbol name (`hammer.fill`), a single emoji, or a path
+    /// to an SVG/PNG/JPEG (copied into the state dir, so the icon survives the original moving). The
+    /// literal `clear` resets it to the default glyph. Classified by `WorkspaceIcon.kind(forRawIcon:)`.
+    public var icon: String?
     /// The `background-image-opacity` for `session.background` (image + text), 0...1; nil = ghostty's 1.0.
     public var opacity: Double?
     /// The `background-image-fit` for `session.background` (`contain|cover|stretch|none`); nil = `contain`.
@@ -215,7 +220,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 ratio: Double? = nil, ratioDelta: Double? = nil,
                 path: String? = nil, color: String? = nil, opacity: Double? = nil, fit: String? = nil,
                 position: String? = nil, repeats: Bool? = nil, all: Bool? = nil, lines: Int? = nil,
-                light: String? = nil, dark: String? = nil) {
+                light: String? = nil, dark: String? = nil, icon: String? = nil) {
+        self.icon = icon
         self.name = name
         self.cwd = cwd
         self.targets = targets
@@ -427,15 +433,26 @@ public struct ControlWorkspaceNode: Codable, Sendable, Equatable {
     /// from the JSON). The read side of `workspace.color` — so a script can record a workspace's color,
     /// change it, and restore it.
     public let color: String?
+    /// The workspace's sidebar icon VALUE — an SF Symbol name, an emoji, or the path of the image copied
+    /// into the state dir — or nil when it uses the default glyph (omitted from the JSON). Paired with
+    /// `iconKind`, which says how to read it. The read side of `workspace.icon`: feeding this value back
+    /// to `workspace.icon` restores the icon exactly (an image path already inside the state dir is
+    /// re-adopted rather than re-copied).
+    public let icon: String?
+    /// How to read `icon`: `symbol` | `emoji` | `image`. Omitted when there is no custom icon.
+    public let iconKind: String?
     public let sessions: [ControlSessionNode]
 
     public init(id: String, name: String, active: Bool, focused: Bool? = nil, color: String? = nil,
+                icon: String? = nil, iconKind: String? = nil,
                 sessions: [ControlSessionNode]) {
         self.id = id
         self.name = name
         self.active = active
         self.focused = focused
         self.color = color
+        self.icon = icon
+        self.iconKind = iconKind
         self.sessions = sessions
     }
 }

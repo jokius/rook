@@ -1,5 +1,6 @@
 import agtermCore
 import AppKit
+import UniformTypeIdentifiers
 
 /// Per-workspace appearance actions (the sidebar icon color) — the GUI half of `workspace.color`, driven
 /// by the sidebar workspace row's Color… / Reset Color context-menu items. Split out of `AppActions` so
@@ -11,6 +12,45 @@ extension AppActions {
         guard uiActionsEnabled else { return }
         guard let store = store ?? self.store, store.workspaces.contains(where: { $0.id == id }) else { return }
         store.setWorkspaceColor(id, hex: hex)
+    }
+
+    /// Sets (or clears, with nil) a workspace's sidebar icon. An `.image` icon must already point at its
+    /// state-dir copy — `pickWorkspaceIcon` installs the file first.
+    func setWorkspaceIcon(_ id: UUID, icon: WorkspaceIcon?, in store: AppStore? = nil) {
+        guard uiActionsEnabled else { return }
+        guard let store = store ?? self.store, store.workspaces.contains(where: { $0.id == id }) else { return }
+        store.setWorkspaceIcon(id, icon: icon)
+    }
+
+    /// Clears both the icon and the color, restoring the default workspace glyph in the theme tint.
+    func resetWorkspaceAppearance(_ id: UUID, in store: AppStore? = nil) {
+        guard uiActionsEnabled else { return }
+        guard let store = store ?? self.store, store.workspaces.contains(where: { $0.id == id }) else { return }
+        store.setWorkspaceIcon(id, icon: nil)
+        store.setWorkspaceColor(id, hex: nil)
+    }
+
+    /// "Icon…": pick an image file for a workspace's sidebar icon. The file is COPIED into the state dir,
+    /// so the icon survives the original being moved or deleted.
+    ///
+    /// Only image files are offered here. An SF Symbol name has no GUI picker on purpose: there is no
+    /// public API to enumerate SF Symbols, so it would mean hand-curating and maintaining a symbol list —
+    /// symbols (and emoji) are set over the control channel with `agtermctl workspace icon`.
+    func pickWorkspaceIcon(_ id: UUID, in store: AppStore? = nil) {
+        guard uiActionsEnabled else { return }
+        guard let store = store ?? self.store, store.workspaces.contains(where: { $0.id == id }) else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Choose a Workspace Icon"
+        panel.allowedContentTypes = [.svg, .png, .jpeg]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let source = panel.url else { return }
+        do {
+            let icon = try WorkspaceIconStorage.install(source: source, workspaceID: id)
+            store.setWorkspaceIcon(id, icon: icon)
+        } catch {
+            NSAlert(error: error).runModal()
+        }
     }
 
     /// Opens the shared system color panel to pick a workspace's icon color, previewing live: the panel is

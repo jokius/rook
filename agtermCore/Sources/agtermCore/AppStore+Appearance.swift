@@ -16,4 +16,24 @@ public extension AppStore {
         workspaces[index].colorHex = hex
         scheduleSave()
     }
+
+    /// Sets (or clears, with nil) a workspace's sidebar icon. For an `.image` icon, `icon.value` must
+    /// ALREADY point at the copy in `WorkspaceIconStorage` — the caller installs the file (the control
+    /// server and the GUI both go through `WorkspaceIconStorage.install`), so this only swaps the spec.
+    ///
+    /// It does NOT delete the file a REPLACED icon was using: the `tree` read-back hands a script that
+    /// exact path, and `workspace.icon <that path>` is the documented record-then-restore — deleting the
+    /// file on replace would make restoring an image icon fail with `no such image file`. So a replaced (or
+    /// cleared) icon's file is left in place, just like a deleted workspace's is (it can reopen from Open
+    /// Recent). The cost is one orphaned file per image-icon pick — a few KB each, and icons are picked
+    /// rarely. ponytail: a sweep would have to union every window's snapshot with recent-closed and the
+    /// pending closes, which is more than the feature is worth; add it only if the dir ever actually grows.
+    ///
+    /// Delta-guarded, and a plain `save()` (unlike the color): picking an icon is a single event, not a
+    /// continuous drag.
+    func setWorkspaceIcon(_ id: UUID, icon: WorkspaceIcon?) {
+        guard let index = workspaces.firstIndex(where: { $0.id == id }), workspaces[index].icon != icon else { return }
+        workspaces[index].icon = icon
+        save()
+    }
 }

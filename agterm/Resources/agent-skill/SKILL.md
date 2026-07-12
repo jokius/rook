@@ -116,7 +116,7 @@ you work. For any session-scoped command meant to act on *this* session — `ove
 `type`, `text`, `background`, `status`, `copy`, … — pass `--target "$AGTERM_SESSION_ID"`. Omit it and
 you open overlays / type into whatever the user has selected, not your own session.
 
-## Command summary (61 commands)
+## Command summary (62 commands)
 
 Run `agtermctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
 **examples.md**.
@@ -148,7 +148,11 @@ and `surfaces` (`id`, `kind`, `active`, `visible`) for `surface zoom`. The tree 
 **workspace** — `new [name]` · `rename <name>` · `delete` · `select` · `move --to up|down|top|bottom` ·
 `focus [on|off|toggle]` (collapse the sidebar tree to a single workspace; read back which workspace is
 focused from the tree workspace node's `focused` flag) · `color <#rrggbb|clear>` (tint the workspace's
-sidebar icon; persisted, read back from the tree workspace node's `color`).
+sidebar icon; persisted, read back from the tree workspace node's `color`) ·
+`icon <symbol|emoji|path|clear>` (set the workspace's sidebar icon — an SF Symbol name like `hammer.fill`,
+a single emoji, or a path to an svg/png/jpeg, which is copied into the state dir; read back from the tree
+workspace node's `icon` + `iconKind`. The color applies only to a symbol or an SVG — a raster image and an
+emoji keep their own colors).
 
 **session**
 - `new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--name NAME] [--after SID | --before SID]` —

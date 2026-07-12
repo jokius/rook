@@ -165,6 +165,24 @@ paths:
   (`AppStore+PendingClose.swift`), or a workspace reopened from Open Recent comes back gray.
   The store mutator (`AppStore+Appearance.setWorkspaceColor`) persists through `scheduleSave()`, NOT
   `save()`: the color panel drags continuously, and each `save()` re-encodes the whole snapshot.
+- **Per-workspace custom icon (`Workspace.icon`, a host-free `WorkspaceIcon`).**
+  A workspace can replace the default `square.grid.2x2` glyph with an SF Symbol name, a single emoji, or an
+  image file (svg/png/jpeg), set from the row's context menu (Icon… → an `NSOpenPanel`; Reset Appearance
+  clears icon + color) or with `workspace.icon` (see the Control API rule).
+  **The COLOR applies only to a TINTABLE icon** (`WorkspaceIcon.isTintable`): a symbol and an SVG load as
+  TEMPLATE images, so `contentTintColor` recolors them; a raster image and a color emoji carry their own
+  colors, so `iconTint` is left nil for them — tinting would paint over the picture.
+  `WorkspaceIconImage` (app target) resolves a spec to an `NSImage`, memoized by spec: a symbol through the
+  existing `rowIcon` factory, a file through `NSImage(contentsOf:)` (an `.svg` loads as an `_NSSVGImageRep`
+  that scales vectorially and honors `isTemplate`), an emoji rasterized via `NSAttributedString.draw`.
+  Anything that fails to resolve — an unknown symbol, a missing file — degrades to the default glyph, never
+  an empty row.
+  An image is COPIED into `<stateDir>/workspace-icons/` so it survives the original being moved, with a
+  FRESH filename per install: a name derived from the workspace id alone would make a swapped file produce
+  an IDENTICAL spec, which the store's delta guard, the `RowContent` diff, and the image memo would each
+  swallow (the row would keep the old picture until relaunch).
+  There is NO SF Symbol picker in the GUI on purpose — no public API enumerates SF Symbols, so it would mean
+  hand-curating a list; symbols and emoji are the agent/CLI surface.
 - **Focus filter (`AppStore.focusedWorkspaceID`).**
   A per-workspace toggle collapses the `.tree` to a single root: `visibleWorkspaces` is the focused workspace
   when `focusedWorkspaceID` is set AND still present, else ALL workspaces — the source of truth the tree

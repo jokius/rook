@@ -6,7 +6,7 @@
     <title>Command reference — agterm | agtermctl control API</title>
     <meta
       name="description"
-      content="Complete agtermctl reference: all 60 control commands for agterm — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, themes, and keymaps, with arguments and return values."
+      content="Complete agtermctl reference: all 62 control commands for agterm — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, themes, and keymaps, with arguments and return values."
     />
     <meta
       name="keywords"
@@ -18,7 +18,7 @@
     <meta property="og:title" content="Command reference — agterm" />
     <meta
       property="og:description"
-      content="All 60 agtermctl control commands with arguments, return values, and errors."
+      content="All 62 agtermctl control commands with arguments, return values, and errors."
     />
     <meta property="og:url" content="https://agterm.com/commands" />
     <meta property="og:image" content="https://agterm.com/assets/agterm-og.png" />
@@ -30,7 +30,7 @@
     <meta name="twitter:title" content="Command reference — agterm" />
     <meta
       name="twitter:description"
-      content="All 60 agtermctl control commands with arguments, return values, and errors."
+      content="All 62 agtermctl control commands with arguments, return values, and errors."
     />
     <meta name="twitter:image" content="https://agterm.com/assets/agterm-og.png" />
     <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
@@ -198,7 +198,7 @@
             Command reference
           </h1>
           <p style="font-size: 19px; line-height: 1.6; color: #bfbab0; margin: 0 0 8px">
-            All 61 commands of the agterm control API, with arguments and return values. Every one is reachable from the
+            All 62 commands of the agterm control API, with arguments and return values. Every one is reachable from the
             <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl</span> CLI and from the local
             control socket.
           </p>
@@ -411,7 +411,13 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span>), and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">color</span> (the sidebar icon tint, the read side of
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace color</span>; omitted when the
-                workspace uses the theme default).
+                workspace uses the theme default), and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">icon</span> +
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">iconKind</span> (the sidebar icon and how to read it —
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">symbol</span> |
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">emoji</span> |
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">image</span>; the read side of
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace icon</span>).
               </p>
               <p style="font-size: 14px; line-height: 1.65; color: #949ba4; margin: 8px 0 0">
                 <strong style="color: #bfbab0">Top level:</strong>
@@ -536,7 +542,34 @@
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 Read back via the workspace node's
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">color</span> field, so a script can record a color, change
-                it, and restore it. The GUI equivalent is the workspace row's context menu → Color… / Reset Color.
+                it, and restore it. The GUI equivalent is the workspace row's context menu → Color… / Reset Appearance.
+              </p>
+            </div>
+
+            <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
+                agtermctl workspace icon &lt;symbol|emoji|path|clear&gt; [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.icon</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Set the workspace's sidebar icon. The argument is classified: a path (it has a
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">/</span> or an image extension) to an svg/png/jpeg, a
+                single emoji, or otherwise an SF Symbol name
+                (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">hammer.fill</span>).
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">clear</span> restores the default glyph. An image file is
+                copied into the state dir, so the icon survives the original being moved or deleted.
+                <strong style="color: #bfbab0">Returns</strong>
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.id</span>.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                The workspace color applies only to a symbol or an SVG (monochrome templates) — a raster image and an emoji
+                keep their own colors. Read back via the workspace node's
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">icon</span> +
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">iconKind</span> fields. Errors:
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">unknown SF Symbol</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">no such image file</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">unsupported icon image</span>. The GUI equivalent is the
+                row's context menu → Icon… (image files only; there is no SF Symbol picker).
               </p>
             </div>
           </section>

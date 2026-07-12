@@ -131,14 +131,22 @@ extension WorkspaceSidebar.Coordinator {
             focus.representedObject = node
             menu.addItem(focus)
             menu.addItem(.separator())
-            // icon color: the system color panel previews live (it's continuous); Reset drops back to the
-            // theme tint and is only offered when a color is actually set.
+            // appearance: the system color panel previews live (it's continuous), and Icon… picks an image
+            // file (an SF Symbol or emoji is an `agtermctl workspace icon` away — there is no public API to
+            // enumerate SF Symbols, so a GUI symbol picker would mean hand-maintaining a list).
+            // Reset restores the default glyph + theme tint, and is offered only when something is set.
             let color = NSMenuItem(title: "Color…", action: #selector(menuPickWorkspaceColor(_:)), keyEquivalent: "")
             color.target = self
             color.representedObject = node
             menu.addItem(color)
-            if store.workspaces.first(where: { $0.id == node.id })?.colorHex != nil {
-                let reset = NSMenuItem(title: "Reset Color", action: #selector(menuResetWorkspaceColor(_:)), keyEquivalent: "")
+            let icon = NSMenuItem(title: "Icon…", action: #selector(menuPickWorkspaceIcon(_:)), keyEquivalent: "")
+            icon.target = self
+            icon.representedObject = node
+            menu.addItem(icon)
+            let workspace = store.workspaces.first(where: { $0.id == node.id })
+            if workspace?.colorHex != nil || workspace?.icon != nil {
+                let reset = NSMenuItem(title: "Reset Appearance", action: #selector(menuResetWorkspaceAppearance(_:)),
+                                       keyEquivalent: "")
                 reset.target = self
                 reset.representedObject = node
                 menu.addItem(reset)
@@ -224,9 +232,16 @@ extension WorkspaceSidebar.Coordinator {
         actions.pickWorkspaceColor(node.id, in: store)
     }
 
-    @objc private func menuResetWorkspaceColor(_ sender: NSMenuItem) {
+    /// "Icon…": pick an image file (svg/png/jpeg) for this workspace's sidebar icon; it is copied into the
+    /// state dir, so it survives the original moving.
+    @objc private func menuPickWorkspaceIcon(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode else { return }
-        actions.setWorkspaceColor(node.id, hex: nil, in: store)
+        actions.pickWorkspaceIcon(node.id, in: store)
+    }
+
+    @objc private func menuResetWorkspaceAppearance(_ sender: NSMenuItem) {
+        guard let node = sender.representedObject as? SidebarNode else { return }
+        actions.resetWorkspaceAppearance(node.id, in: store)
     }
 
     /// "Open Directory…": pick a folder and add a session rooted there.

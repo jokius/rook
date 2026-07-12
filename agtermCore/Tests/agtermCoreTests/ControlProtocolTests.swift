@@ -792,6 +792,33 @@ struct ControlProtocolTests {
         #expect(decoded.color == nil)
     }
 
+    @Test func workspaceIconRoundTrips() throws {
+        let request = ControlRequest(cmd: .workspaceIcon, target: "work", args: ControlArgs(icon: "hammer.fill"))
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.cmd == .workspaceIcon)
+        #expect(decoded.args?.icon == "hammer.fill")
+    }
+
+    @Test func workspaceNodeRoundTripsWithIcon() throws {
+        // the read side of workspace.icon: value + kind, so a script knows how to read the value back.
+        let ws = ControlWorkspaceNode(id: "w1", name: "work", active: true, icon: "🚀", iconKind: "emoji", sessions: [])
+        let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(workspaces: [ws])))
+        let decoded = try roundTrip(response)
+        #expect(decoded == response)
+        #expect(decoded.result?.tree?.workspaces.first?.icon == "🚀")
+        #expect(decoded.result?.tree?.workspaces.first?.iconKind == "emoji")
+    }
+
+    @Test func workspaceNodeOmitsIconWhenNil() throws {
+        let ws = ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [])
+        let json = String(data: try JSONEncoder().encode(ws), encoding: .utf8) ?? ""
+        #expect(!json.contains("icon"), "a nil icon must be omitted from the JSON; got \(json)")
+        let decoded = try JSONDecoder().decode(ControlWorkspaceNode.self, from: Data(json.utf8))
+        #expect(decoded.icon == nil)
+        #expect(decoded.iconKind == nil)
+    }
+
     @Test func treeRoundTripsWithSidebarMode() throws {
         // the read side of sidebar.mode: the sidebar view mode (tree/flagged) rides the tree top level.
         let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(

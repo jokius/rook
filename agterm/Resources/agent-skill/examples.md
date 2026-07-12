@@ -289,21 +289,30 @@ agtermctl workspace focus toggle --target a1b2                # flip focus on an
 agtermctl workspace focus off                                 # restore the full tree
 ```
 
-## Color the workspaces so they're tellable apart
+## Give the workspaces their own icons and colors
 
-Tint each workspace's sidebar icon (persisted, so it survives a relaunch). The tree read-back makes a
-record-then-restore safe.
+Both are persisted, so they survive a relaunch, and both read back on the tree workspace node — which
+makes record-then-restore safe.
 
 ```bash
+# color tints the ICON (not the row text)
 agtermctl workspace color "#ff8800" --target "$AGTERM_WORKSPACE_ID"  # this workspace: orange
-agtermctl workspace color "#3b82f6" --target a1b2                    # another one: blue
 agtermctl workspace color clear --target a1b2                        # back to the theme default
 
-# record the current color, change it, restore it
-old=$(agtermctl tree --json | jq -r '.workspaces[] | select(.id | startswith("a1b2")) | .color // "clear"')
-agtermctl workspace color "#ef4444" --target a1b2
-agtermctl workspace color "$old" --target a1b2
+# an icon is an SF Symbol name, a single emoji, or an image file
+agtermctl workspace icon hammer.fill --target "$AGTERM_WORKSPACE_ID"  # tinted by the color above
+agtermctl workspace icon "🚀" --target a1b2                           # emoji keeps its own colors
+agtermctl workspace icon ~/icons/rocket.svg --target a1b2             # copied into the state dir
+agtermctl workspace icon clear --target a1b2                          # back to the default glyph
+
+# record the current appearance, change it, restore it
+old=$(agtermctl tree --json | jq -r '.workspaces[] | select(.id | startswith("a1b2")) | .icon // "clear"')
+agtermctl workspace icon leaf.fill --target a1b2
+agtermctl workspace icon "$old" --target a1b2
 ```
+
+The color applies only to a symbol or an SVG (monochrome templates). A PNG/JPEG and an emoji carry their
+own colors, so the color is ignored for them.
 
 ## Expand or collapse the sidebar tree
 

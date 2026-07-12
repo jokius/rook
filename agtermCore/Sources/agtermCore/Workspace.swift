@@ -12,22 +12,29 @@ public struct Workspace: Identifiable {
     public var isExpanded: Bool
     /// The sidebar icon's tint as `#rrggbb`, or nil for the theme default. Set from the row's context menu
     /// or `workspace.color`; read back on the `tree` node so a script can record-then-restore it.
+    /// Applies only to a TINTABLE icon (a symbol or an SVG — see `WorkspaceIcon.isTintable`).
     public var colorHex: String?
+    /// The sidebar icon (SF Symbol / emoji / image file), or nil for the default workspace glyph.
+    public var icon: WorkspaceIcon?
 
-    public init(name: String, sessions: [Session] = [], isExpanded: Bool = true, colorHex: String? = nil) {
+    public init(name: String, sessions: [Session] = [], isExpanded: Bool = true, colorHex: String? = nil,
+                icon: WorkspaceIcon? = nil) {
         id = UUID()
         self.name = name
         self.sessions = sessions
         self.isExpanded = isExpanded
         self.colorHex = colorHex
+        self.icon = icon
     }
 
-    public init(id: UUID, name: String, sessions: [Session] = [], isExpanded: Bool = true, colorHex: String? = nil) {
+    public init(id: UUID, name: String, sessions: [Session] = [], isExpanded: Bool = true, colorHex: String? = nil,
+                icon: WorkspaceIcon? = nil) {
         self.id = id
         self.name = name
         self.sessions = sessions
         self.isExpanded = isExpanded
         self.colorHex = colorHex
+        self.icon = icon
     }
 
     /// Total unseen-notification count across this workspace's sessions, for the badge on a

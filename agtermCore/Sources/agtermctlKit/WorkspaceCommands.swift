@@ -1,4 +1,5 @@
 import ArgumentParser
+import Foundation
 import agtermCore
 
 // MARK: - workspace
@@ -6,7 +7,7 @@ import agtermCore
 struct Workspace: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Workspace commands.",
-        subcommands: [New.self, Rename.self, Delete.self, Select.self, Move.self, Focus.self, Color.self]
+        subcommands: [New.self, Rename.self, Delete.self, Select.self, Move.self, Focus.self, Color.self, Icon.self]
     )
 
     struct New: RequestCommand {
@@ -93,6 +94,36 @@ struct Workspace: ParsableCommand {
 
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .workspaceColor, target: target.target, args: options.withWindow(ControlArgs(color: color)))
+        }
+    }
+
+    struct Icon: RequestCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Set a workspace's sidebar icon (SF Symbol name, emoji, image file, or clear)."
+        )
+        @Argument(help: "An SF Symbol name (hammer.fill), a single emoji, a path to an svg/png/jpeg, or `clear`.")
+        var icon: String
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func validate() throws {
+            // only the local, host-free half: an image must be a supported format. Whether the file exists
+            // and whether a symbol name resolves are answered by the app (filesystem + AppKit).
+            guard icon != "clear", WorkspaceIcon.kind(forRawIcon: icon) == .image else { return }
+            guard WorkspaceIcon.isSupportedImage(icon) else {
+                throw ValidationError("icon image must be svg, png, or jpeg")
+            }
+        }
+
+        func makeRequest() throws -> ControlRequest {
+            // an image path is expanded + absolutized HERE: the app resolves it in its own working
+            // directory, where a `~` or a relative path would not find the user's file.
+            var value = icon
+            if icon != "clear", WorkspaceIcon.kind(forRawIcon: icon) == .image {
+                value = URL(fileURLWithPath: (icon as NSString).expandingTildeInPath).standardizedFileURL.path
+            }
+            return ControlRequest(cmd: .workspaceIcon, target: target.target,
+                                  args: options.withWindow(ControlArgs(icon: value)))
         }
     }
 }

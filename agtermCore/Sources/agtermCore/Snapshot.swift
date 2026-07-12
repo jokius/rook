@@ -89,14 +89,38 @@ public struct WorkspaceSnapshot: Codable, Equatable, Sendable {
     /// on disk before this field was added still decodes (missing → nil → the theme default) instead of
     /// failing the load and wiping the saved tree, like `collapsed` above.
     public var colorHex: String?
+    /// The sidebar icon (symbol/emoji/image), or nil for the default glyph. Optional for the same
+    /// forward-compat reason as the fields above, and decoded LOSSILY (see `init(from:)`).
+    public var icon: WorkspaceIcon?
 
     public init(id: UUID, name: String, sessions: [SessionSnapshot], collapsed: Bool? = nil,
-                colorHex: String? = nil) {
+                colorHex: String? = nil, icon: WorkspaceIcon? = nil) {
         self.id = id
         self.name = name
         self.sessions = sessions
         self.collapsed = collapsed
         self.colorHex = colorHex
+        self.icon = icon
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, sessions, collapsed, colorHex, icon
+    }
+
+    /// Custom decode so `icon` is LOSSY: a present-but-invalid spec (an unknown `kind` — e.g. a DOWNGRADE
+    /// after a newer release added an icon kind this build can't decode, or a hand-edit typo) drops to nil
+    /// instead of throwing `DataCorrupted`. Without this, `Optional` tolerates only a MISSING key, so one
+    /// bad icon would fail the entire `WorkspaceSnapshot` and `PersistenceStore.load` would start fresh —
+    /// wiping every workspace and session over a decorative field. Mirrors `SessionSnapshot`'s
+    /// `backgroundWatermark` handling; every other field keeps its strict/`decodeIfPresent` behavior.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        sessions = try c.decode([SessionSnapshot].self, forKey: .sessions)
+        collapsed = try c.decodeIfPresent(Bool.self, forKey: .collapsed)
+        colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
+        icon = (try? c.decodeIfPresent(WorkspaceIcon.self, forKey: .icon)) ?? nil
     }
 }
 

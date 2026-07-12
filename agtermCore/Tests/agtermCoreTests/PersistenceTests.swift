@@ -435,6 +435,35 @@ final class PersistenceTests {
         #expect(restored.workspaces.first { $0.id == ws.id }?.colorHex == "#ff8800")
     }
 
+    /// A poisoned icon must not take the whole tree down with it. `Optional` alone tolerates only a MISSING
+    /// key, so an unknown `kind` (a hand-edit, or a downgrade from a build that added an icon kind this one
+    /// can't read) would fail the entire snapshot and `load()` would start fresh — wiping every workspace
+    /// and session over a decorative field.
+    @Test func poisonedWorkspaceIconDecodesToNilInsteadOfWipingTheTree() throws {
+        let ws = UUID()
+        let session = UUID()
+        let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "# +
+            #""icon": { "kind": "hologram", "value": "x" }, "# +
+            #""sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ] }"#
+        try Data(json.utf8).write(to: fileURL)
+
+        let loaded = store.load()
+        #expect(loaded.workspaces.map(\.id) == [ws], "the tree must survive an unreadable icon")
+        #expect(loaded.workspaces[0].icon == nil, "the bad icon drops to nil")
+        #expect(loaded.workspaces[0].sessions.count == 1, "and the sessions are intact")
+    }
+
+    @Test func workspaceIconRoundTripsThroughDisk() throws {
+        let app = AppStore(persistence: store)
+        let ws = app.addWorkspace(name: "work")
+        let icon = WorkspaceIcon(kind: .symbol, value: "hammer.fill")
+        app.setWorkspaceIcon(ws.id, icon: icon)
+
+        let restored = AppStore(persistence: store)
+        restored.restore(from: store.load())
+        #expect(restored.workspaces.first { $0.id == ws.id }?.icon == icon)
+    }
+
     @Test func explicitCollapsedFalseDecodesExpanded() throws {
         // an explicit `collapsed: false` (a hand-edit, or a snapshot from a future build that always writes
         // the field) must decode to expanded, same as an absent key — `!(false ?? false)` == expanded.

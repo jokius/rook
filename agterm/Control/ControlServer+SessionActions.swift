@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import agtermCore
 
@@ -644,16 +645,6 @@ extension ControlServer: ControlActions {
     /// `workspace.move`: reorder a workspace among its siblings (`up`|`down`|`top`|`bottom`). `to` is
     /// required; an invalid direction errors. Resolves the workspace target via `resolveWorkspace`
     /// (honoring the global `--window` selector like other workspace commands).
-    /// Set (or clear, with a nil `hex`) a workspace's sidebar icon color. The `#rrggbb` validation lives in
-    /// the dispatcher; this only resolves the target and mutates. The GUI half is the workspace row's
-    /// Color… / Reset Color context-menu items.
-    func setWorkspaceColor(_ target: String?, window: String?, hex: String?) -> ControlResponse {
-        resolver.resolveWorkspace(target, window: window) { store, id in
-            store.setWorkspaceColor(id, hex: hex) // delta-guarded + debounced (idempotent)
-            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
-        }
-    }
-
     func moveWorkspace(_ target: String?, window: String?, direction dir: ReorderDirection) -> ControlResponse {
         return resolver.resolveWorkspace(target, window: window) { store, id in
             store.reorderWorkspace(id, dir)

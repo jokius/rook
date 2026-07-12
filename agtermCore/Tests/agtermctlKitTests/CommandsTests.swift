@@ -88,6 +88,28 @@ struct CommandsTests {
         #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["workspace", "color", "#ff88"]) }
     }
 
+    @Test func workspaceIconAcceptsSymbolEmojiAndClear() throws {
+        #expect(try request(["workspace", "icon", "hammer.fill"])
+            == ControlRequest(cmd: .workspaceIcon, target: "active", args: ControlArgs(icon: "hammer.fill")))
+        #expect(try request(["workspace", "icon", "🚀", "--target", "9f3c"])
+            == ControlRequest(cmd: .workspaceIcon, target: "9f3c", args: ControlArgs(icon: "🚀")))
+        #expect(try request(["workspace", "icon", "clear"])
+            == ControlRequest(cmd: .workspaceIcon, target: "active", args: ControlArgs(icon: "clear")))
+    }
+
+    @Test func workspaceIconAbsolutizesAnImagePath() throws {
+        // the app resolves the path in ITS working directory, so a relative one is made absolute here or
+        // the file would not be found.
+        let parsed = try request(["workspace", "icon", "./rocket.svg"])
+        let path = try #require(parsed.args?.icon)
+        #expect(path.hasPrefix("/"), "an image path must reach the app absolute; got \(path)")
+        #expect(path.hasSuffix("/rocket.svg"))
+    }
+
+    @Test func workspaceIconRejectsUnsupportedImage() {
+        #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["workspace", "icon", "/icons/logo.gif"]) }
+    }
+
     @Test func sessionNewWithCwdAndWorkspace() throws {
         let expected = ControlRequest(cmd: .sessionNew, args: ControlArgs(cwd: "/tmp", workspace: "ws1"))
         #expect(try request(["session", "new", "--cwd", "/tmp", "--workspace", "ws1"]) == expected)

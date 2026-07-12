@@ -81,8 +81,11 @@ from the top-level `zoomedSurface`. Workspace nodes carry
 `id`, `name`, `active`, `sessions`, `focused` (whether the sidebar
 tree is collapsed to this workspace — the read side of `workspace focus`, distinct from `active` the
 SELECTED workspace; omitted unless this is the focused one, and absent entirely when nothing is focused),
-and `color` (the workspace's sidebar icon tint as `#rrggbb` — the read side of `workspace color`; omitted
-when it uses the theme default, so a script can record a color, change it, and restore it).
+`color` (the workspace's sidebar icon tint as `#rrggbb` — the read side of `workspace color`; omitted
+when it uses the theme default, so a script can record a color, change it, and restore it),
+and `icon` + `iconKind` (the sidebar icon and how to read it — `symbol` = an SF Symbol name, `emoji` = the
+grapheme, `image` = the path of the copy in the state dir; both omitted when the workspace uses the default
+glyph. The read side of `workspace icon`: feeding `icon` straight back restores it, an image path included).
 
 The tree object itself carries six top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
@@ -124,7 +127,21 @@ All six are read-only projections of GUI state.
   theme default. A malformed color errors (`invalid color (expected #rrggbb)`) and leaves the workspace
   unchanged. PERSISTED (unlike the ephemeral `session status --color` glyph tint), so it survives a
   relaunch and a reopen from Open Recent. Read back from the tree workspace node's `color`, so a script
-  can record-then-restore. The GUI equivalent is the workspace row's context menu → Color… / Reset Color.
+  can record-then-restore. The GUI equivalent is the workspace row's context menu → Color… / Reset
+  Appearance.
+- `workspace icon <symbol|emoji|path|clear> [--target] [--window W]` — set the workspace's sidebar icon;
+  returns the workspace id. The argument is classified: a **path** (it has a `/` or an image extension) to
+  an svg/png/jpeg, a single **emoji** grapheme, or otherwise an **SF Symbol** name (`hammer.fill`).
+  `clear` restores the default glyph.
+  An image file is COPIED into the state dir, so the icon survives you moving or deleting the original —
+  which is why the tree reports the copy's path, not the one you passed.
+  **The workspace color applies only to a symbol or an SVG** (both are monochrome templates); a raster
+  image and an emoji keep their own colors, and the color is ignored for them.
+  Errors: `unknown SF Symbol: <name>` (the name doesn't resolve — so a typo fails instead of silently
+  showing the default glyph), `no such image file: <path>`, `unsupported icon image (svg, png, or jpeg)`.
+  Read back from the tree workspace node's `icon` + `iconKind`; feeding `icon` straight back restores it.
+  The GUI equivalent is the row's context menu → Icon… (image files only — there is no SF Symbol picker,
+  since no public API enumerates the symbols) / Reset Appearance.
 
 ## session
 
@@ -588,6 +605,7 @@ user-edited file read at launch — there is no control command for it.
 `unsupported image (PNG or JPEG only)` / `no such image file` / `image path must not contain control characters` / `invalid background mode` (session background),
 `invalid sidebar mode` (sidebar), `invalid focus mode` (workspace focus),
 `invalid color (expected #rrggbb)` (workspace color — the CLI rejects it locally too),
+`unknown SF Symbol: <name>` / `no such image file: <path>` / `unsupported icon image (svg, png, or jpeg)` (workspace icon),
 `no open window` (quick/sidebar), `quick terminal not open` / `quick terminal not realized` (quick type) /
 `failed to read surface buffer` (quick text / session text), `window not open`
 (resize/move/`--window`), `unknown theme: <name>` (theme set), `unknown sound: <name>` (session status --sound),

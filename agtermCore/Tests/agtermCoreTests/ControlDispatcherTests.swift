@@ -536,6 +536,40 @@ struct ControlDispatcherTests {
         #expect(actions.calls.isEmpty) // a bad color must leave the workspace untouched
     }
 
+    @Test func workspaceIconClassifiesSymbolEmojiAndPath() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .workspaceIcon, target: "a",
+                                                     args: ControlArgs(icon: "hammer.fill")))
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .workspaceIcon, target: "b", args: ControlArgs(icon: "🚀")))
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .workspaceIcon, target: "c",
+                                                     args: ControlArgs(icon: "/icons/rocket.svg")))
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .workspaceIcon, target: "d", args: ControlArgs(icon: "clear")))
+
+        #expect(actions.calls == [
+            .workspaceIcon(target: "a", window: nil, icon: WorkspaceIcon(kind: .symbol, value: "hammer.fill")),
+            .workspaceIcon(target: "b", window: nil, icon: WorkspaceIcon(kind: .emoji, value: "🚀")),
+            .workspaceIcon(target: "c", window: nil, icon: WorkspaceIcon(kind: .image, value: "/icons/rocket.svg")),
+            .workspaceIcon(target: "d", window: nil, icon: nil), // `clear` restores the default glyph
+        ])
+    }
+
+    @Test func workspaceIconRejectsUnsupportedImageWithoutMutating() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let rejected = await dispatcher.dispatch(ControlRequest(cmd: .workspaceIcon, target: "a",
+                                                                args: ControlArgs(icon: "/icons/logo.gif")))
+        #expect(rejected == ControlResponse(ok: false, error: "unsupported icon image (svg, png, or jpeg)"))
+
+        // a control character in the path is rejected too (the shared watermark path check)
+        let poisoned = await dispatcher.dispatch(ControlRequest(cmd: .workspaceIcon, target: "a",
+                                                                args: ControlArgs(icon: "/icons/evil\n.svg")))
+        #expect(poisoned?.ok == false)
+        #expect(actions.calls.isEmpty, "a rejected icon must leave the workspace untouched")
+    }
+
     @Test func sessionFlagRoutesModeForHostSideValidation() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)
@@ -1554,6 +1588,7 @@ private final class MockControlActions: ControlActions {
         case workspaceMove(target: String?, window: String?, ReorderDirection)
         case workspaceFocus(target: String?, window: String?, String?)
         case workspaceColor(target: String?, window: String?, hex: String?)
+        case workspaceIcon(target: String?, window: String?, icon: WorkspaceIcon?)
         case sessionFlag(target: String?, window: String?, String?)
         case markSessionSeen(target: String?, window: String?)
         case sessionStatus(target: String?, window: String?, ControlSessionStatusUpdate)
@@ -1722,6 +1757,11 @@ private final class MockControlActions: ControlActions {
 
     func setWorkspaceColor(_ target: String?, window: String?, hex: String?) -> ControlResponse {
         calls.append(.workspaceColor(target: target, window: window, hex: hex))
+        return ControlResponse(ok: true)
+    }
+
+    func setWorkspaceIcon(_ target: String?, window: String?, icon: WorkspaceIcon?) -> ControlResponse {
+        calls.append(.workspaceIcon(target: target, window: window, icon: icon))
         return ControlResponse(ok: true)
     }
 
