@@ -1,6 +1,9 @@
 import rookCore
 import Foundation
+import os
 import SwiftUI
+
+private let logger = Logger(subsystem: "com.rook.app", category: "rookApp")
 
 @main
 struct rookApp: App {
@@ -24,6 +27,8 @@ struct rookApp: App {
     private static let windowGroupID = "terminal"
 
     init() {
+        // one-shot import of a pre-rebrand agterm install (state + config), before anything reads either.
+        rookApp.migrateLegacyInstall()
         let library = rookApp.restoredLibrary()
         _library = State(initialValue: library)
         let actions = AppActions(library: library)
@@ -164,6 +169,23 @@ struct rookApp: App {
         Settings {
             SettingsView(model: settingsModel)
         }
+    }
+
+    /// Copies a pre-rebrand agterm install's state (`~/Library/Application Support/agterm`) and config
+    /// (`~/.config/agterm`) into rook's directories, once, when rook's are still absent — the app-side
+    /// side effect of the host-free `LegacyMigration` (which owns the what/whether). Silent by design:
+    /// only a log line, no dialog. Skipped under an isolated `ROOK_STATE_DIR` (dev/test instances).
+    private static func migrateLegacyInstall() {
+        let result = LegacyMigration.run(
+            home: FileManager.default.homeDirectoryForCurrentUser,
+            // the state dir's parent — `~/Library/Application Support`.
+            appSupport: PersistenceStore.defaultDirectory.deletingLastPathComponent(),
+            stateDir: ProcessInfo.processInfo.environment["ROOK_STATE_DIR"])
+        guard !result.isEmpty else { return }
+        logger.notice("""
+            migrated legacy agterm install — state: \(result.state.joined(separator: ", "), privacy: .public); \
+            config: \(result.config.joined(separator: ", "), privacy: .public)
+            """)
     }
 
     /// Builds the app-global window library rooted at the state directory. The library's bootstrap
