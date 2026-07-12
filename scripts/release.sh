@@ -87,7 +87,7 @@ release_notes() {
 
 Signed with a Developer ID certificate and notarized by Apple, so macOS Gatekeeper opens it with no extra steps. Apple Silicon (arm64) only, macOS 14 or later.
 
-- **Homebrew:** \`brew install --cask umputun/apps/rook\`
+- **Homebrew:** \`brew install --cask jokius/apps/rook\`
 - **Direct download:** open the \`.dmg\` and drag \`rook.app\` into \`/Applications\`.
 EOF
 }

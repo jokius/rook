@@ -2,7 +2,7 @@
 name: rook
 description: >
   Drive rook, a native macOS terminal app, programmatically via its rookctl CLI and a local
-  control socket. Use when running inside an rook session and asked to control the terminal:
+  control socket. Use when running inside a rook session and asked to control the terminal:
   create, rename, close, select, or reorder sessions and workspaces; split panes; toggle the
   per-session scratch terminal; open or close overlay terminals and read their exit status; display
   an image inline via a bundled helper script; type
@@ -19,23 +19,23 @@ when_to_use: >
   window.select, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, flagged, notify, font.inc, keymap.reload, config.reload,
   theme.set, theme.list, select theme, edit keymap, show an image, display an image inline, show-image,
   ROOK_SESSION_ID, ROOK_SOCKET, and asks to drive or script rook. Also: troubleshoot rook,
-  keymap editor won't open, custom action / custom command not working, rook logs, file an rook
-  bug, report an rook issue, open an rook discussion / feature request.
+  keymap editor won't open, custom action / custom command not working, rook logs, file a rook
+  bug, report a rook issue, open a rook discussion / feature request.
 allowed-tools: Bash(rookctl *)
 ---
 
 <!-- rook-skill -->
 
-# Driving rook
+# Driving Rook
 
-rook is a native macOS terminal. It exposes a programmatic control channel over a local unix
+Rook is a native macOS terminal. It exposes a programmatic control channel over a local unix
 socket, driven by the companion CLI `rookctl`. Use it to build and steer terminal layouts, run
 programs in overlays, type into sessions, and notify the user in the exact session you are working
 in. Fire-and-forget commands only: there is no terminal-output streaming and no event subscription.
 
-## Am I inside rook?
+## Am I inside Rook?
 
-Each shell rook spawns gets these environment variables. Check `ROOK_ENABLED` before assuming
+Each shell Rook spawns gets these environment variables. Check `ROOK_ENABLED` before assuming
 the control channel is available:
 
 - `ROOK_ENABLED=1` — this shell runs inside rook.
@@ -51,14 +51,14 @@ daemons that outlive the shell. A tmux/screen server, a session manager (agent-d
 any background service started from inside a session captures the spawning session's `ROOK_*` and
 passes it to every child it ever creates, so status hooks running in those children resolve
 `$ROOK_SESSION_ID` to the session that happened to start the daemon and report to the WRONG session.
-Before starting such a process from inside rook, scrub the variables
+Before starting such a process from inside Rook, scrub the variables
 (`env -u ROOK_ENABLED -u ROOK_PANE -u ROOK_SESSION_ID -u ROOK_SOCKET -u ROOK_WINDOW_ID -u ROOK_WORKSPACE_ID <cmd>`);
 see troubleshooting.md ("agent-status glyph updates the wrong session") for diagnosing and fixing an
 already-poisoned tmux server.
 
 ## Running rookctl
 
-`rookctl` must be on PATH (install it from rook's **Help ▸ Install Command Line Tool…**). If it
+`rookctl` must be on PATH (install it from Rook's **Help ▸ Install Command Line Tool…**). If it
 is not on PATH, the user can install it, or you invoke it by absolute path.
 
 - The socket path auto-resolves; usually no `--socket` is needed. To be explicit, pass
@@ -263,7 +263,7 @@ Visibility/mode act on the frontmost window; `expand`/`collapse` default to the 
 terminal theme app-wide, per slot: a NAME sets the light/single theme (a dark theme, if set, is kept);
 `theme set --dark <name>` sets the dark theme, which makes the terminal track the macOS Light/Dark
 appearance automatically; `theme set --dark none` stops tracking. The app default is the bundled
-**rook** theme; omit the name for ghostty's built-in default ("default ghostty"); an unknown name errors.
+**Rook** theme; omit the name for ghostty's built-in default ("default ghostty"); an unknown name errors.
 
 **restore** — `restore clear` — clear every session's saved foreground command (the
 restore-running-command capture) so the next restart restores plain shells.
@@ -282,7 +282,7 @@ bash ~/.codex/skills/rook/scripts/show-image.sh <image> [size-percent]    # Code
 
 Do NOT print graphics escapes to your own tool stdout (the agent harness escapes the control bytes)
 and do NOT run an image viewer in your tool shell (no controlling terminal). The overlay is what makes
-it render. Outside rook (`ROOK_ENABLED` unset) there is no overlay — fall back to `open <image>`.
+it render. Outside Rook (`ROOK_ENABLED` unset) there is no overlay — fall back to `open <image>`.
 
 ## Troubleshooting and reporting
 

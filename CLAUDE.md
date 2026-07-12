@@ -1,9 +1,31 @@
-# rook — project notes
+# Rook — project notes
 
-`rook` is a native macOS SwiftUI terminal on libghostty, with a two-level workspace -> session vertical
-sidebar.
+Rook is a native macOS SwiftUI terminal on libghostty for running a flock of AI coding agents,
+with a two-level workspace -> session vertical sidebar.
 Read `README.md` for the overview and `ARCHITECTURE.md` for the module split,
 surface ownership, and the C-boundary concurrency contract before changing the bridge.
+
+## Fork and upstream
+
+- **Rook is a fork of [`umputun/agterm`](https://github.com/umputun/agterm) (MIT), rebranded.**
+  The rename landed as one mechanical commit: the `rook/`, `rookCore/`, `rookUITests/` directories,
+  the `rookCore` module, the `rookctl` CLI, the `ROOK_*` environment, the `com.rook.app` bundle id,
+  and the `rook.app` domain.
+  Product name is **Rook** (capitalized in prose); `rook` stays the binary, the bundle,
+  the module prefix, and every path/identifier — don't "fix" those to `Rook`.
+  Upstream attribution is NOT optional: the agterm copyright stays in `LICENSE` alongside the fork's,
+  and the README keeps its Attribution section.
+- **Upstream is WATCHED, not followed.**
+  `scripts/upstream.sh` (+ `.github/workflows/upstream-watch.yml`) lists the upstream commits we have
+  not taken, so we can decide case by case; those two files intentionally still name `umputun/agterm`.
+- **Since the rename, `scripts/upstream.sh pick <sha>` no longer applies cleanly — a take is a MANUAL port.**
+  Every upstream path (`agterm/…`, `agtermCore/…`) and identifier (`agtermctl`, `AGTERM_*`,
+  `com.umputun.agterm`) collides with the renamed tree, so a cherry-pick conflicts almost file-wide.
+  Read the upstream commit for its INTENT (`scripts/upstream.sh <sha>` / `diff <sha>`),
+  then re-apply that intent by hand against our names — never resolve the conflict by inventing behavior
+  that exists in neither side.
+- The working directory is still called `agterm` on disk; only the folder name lags, the contents are
+  Rook. It gets renamed separately.
 
 ## Working norms
 
@@ -148,9 +170,11 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   or launch `…/Debug/rook.app` directly / `open -n`); otherwise visual verification runs against the
   old build and a real fix looks like it failed.
 - **A `make deploy`'d copy in `~/Applications` SHADOWS the dev build — for the CLI,
-  the hooks, AND the app.** This machine has rook installed via `make deploy` (Release → `~/Applications/rook.app`),
-  and the Help-menu installers run off that copy point `/usr/local/bin/rookctl` and the agent-status
+  the hooks, AND the app.** Once Rook is installed via `make deploy` (Release → `~/Applications/rook.app`),
+  the Help-menu installers run off that copy and point `/usr/local/bin/rookctl` and the agent-status
   hooks' baked `ROOKCTL` (in `~/.config/rook/agent-status/rook-agent-status.sh`) at it.
+  (Check before assuming — a machine may have no deployed copy at all,
+  in which case the PATH CLI and the hooks simply aren't installed.)
   So once deployed, a bare `rookctl …` on PATH, the agent-status hooks,
   AND a plain launch/activate (LaunchServices resolves `com.rook.app` to `~/Applications`) all
   hit the DEPLOYED build — NOT whatever you just rebuilt into `build/DerivedData`.
@@ -164,8 +188,8 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   The XCUITests no longer collide either: the `.debug` bundle id means XCUITest's launch-time terminate
   hits only the `.debug` instance, not the deployed `com.rook.app`,
   and they still use an isolated `ROOK_STATE_DIR`/socket.
-- **NEVER kill or relaunch the deployed `~/Applications/rook.app` — it is the user's REAL,
-  in-use daily terminal with LIVE sessions.** BANNED: `pkill rook` / `pkill -x rook`,
+- **NEVER kill or relaunch a deployed `~/Applications/rook.app` (or a still-installed `agterm.app`) —
+  assume it is the user's REAL, in-use daily terminal with LIVE sessions.** BANNED: `pkill rook` / `pkill -x rook`,
   `osascript -e 'tell application "rook" to quit'`, and ANY quit-then-relaunch of the deployed app
   (including the quit+`open` after `make deploy`).
   After `make deploy` the Release build is COPIED into `~/Applications`,
@@ -194,7 +218,7 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   you there), so a later relative `find .github`/`ls`/`cd` runs from the WRONG place and returns a FALSE
   negative.
   NEVER assert "file/dir X doesn't exist" from a relative `find`/`ls` — confirm with an absolute path
-  (`/Users/umputun/dev.jokius/rook/...`) or `git -C <root> ls-files`,
+  (`/Users/konayre/myProjects/rook/...`) or `git -C <root> ls-files`,
   especially before claiming infra facts (CI presence, config files).
   The repo root vs the `rookCore` SwiftPM subpackage makes root-vs-subdir confusion easy;
   verify the directory, don't trust a negative relative result.
@@ -221,7 +245,7 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   Bump `GHOSTTY_REV` deliberately when adopting a newer libghostty.
 - **The pin is a pre-regression commit on purpose.**
   A libghostty `main` renderer regression introduced after `4dcb09ada` (2026-04-30) blanks the scrollback
-  on a font-size *increase* (decrease is fine); it is NOT an rook bug and no app-side change fixes
+  on a font-size *increase* (decrease is fine); it is NOT a rook bug and no app-side change fixes
   it.
   Every thdxg/ghostty daily build (which rook used to download) has it.
   Re-test the font-increase case before bumping past it.
@@ -327,22 +351,20 @@ always in context:
 
 ## Website
 
-`rook.app` is a hand-authored static site in `site/`, deployed via Cloudflare Pages with no build step
-(the revdiff pattern).
-Cloudflare's Git integration auto-deploys `site/` on every push to `master`; there is no wrangler config
-and no deploy workflow in the repo.
-All Cloudflare wiring — the Pages project, the `rook.app` custom domain, and the output directory (`site`)
-— lives in the Cloudflare dashboard, not in git, so it is not reproducible from the repo.
+`rook.app` is a hand-authored static site in `site/`, meant to deploy via Cloudflare Pages with no build
+step (the pattern inherited from upstream): the Git integration auto-deploys `site/` on every push to
+`master`, so there is no wrangler config and no deploy workflow in the repo.
+All the Cloudflare wiring — the Pages project, the custom domain, the output directory (`site`) — lives
+in the Cloudflare dashboard, not in git, so it is NOT reproducible from the repo and has to be re-created
+for this fork (the upstream project's wiring pointed at the old domain).
 Cloudflare Pages strips `.html` and 308-redirects `/docs.html` to `/docs`, so every canonical link,
 `og:url`, and `sitemap.xml` entry uses the extensionless `https://rook.app/docs`.
 
 The site is lean and self-contained — nothing is embedded.
 `site/style.css` holds the reset, keyframes, `@font-face`, and the hover classes;
-the two pages keep the design's inline styles.
+the two pages keep their inline styles.
 Assets are self-hosted under `site/assets/`: latin `woff2` fonts in `site/assets/fonts/`,
-screenshots as `webp`, plus a generated 1200×630 `rook-og.png` social card and favicons.
-The pages were converted from a design-tool bundle export whose source zip lives on the maintainer's
-Desktop, not in the repo, so a visual redesign means re-exporting the design and re-running that conversion.
+screenshots as `webp`, plus a 1200×630 social card and favicons.
 
 ## Subsystem notes (path-scoped rules)
 

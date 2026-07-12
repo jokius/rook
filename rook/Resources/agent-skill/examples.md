@@ -1,7 +1,7 @@
-# rook control recipes
+# Rook control recipes
 
 Worked `rookctl` examples. See `reference.md` for exact flags and return shapes. All assume
-`rookctl` is on PATH and you are inside an rook session (`ROOK_ENABLED=1`).
+`rookctl` is on PATH and you are inside a Rook session (`ROOK_ENABLED=1`).
 
 ## Inspect the current state
 
@@ -184,7 +184,7 @@ Tiny images (a favicon) enlarge with nearest-neighbor first, so the pixels stay 
 magick favicon.png -filter point -resize 256x256 /tmp/big.png
 ```
 
-Outside rook (`ROOK_ENABLED` unset) there is no overlay — fall back to `open img.png` (Preview).
+Outside Rook (`ROOK_ENABLED` unset) there is no overlay — fall back to `open img.png` (Preview).
 
 ## Set a background watermark or color
 
@@ -475,15 +475,15 @@ $EDITOR ~/.config/rook/keymap.conf
 rookctl keymap reload          # prints the parse-diagnostic count (0 = clean)
 ```
 
-## Change a ghostty setting rook does not expose
+## Change a ghostty setting Rook does not expose
 
 ```bash
 $EDITOR ~/.config/rook/ghostty.conf   # e.g. add: macos-option-as-alt = true
 rookctl config reload                 # apply it; prints the diagnostic count (0 = clean)
 ```
 
-`ghostty.conf` is scoped to rook and overrides the bundled defaults and your global
-`~/.config/ghostty/config`; rook's own Settings (font, theme, opacity, scroll) still win. Full key
+`ghostty.conf` is scoped to Rook and overrides the bundled defaults and your global
+`~/.config/ghostty/config`; Rook's own Settings (font, theme, opacity, scroll) still win. Full key
 reference: https://ghostty.org/docs/config
 
 ## Set the terminal theme
@@ -495,11 +495,11 @@ own built-in colors.
 rookctl theme list                         # bundled themes, the current one marked *
 rookctl theme list --json | jq -r '.result.themes[]'   # just the names
 rookctl theme set "Dracula"                # set + persist it app-wide (unknown name errors)
-rookctl theme set "rook"                 # back to the app default theme
+rookctl theme set "Rook"                 # back to the app default theme
 rookctl theme set                          # ghostty's built-in default (no theme)
 
 # follow the macOS Light/Dark appearance automatically — setting a dark theme starts tracking:
-rookctl theme set --dark "rook"          # light side seeds from the current theme
+rookctl theme set --dark "Rook"          # light side seeds from the current theme
 rookctl theme set "Builtin Light"          # while tracking, a name replaces the LIGHT side (pair kept)
 rookctl theme list --json | jq '.result | {sync, light, dark}'   # inspect the sync state
 rookctl theme set --dark none              # stop tracking; the light theme stays as the single theme

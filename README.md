@@ -1,24 +1,28 @@
-# rook - modern terminal for agentic flow
+# Rook — a terminal for a flock of agents
 
 [![Build Status](https://github.com/jokius/rook/workflows/build/badge.svg)](https://github.com/jokius/rook/actions) [![Coverage Status](https://coveralls.io/repos/github/jokius/rook/badge.svg?branch=master)](https://coveralls.io/github/jokius/rook?branch=master)
 
 **[rook.app](https://rook.app)** · [Documentation](https://rook.app/docs) · [Command reference](https://rook.app/commands)
 
-`rook` is a native macOS terminal for working with AI coding agents across many sessions at once. It is intentionally opinionated: rather than scattering shells across tabs, it organizes them into named workspaces, each holding the sessions for one project or context, so several agent-driven sessions can run side by side and you can move between them without losing track of which is which. The motivation is specific: running several coding agents at once means many long-lived sessions, each progressing on its own, and a tabbed terminal loses track of them quickly. rook keeps them organized and makes it obvious which session needs you. None of this is limited to agents. It also works as a capable general-purpose terminal for everyday multi-project work.
+Dozens of sessions in named workspaces, every agent's status on its row, full control from the CLI.
+
+Rook is a native macOS terminal built for running a flock of AI coding agents at once. A rook is the bird that solves problems on its own — and the tower that houses the whole flock; the app is both. Rather than scattering shells across tabs, it organizes them into named workspaces, each holding the sessions for one project or context, so several agent-driven sessions run side by side and you move between them without losing track of which is which. Running several coding agents at once means many long-lived sessions, each progressing on its own, and a tabbed terminal loses them quickly. Rook keeps them organized and makes it obvious which session needs you. None of this is limited to agents — it is also a capable general-purpose terminal for everyday multi-project work.
 
 The design is deliberately minimal: it covers the use cases above and stops there. Features come in two kinds. One is just enough to get the work done. The other is the small set of things other terminals get wrong, done the way they should have been. There is no deep agent integration and no attempt to invent a new way of working with agents. You get a sensible minimum out of the box, plus a complete control API and CLI on top. Almost everything is scriptable, so anything past the defaults you build yourself instead of waiting for it to ship.
+
+Rook is a fork of [agterm](https://github.com/umputun/agterm) by [Umputun](https://github.com/umputun) (MIT) — see [Attribution](#attribution).
 
 What it does:
 
 - **Workspaces.** Sessions are grouped under named workspaces like "work" and "personal", which keeps a screen of concurrent sessions organized. You reach a session by name, by recency, or from the keyboard.
 - **Control API and CLI.** A bundled tool, `rookctl`, drives almost everything over a local socket: create sessions, type into them, run a program in an overlay and read its exit status, move and resize windows, or post a notification tied to a specific session. A script or an agent can set up and drive its own layout, and send you a notification from the session it was working in.
 - **Splits, scratch, and overlays.** Split a session into two shells, open a scratch terminal over it, or run a program in a full or floating overlay without disturbing the shell underneath.
-- **Agent skill.** An installable skill (Help ▸ Install Agent Skill…) teaches Claude Code or Codex the control model and the `rookctl` commands, so an agent running inside rook can build its own layout, run overlays, manage windows, and show images inline without you explaining the API.
+- **Agent skill.** An installable skill (Help ▸ Install Agent Skill…) teaches Claude Code or Codex the control model and the `rookctl` commands, so an agent running inside Rook can build its own layout, run overlays, manage windows, and show images inline without you explaining the API.
 - **Agent status.** A coding agent reports its state (active, blocked, or completed) onto its session's row, so you can see which of many running agents needs you. Status hooks for Claude Code, Codex, and other agents install from Help ▸ Install Agent Status Hooks….
 
-For the real terminal work, rendering, VT parsing, and shell I/O, `rook` embeds [Ghostty](https://ghostty.org)'s engine (libghostty); everything above is `rook`'s own.
+For the real terminal work, rendering, VT parsing, and shell I/O, Rook embeds [Ghostty](https://ghostty.org)'s engine (libghostty); everything above it is the app's own code.
 
-![rook](docs/screenshots/main.png)
+![Rook](docs/screenshots/main.png)
 
 <details>
 <summary>More screenshots</summary>
@@ -74,16 +78,16 @@ Releases are signed with a Developer ID certificate and notarized by Apple, so m
 Homebrew:
 
 ```sh
-brew install --cask umputun/apps/rook
+brew install --cask jokius/apps/rook
 ```
 
 The cask also installs the `rookctl` command-line tool, so cask users should not run the in-app installer as well.
 
 > [!NOTE]
-> **Homebrew upgrade note (July 2026).** A recent Homebrew change (installed-cask metadata stored as JSON) can make `brew upgrade` fail for rook with `It seems there is already an App at '/Applications/rook.app'`. It affects third-party tap casks in general, not only rook. Recover with a one-time reinstall, which rewrites the install receipt:
+> **Homebrew upgrade note (July 2026).** A recent Homebrew change (installed-cask metadata stored as JSON) can make `brew upgrade` fail for Rook with `It seems there is already an App at '/Applications/rook.app'`. It affects third-party tap casks in general, not only rook. Recover with a one-time reinstall, which rewrites the install receipt:
 >
 > ```sh
-> brew reinstall --cask --force rook
+> brew reinstall --cask --force Rook
 > ```
 >
 > Regular `brew upgrade` works afterward. This is an upstream Homebrew issue, and the note will be removed once it is fixed.
@@ -94,11 +98,11 @@ Download the latest `.dmg` from the [releases page](https://github.com/jokius/ro
 
 ### Optional Help-menu installers
 
-The app's **Help** menu has three one-time installers. None are needed to use rook as a terminal; each connects it to a wider workflow, and you can run any of them later.
+The app's **Help** menu has three one-time installers. None are needed to use Rook as a terminal; each connects it to a wider workflow, and you can run any of them later.
 
-- **Install Command Line Tool…** puts the bundled `rookctl` on your `PATH` (a symlink in `/usr/local/bin`) so you can script the app from a shell. The Homebrew cask already installs it, so cask users can skip this one. See [Scripting rook](#scripting-rook).
+- **Install Command Line Tool…** puts the bundled `rookctl` on your `PATH` (a symlink in `/usr/local/bin`) so you can script the app from a shell. The Homebrew cask already installs it, so cask users can skip this one. See [Scripting Rook](#scripting-rook).
 - **Install Agent Status Hooks…** lets a coding agent (Claude Code, Codex, or others) report its state onto its session's sidebar row, so you can tell at a glance which of several running agents is active, blocked, or finished. See [Agent status](#agent-status).
-- **Install Agent Skill…** teaches Claude Code or Codex how to drive rook through `rookctl`, so an agent running inside a session can build its own layout, run overlays, and manage windows without you explaining the API. It drives the app through the command-line tool, so install that one too.
+- **Install Agent Skill…** teaches Claude Code or Codex how to drive Rook through `rookctl`, so an agent running inside a session can build its own layout, run overlays, and manage windows without you explaining the API. It drives the app through the command-line tool, so install that one too.
 
 ## Build from source
 
@@ -127,14 +131,14 @@ cd rookCore && swift test
 `scripts/test.sh` is a wrapper for the same command. UI behavior (rename, close, move, drag, add-session) is covered by XCUITests in `rookUITests/` that drive the running app through the accessibility API:
 
 ```sh
-xcodebuild test -project rook.xcodeproj -scheme rook -destination 'platform=macOS'
+xcodebuild test -project rook.xcodeproj -scheme Rook -destination 'platform=macOS'
 ```
 
 </details>
 
 ## Concepts
 
-rook arranges terminals into a small hierarchy. These are the only terms you need; the sidebar, menus, and shortcuts all map onto them.
+Rook arranges terminals into a small hierarchy. These are the only terms you need; the sidebar, menus, and shortcuts all map onto them.
 
 **Session.** A session is one running shell with a name, a working directory, and its own scrollback. It is the unit you work in and the row you see in the sidebar. A new session takes its name from the basename of its directory; rename it to pin a custom name, clear the name to go back to the basename. New sessions open in your home directory by default, or in the current session's directory, or in a fixed folder (set in Settings). A session runs until you close it or its shell exits, and it comes back on the next launch with its directory, font size, and split state restored.
 
@@ -144,7 +148,7 @@ rook arranges terminals into a small hierarchy. These are the only terms you nee
 
 **Quick terminal.** The quick terminal is a single throwaway shell per window, not tied to any session. It drops over whatever session is active, for a command unrelated to what you are working on, and hiding it keeps the shell alive. It is not restored across launches.
 
-**Overlay.** An overlay runs one program in a temporary terminal over a session and disappears when the program exits, leaving the session as it was. It is mostly driven from the control API to launch an interactive program (a diff viewer, a process monitor) over a session without replacing its shell. See [Scripting rook](#scripting-rook).
+**Overlay.** An overlay runs one program in a temporary terminal over a session and disappears when the program exits, leaving the session as it was. It is mostly driven from the control API to launch an interactive program (a diff viewer, a process monitor) over a session without replacing its shell. See [Scripting Rook](#scripting-rook).
 
 **Terminal zoom.** Zoom fills the whole window with one terminal surface — a pane, the scratch, an overlay, or the quick terminal — hiding the sidebar and collapsing the title bar to a slim strip that keeps the traffic lights and an exit button. Cmd+Shift+Return toggles it on the active surface (rebindable as `toggle_terminal_zoom`; the exit button, ⌘W, and View ▸ Toggle Terminal Zoom all leave it). It is a view mode, not a layout change: entering closes transient chrome (an open palette or search), and exiting restores split ratios, focus, and visibility exactly as they were. Everything else keeps running behind the zoomed surface, and a script can zoom any surface by id with `rookctl surface zoom`. Distinct from macOS window zoom and full screen, which size the window itself.
 
@@ -166,7 +170,7 @@ Sidebar session rows support Shift-click range selection and Cmd-click toggling 
 
 ## Keyboard and navigation
 
-rook is built to run from the keyboard. Every action has a shortcut and appears in the menus, and three fuzzy palettes cover the rest (type to filter, Enter to run, Esc to dismiss):
+Rook is built to run from the keyboard. Every action has a shortcut and appears in the menus, and three fuzzy palettes cover the rest (type to filter, Enter to run, Esc to dismiss):
 
 - the **session switcher** (Ctrl-P) jumps to any open session by name or working directory;
 - the **action palette** (Ctrl-Shift-P) runs any command by name (new, rename, close, split, toggle scratch, move a session, change font size, and so on);
@@ -180,7 +184,7 @@ Settings (Cmd+,) has five tabs. **General** covers mouse scroll speed and right-
 
 The theme picker (View ▸ Select Theme…, or the action palette) previews each bundled theme on the open terminals as you move through the list, so you see it before committing. Enter commits and syncs it to Settings; Esc reverts to the one you started on. While following the system appearance, the picker edits the theme for the appearance you are in; the control channel drives both slots with `rookctl theme set --light NAME --dark NAME` (or either flag alone).
 
-## Scripting rook
+## Scripting Rook
 
 `rook` can be driven from a script over a local unix-domain socket through a companion CLI, `rookctl`. This is for personal scripting — fire-and-forget commands that manage workspaces and sessions, inject text, and invoke control actions. There is no terminal-output streaming and no event subscription.
 
@@ -188,7 +192,7 @@ The sections below cover the common cases. All 62 commands, with every argument,
 
 The app bundles `rookctl` inside `rook.app`. The easiest way to put it on your PATH is **Help ▸ Install Command Line Tool…**, which symlinks the bundled binary into `/usr/local/bin` (the first entry in macOS's default PATH). When that directory is user-writable it installs silently; otherwise it asks once for an administrator password.
 
-To let a coding agent drive rook without you explaining the API, install the bundled agent skill with **Help ▸ Install Agent Skill…**. Claude Code and Codex share the same skill format, so it installs to whichever you have, `~/.claude/skills/rook/` and/or `~/.codex/skills/rook/`. The skill teaches the agent the control model and the full `rookctl` command set, so an agent running inside rook can create sessions, run overlays, manage windows, and reload the keymap on its own. It drives the app through `rookctl`, so install the CLI too.
+To let a coding agent drive Rook without you explaining the API, install the bundled agent skill with **Help ▸ Install Agent Skill…**. Claude Code and Codex share the same skill format, so it installs to whichever you have, `~/.claude/skills/rook/` and/or `~/.codex/skills/rook/`. The skill teaches the agent the control model and the full `rookctl` command set, so an agent running inside Rook can create sessions, run overlays, manage windows, and reload the keymap on its own. It drives the app through `rookctl`, so install the CLI too.
 
 `rookctl` also lives in the `rookCore` Swift package and builds standalone without Xcode or libghostty:
 
@@ -314,7 +318,7 @@ Inside a session's shell, `rook` injects environment variables a script can read
 ```sh
 rookctl session new --window "$ROOK_WINDOW_ID" --cwd .   # open a sibling session in this window
 rookctl session type --target "$ROOK_SESSION_ID" $'\n'   # type into this very session
-rookctl tree --socket "$ROOK_SOCKET"                     # reach the same rook this shell runs in
+rookctl tree --socket "$ROOK_SOCKET"                     # reach the same Rook this shell runs in
 ```
 
 ## Customizing keys
@@ -385,14 +389,14 @@ v1 limitations:
 `rook` builds its terminal config from these sources, each overriding the one before it:
 
 ```
-ghostty's bundled defaults  →  ~/.config/ghostty/config  →  <config dir>/ghostty.conf  →  rook Settings
+ghostty's bundled defaults  →  ~/.config/ghostty/config  →  <config dir>/ghostty.conf  →  Rook Settings
        (lowest)                  (your global config,           (rook-scoped,             (UI wins)
                                    OFF by default)                always loaded)
 ```
 
-rook is self-contained: **by default it does not read your global `~/.config/ghostty/config`**, so a config written for the standalone Ghostty.app never silently changes rook. Turn on **Settings ▸ General ▸ Use my global Ghostty config** to fold it into the chain.
+Rook is self-contained: **by default it does not read your global `~/.config/ghostty/config`**, so a config written for the standalone Ghostty.app never silently changes rook. Turn on **Settings ▸ General ▸ Use my global Ghostty config** to fold it into the chain.
 
-`<config dir>/ghostty.conf` is the place to customize rook. It sits next to `keymap.conf` (default `~/.config/rook/ghostty.conf`; the directory is the one set in **Settings ▸ Key Mapping**), is always loaded, and is scoped to rook so the standalone Ghostty.app never reads it. Put any ghostty config key there to override the bundled defaults for rook only. The keys rook manages from its Settings window (font, theme, background opacity and blur, scroll speed) still win, because the generated Settings file loads last, so set those in Settings and put everything else here. The file is optional: a commented starter is written on first launch and stays a no-op until you edit it.
+`<config dir>/ghostty.conf` is the place to customize rook. It sits next to `keymap.conf` (default `~/.config/rook/ghostty.conf`; the directory is the one set in **Settings ▸ Key Mapping**), is always loaded, and is scoped to Rook so the standalone Ghostty.app never reads it. Put any ghostty config key there to override the bundled defaults for Rook only. The keys Rook manages from its Settings window (font, theme, background opacity and blur, scroll speed) still win, because the generated Settings file loads last, so set those in Settings and put everything else here. The file is optional: a commented starter is written on first launch and stays a no-op until you edit it.
 
 A common use is making the macOS Option key send Alt:
 
@@ -402,7 +406,7 @@ macos-option-as-alt = true
 
 Put that in `ghostty.conf`. It also works in your global `~/.config/ghostty/config` once you enable the toggle above. The full key reference is at <https://ghostty.org/docs/config>.
 
-Programs running in the terminal can read and write the macOS clipboard over OSC 52. rook prompts before a program **reads** your clipboard, because a read hands its contents (which may include passwords or tokens) back to the program; a normal ⌘V paste is never prompted. Clipboard **writes** go through by default, matching other terminals so a remote `tmux`/`vim` yank still reaches your clipboard. To gate writes too, set `clipboard-write = ask` (prompt) or `clipboard-write = deny` (block) in `ghostty.conf`. Each prompt offers *Don't ask again this session*, which remembers your choice until rook quits.
+Programs running in the terminal can read and write the macOS clipboard over OSC 52. Rook prompts before a program **reads** your clipboard, because a read hands its contents (which may include passwords or tokens) back to the program; a normal ⌘V paste is never prompted. Clipboard **writes** go through by default, matching other terminals so a remote `tmux`/`vim` yank still reaches your clipboard. To gate writes too, set `clipboard-write = ask` (prompt) or `clipboard-write = deny` (block) in `ghostty.conf`. Each prompt offers *Don't ask again this session*, which remembers your choice until Rook quits.
 
 A ⌘-click on a `file://` link — the kind `ls --hyperlink`, `eza`, and many compilers emit — reveals the file in Finder instead of opening it. A terminal renders untrusted program output, so a link could point at a `.app` or `.command`; revealing selects the file without running it, which is the security boundary — actually opening it stays a separate, explicit action. Web (`http`/`https`) and `mailto` links still open as before. A `file://` link that names another host is ignored rather than revealed, so a stray link can't trigger a Finder network mount.
 
@@ -434,9 +438,9 @@ rookctl session status idle --target "$ROOK_SESSION_ID"        # clear it
 
 To wire this up automatically, **Help ▸ Install Agent Status Hooks…** installs a hooks package. It copies the scripts to `~/.config/rook/agent-status/` (baking in the bundled `rookctl`'s path so the hooks work even without the CLI on your PATH), adds a `source` line to `~/.zshrc`, `~/.bashrc`, and `~/.config/fish/config.fish` for the generic shell integration, and merges four Claude Code hooks into `~/.claude/settings.json` (backing up the prior file as `.bak`, or leaving it untouched and skipping the merge if it isn't valid JSON): a prompt sets `active`, each tool that runs re-asserts `active` (so the status returns to active when work resumes after you answer a permission prompt), the Stop event sets `completed --auto-reset`, and a permission prompt sets `blocked`. It is idempotent — re-running refreshes the baked path and is a clean no-op for entries already present.
 
-For Codex, the installer merges a matching set of lifecycle hooks into `~/.codex/config.toml` (writing a `.bak` first, and only when you already have a `~/.codex` directory). Codex's `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, and `Stop` hooks drive the indicator directly: a `PermissionRequest` turns the row `blocked` the moment Codex asks to run something, and `Stop` always sets `completed`. This replaces an earlier `notify` script that had to guess "waiting on you" from the assistant's final message text — which both missed real approval prompts (no notification fired at the moment it mattered) and false-flagged ordinary turns whose final message merely mentioned "permission" or "approval"; the installer removes that old `notify` line for you. The merge parses your config first, so it preserves your comments and layout; if the file already defines its own hooks or isn't valid TOML, rook leaves it untouched and shows you the block to add by hand instead. Codex requires new command hooks to be reviewed before they run, so open Codex and run `/hooks` once to approve them.
+For Codex, the installer merges a matching set of lifecycle hooks into `~/.codex/config.toml` (writing a `.bak` first, and only when you already have a `~/.codex` directory). Codex's `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, and `Stop` hooks drive the indicator directly: a `PermissionRequest` turns the row `blocked` the moment Codex asks to run something, and `Stop` always sets `completed`. This replaces an earlier `notify` script that had to guess "waiting on you" from the assistant's final message text — which both missed real approval prompts (no notification fired at the moment it mattered) and false-flagged ordinary turns whose final message merely mentioned "permission" or "approval"; the installer removes that old `notify` line for you. The merge parses your config first, so it preserves your comments and layout; if the file already defines its own hooks or isn't valid TOML, Rook leaves it untouched and shows you the block to add by hand instead. Codex requires new command hooks to be reviewed before they run, so open Codex and run `/hooks` once to approve them.
 
-A generic bash/zsh/fish `shell/integration.sh` (or `.fish`) covers any agent launched as a shell command: it flags `active` while a command matching `ROOK_AGENT_RE` runs and `idle` at the next prompt. The default regex matches `gemini`, `cursor-agent`, `aider`, `opencode`, `crush`, and `goose`; Claude Code and Codex are excluded by default because their own hooks drive finer per-turn state that the coarse process-level `active`/`idle` would only fight. Override `ROOK_AGENT_RE` before sourcing to change the set. All hooks are no-ops outside an rook session.
+A generic bash/zsh/fish `shell/integration.sh` (or `.fish`) covers any agent launched as a shell command: it flags `active` while a command matching `ROOK_AGENT_RE` runs and `idle` at the next prompt. The default regex matches `gemini`, `cursor-agent`, `aider`, `opencode`, `crush`, and `goose`; Claude Code and Codex are excluded by default because their own hooks drive finer per-turn state that the coarse process-level `active`/`idle` would only fight. Override `ROOK_AGENT_RE` before sourcing to change the set. All hooks are no-ops outside a Rook session.
 
 ## Troubleshooting
 
@@ -452,12 +456,14 @@ Restore reconstructs the structure, not the running processes. Three limitations
 
 ## Attribution
 
-rook embeds **libghostty**, the terminal engine from [Ghostty](https://github.com/ghostty-org/ghostty) (MIT). It does all the real terminal work: rendering, VT parsing, and shell I/O. rook builds it from upstream source at a pinned commit via `scripts/setup.sh`, with no fork and no prebuilt binary.
+Rook is a fork of **[agterm](https://github.com/umputun/agterm)** by [Umputun](https://github.com/umputun) (MIT). Every feature described above — the workspace/session model, the sidebar, the control API, agent status, the multi-window library — originates there. Rook renames the app, the CLI, and the environment, and carries the project forward under its own brand; the upstream copyright stays in [LICENSE](LICENSE).
 
-The way rook drives libghostty's C API from a SwiftUI/AppKit app, under the Swift 6 strict-concurrency toolchain, was learned from [macterm](https://github.com/thdxg/macterm) (`thdxg/macterm`, MIT). The libghostty bridge files (`GhosttyApp`, `GhosttyCallbacks`, `GhosttyResources`, `GhosttySurfaceView`, `WindowAppearance`) are adapted from it and each carries an attribution comment. The model, sidebar, persistence, control channel, and multi-window code are original to rook.
+Rook embeds **libghostty**, the terminal engine from [Ghostty](https://github.com/ghostty-org/ghostty) (MIT). It does all the real terminal work: rendering, VT parsing, and shell I/O. Rook builds it from upstream source at a pinned commit via `scripts/setup.sh`, with no fork and no prebuilt binary.
+
+The way Rook drives libghostty's C API from a SwiftUI/AppKit app, under the Swift 6 strict-concurrency toolchain, was learned from [macterm](https://github.com/thdxg/macterm) (`thdxg/macterm`, MIT). The libghostty bridge files (`GhosttyApp`, `GhosttyCallbacks`, `GhosttyResources`, `GhosttySurfaceView`, `WindowAppearance`) are adapted from it and each carries an attribution comment.
 
 SwiftUI guidance during development came from the [SwiftUI Agent Skill](https://github.com/AvdLee/SwiftUI-Agent-Skill) by Antoine van der Lee (MIT). Special thanks to [@ksenks](https://github.com/ksenks) for recommending it.
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more information.
+MIT — see the [LICENSE](LICENSE) file. Copyright (c) 2026 Umputun (upstream agterm) and (c) 2026 jokius (Rook).

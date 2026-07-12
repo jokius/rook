@@ -236,7 +236,7 @@ never two bundles in one window.
   The notification is IGNORED (`_ in`), NOT captured: a non-Sendable `Notification` can't cross into the
   `MainActor.assumeIsolated` region under Swift 6 (the `sending 'note'` error — which a Debug build compiles
   clean but the Release WMO rejects, so verify app-target concurrency changes with a Release build), so the
-  refresh can't filter to an rook window by the notification's object; a non-rook panel firing it just
+  refresh can't filter to a rook window by the notification's object; a non-rook panel firing it just
   rebuilds the same cheap rook nodes.
   `window.resize` (`args.width`/`height` → the window's frame size in points) and `window.move` (`args.x`/`y`
   → the top-left relative to display `args.display`, default the window's current display;

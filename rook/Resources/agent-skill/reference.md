@@ -1,4 +1,4 @@
-# rook control reference
+# Rook control reference
 
 Full detail for every `rookctl` command. See `SKILL.md` for the model and addressing overview, and
 `examples.md` for recipes.
@@ -345,7 +345,7 @@ All six are read-only projections of GUI state.
 
 **Displaying an image inline.** This skill bundles `scripts/show-image.sh`. It opens an overlay (a
 real terminal surface) and renders the image there via the kitty graphics protocol, which ghostty —
-rook's engine — draws natively. No kitty binary and no external image viewer are used; the encoder
+Rook's engine — draws natively. No kitty binary and no external image viewer are used; the encoder
 is plain `base64` + `printf`. Run it as `bash <skill-dir>/scripts/show-image.sh <image> [size-percent]`
 (the skill installs to `~/.claude/skills/rook/` and `~/.codex/skills/rook/`, so the path is
 `~/.claude/skills/rook/scripts/show-image.sh` or `~/.codex/skills/rook/scripts/show-image.sh`).
@@ -412,7 +412,7 @@ an open command palette, an active in-terminal search, and (for a session-surfac
 quick terminal. While zoomed, the hidden deck keeps running: `session.split`/`session.scratch`/overlay
 opens on the zoomed session still spawn their shells behind the zoom layer. A notification-banner
 click exits zoom before revealing its session. Use `surface zoom` when the user/agent needs a pane
-fullscreen inside rook; use `window zoom` only to maximize the whole window on screen.
+fullscreen inside Rook; use `window zoom` only to maximize the whole window on screen.
 
 ## quick
 
@@ -544,19 +544,19 @@ as the GUI's File ▸ Reload Config menu/palette item, which posts a warning ban
 ### ghostty.conf
 
 `<config dir>/ghostty.conf` (default `~/.config/rook`, next to `keymap.conf`) is the rook-scoped
-ghostty config and the place to put rook overrides/customizations. It is ALWAYS loaded. The app builds
+ghostty config and the place to put Rook overrides/customizations. It is ALWAYS loaded. The app builds
 its terminal config in order, each source overriding the one before: ghostty's bundled defaults, then
 your global `~/.config/ghostty/config` (OFF by default — opt in with Settings ▸ General ▸ Use my global
-Ghostty config), then `<config dir>/ghostty.conf`, then rook's own Settings (font, theme, background
+Ghostty config), then `<config dir>/ghostty.conf`, then Rook's own Settings (font, theme, background
 opacity/blur, scroll speed), which load last and win for the keys the UI manages. The scoped file is
-rook-only; the standalone Ghostty.app never reads it. rook is self-contained by default, so a config
-written for Ghostty.app does not silently change rook — put rook overrides in `ghostty.conf` (e.g.
+rook-only; the standalone Ghostty.app never reads it. Rook is self-contained by default, so a config
+written for Ghostty.app does not silently change Rook — put Rook overrides in `ghostty.conf` (e.g.
 `macos-option-as-alt = true`); the full reference is at https://ghostty.org/docs/config. Editing it from
 a terminal: open `ghostty.conf` in `$EDITOR`, then `rookctl config reload`.
 
 ## theme
 
-The app's out-of-the-box default theme is the bundled **rook** theme (a fresh install opens on it).
+The app's out-of-the-box default theme is the bundled **Rook** theme (a fresh install opens on it).
 A separate **default ghostty** entry means "no theme" — ghostty's own built-in colors (`theme` absent).
 
 `rookctl theme list` — list the bundled theme names; returns `result.themes` (the names),

@@ -3,7 +3,7 @@
 #
 # usage: bash show-image.sh <image> [size-percent]
 #
-# opens an rook overlay (a real terminal surface with a pty) and renders the image there via the
+# opens a rook overlay (a real terminal surface with a pty) and renders the image there via the
 # kitty graphics protocol, which ghostty — rook's engine — draws natively. no kitty binary and no
 # external image viewer are involved; the encoder is plain base64 + printf. this is the reliable way
 # for a coding agent to show an image: emitting graphics escapes to the agent's own tool stdout does

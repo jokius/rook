@@ -136,7 +136,7 @@ paths:
 - **Agent skill install (Claude Code + Codex).**
   A third Help entry, **Help ▸ Install Agent Skill…** (`SkillInstaller.run()`),
   copies a bundled, personal-scope Agent Skill to `~/.claude/skills/rook/` AND `~/.codex/skills/rook/`
-  so a coding agent running INSIDE an rook session knows how to drive the app over the control channel.
+  so a coding agent running INSIDE a rook session knows how to drive the app over the control channel.
   Claude Code and Codex use the SAME SKILL.md Agent-Skill format (`name`/`description`/`allowed-tools`
   frontmatter + optional reference files; verified against the user's `~/.codex/skills/`),
   so one authored skill serves both.
@@ -1172,7 +1172,7 @@ paths:
   sidebar toggle, so the read-back stays current.
   The notification is IGNORED, not captured — a non-Sendable `Notification` can't cross into the
   `MainActor.assumeIsolated` block under Swift 6 strict concurrency (the `sending 'note'` error), so the
-  refresh fires for ANY window rather than filtering to an rook one; harmless, since a non-rook panel
+  refresh fires for ANY window rather than filtering to a rook one; harmless, since a non-rook panel
   just rebuilds the same cheap rook nodes.
   The host-free plumbing (the closure + node field) is unit-tested (`controlWindowNodesIncludeGeometryFromClosure`,
   the round-trips); the coordinate conversion + the NSWindow-notification cache refresh are app-side, build-verified.

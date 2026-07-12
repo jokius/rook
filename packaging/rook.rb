@@ -6,9 +6,9 @@ cask "rook" do
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
 
   url "https://github.com/jokius/rook/releases/download/v#{version}/rook-#{version}.dmg"
-  name "rook"
-  desc "Native macOS terminal on libghostty with a workspace/session sidebar"
-  homepage "https://github.com/jokius/rook"
+  name "Rook"
+  desc "Native macOS terminal for a flock of AI coding agents"
+  homepage "https://rook.app"
 
   depends_on macos: :sonoma
   depends_on arch: :arm64
