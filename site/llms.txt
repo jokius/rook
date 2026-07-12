@@ -25,7 +25,7 @@ rook is a native macOS terminal, built on libghostty (Ghostty's engine), for run
 ## Install
 
 - [Releases](https://github.com/jokius/rook/releases): signed and notarized DMG downloads (Apple Silicon, macOS 14+)
-- [Homebrew cask](https://github.com/jokius/homebrew-apps): `brew install --cask umputun/apps/rook`
+- [Homebrew cask](https://github.com/jokius/homebrew-apps): `brew install --cask jokius/apps/rook`
 
 ## Optional
 

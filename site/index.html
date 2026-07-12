@@ -12,7 +12,7 @@
       name="keywords"
       content="rook, macOS terminal, terminal for AI agents, Claude Code terminal, Codex terminal, libghostty, ghostty, rookctl, concurrent AI agents, agentic terminal"
     />
-    <meta name="author" content="umputun" />
+    <meta name="author" content="jokius" />
     <link rel="canonical" href="https://rook.app/" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="rook — macOS terminal for running many AI agents at once" />
@@ -26,7 +26,6 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:site_name" content="rook" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@umputun" />
     <meta name="twitter:title" content="rook — macOS terminal for running many AI agents at once" />
     <meta
       name="twitter:description"
@@ -37,7 +36,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/favicon-180.png" />
-    <meta name="theme-color" content="#191d20" />
+    <meta name="theme-color" content="#16191c" />
     <link rel="preload" href="/assets/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/assets/fonts/ibm-plex-sans-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/style.css" />
@@ -51,7 +50,7 @@
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "macOS 14+",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-        "author": { "@type": "Person", "name": "Umputun", "url": "https://github.com/umputun" },
+        "author": { "@type": "Person", "name": "jokius", "url": "https://github.com/jokius" },
         "codeRepository": "https://github.com/jokius/rook",
         "downloadUrl": "https://github.com/jokius/rook/releases",
         "softwareVersion": "0.11.0"
@@ -83,7 +82,7 @@
             "name": "Is rook free?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Yes. rook is free and installs on Apple Silicon macOS 14 or later with: brew install --cask umputun/apps/rook."
+              "text": "Yes. rook is free and installs on Apple Silicon macOS 14 or later with: brew install --cask jokius/apps/rook."
             }
           },
           {
@@ -118,7 +117,7 @@
     <div
       id="rook-root"
       style="
-        background: #191d20;
+        background: #16191c;
         color: #e6e1d7;
         font-family: &quot;IBM Plex Sans&quot;, system-ui, sans-serif;
         -webkit-font-smoothing: antialiased;
@@ -132,7 +131,7 @@
           position: sticky;
           top: 0;
           z-index: 50;
-          background: rgba(25, 29, 32, 0.72);
+          background: rgba(22, 25, 28, 0.78);
           backdrop-filter: blur(14px);
           border-bottom: 1px solid rgba(255, 255, 255, 0.07);
         "
@@ -149,13 +148,7 @@
           "
         >
           <a href="#top" style="display: flex; align-items: center; gap: 11px; color: #e6e1d7">
-            <svg width="27" height="27" viewBox="0 0 100 100" fill="none" style="display: block; border-radius: 22%">
-              <rect width="100" height="100" rx="24" fill="#1e40d8"></rect>
-              <rect x="26" y="26" width="20" height="20" rx="5" stroke="#fff" stroke-width="5"></rect>
-              <rect x="54" y="26" width="20" height="20" rx="5" stroke="#fff" stroke-width="5"></rect>
-              <rect x="26" y="54" width="20" height="20" rx="5" stroke="#fff" stroke-width="5"></rect>
-              <rect x="54" y="54" width="20" height="20" rx="5" stroke="#fff" stroke-width="5"></rect>
-            </svg>
+            <svg width="27" height="27" viewBox="0 0 48 48" fill="none" style="display: block"><defs><linearGradient id="rookTile1" x1="0" y1="0" x2="0.62" y2="1"><stop offset="0" stop-color="#31353C"/><stop offset="0.58" stop-color="#23262B"/><stop offset="1" stop-color="#191C20"/></linearGradient></defs><rect width="48" height="48" rx="11" fill="url(#rookTile1)"/><g transform="translate(9.6 9.6) scale(0.6)"><rect x="8" y="13" width="24" height="5.5" rx="2.75" fill="#fff"/><rect x="8" y="23" width="32" height="5.5" rx="2.75" fill="#fff"/><rect x="8" y="33" width="14" height="5.5" rx="2.75" fill="#7ECE8F"/></g></svg>
             <span
               style="
                 font-family: &quot;JetBrains Mono&quot;, monospace;
@@ -207,9 +200,9 @@
               font-size: 12px;
               letter-spacing: 0.14em;
               text-transform: uppercase;
-              color: var(--accent, #6d82f3);
-              border: 1px solid rgba(109, 130, 243, 0.35);
-              background: rgba(109, 130, 243, 0.07);
+              color: var(--accent, #7ece8f);
+              border: 1px solid rgba(126, 206, 143, 0.35);
+              background: rgba(126, 206, 143, 0.07);
               padding: 5px 11px;
               border-radius: 100px;
             "
@@ -227,7 +220,7 @@
             max-width: 16ch;
           "
         >
-          A terminal for running <span style="color: var(--accent, #6d82f3)">many agents</span> at once.
+          A terminal for running <span style="color: var(--accent, #7ece8f)">many agents</span> at once.
         </h1>
         <p style="font-size: clamp(17px, 2vw, 21px); line-height: 1.55; color: #bfbab0; max-width: 60ch; margin: 0 0 38px">
           rook organizes AI coding sessions into named workspaces instead of scattering them across tabs — so a screen full of
@@ -242,7 +235,7 @@
               display: inline-flex;
               align-items: center;
               gap: 14px;
-              background: #22272b;
+              background: #1a1e21;
               border: 1px solid rgba(255, 255, 255, 0.1);
               border-radius: 11px;
               padding: 14px 16px;
@@ -250,8 +243,8 @@
               font-size: 14.5px;
             "
           >
-            <span style="color: var(--accent, #6d82f3)">$</span>
-            <span style="color: #e6e1d7">brew install --cask umputun/apps/rook</span>
+            <span style="color: var(--accent, #7ece8f)">$</span>
+            <span style="color: #e6e1d7">brew install --cask jokius/apps/rook</span>
             <button
               onclick="cp(this)"
               style="
@@ -288,7 +281,7 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 14px;
             overflow: hidden;
-            background: #22272b;
+            background: #1a1e21;
             box-shadow:
               0 40px 120px -30px rgba(0, 0, 0, 0.8),
               0 0 0 1px rgba(255, 255, 255, 0.02);
@@ -373,7 +366,7 @@
             overflow: hidden;
           "
         >
-          <div style="background: #15191c; padding: 22px 24px; display: flex; align-items: center; gap: 13px">
+          <div style="background: #14171a; padding: 22px 24px; display: flex; align-items: center; gap: 13px">
             <span
               style="
                 width: 9px;
@@ -389,21 +382,21 @@
               <div style="font-size: 12.5px; color: #949ba4">agent working</div>
             </div>
           </div>
-          <div style="background: #15191c; padding: 22px 24px; display: flex; align-items: center; gap: 13px">
+          <div style="background: #14171a; padding: 22px 24px; display: flex; align-items: center; gap: 13px">
             <span style="width: 9px; height: 9px; border-radius: 100px; background: #f2b45c; box-shadow: 0 0 12px #f2b45c"></span>
             <div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13px; font-weight: 600">blocked</div>
               <div style="font-size: 12.5px; color: #949ba4">waiting on you</div>
             </div>
           </div>
-          <div style="background: #15191c; padding: 22px 24px; display: flex; align-items: center; gap: 13px">
+          <div style="background: #14171a; padding: 22px 24px; display: flex; align-items: center; gap: 13px">
             <span style="width: 9px; height: 9px; border-radius: 100px; background: #7ece8f; box-shadow: 0 0 12px #7ece8f"></span>
             <div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13px; font-weight: 600">completed</div>
               <div style="font-size: 12.5px; color: #949ba4">done, clears when seen</div>
             </div>
           </div>
-          <div style="background: #15191c; padding: 22px 24px; display: flex; align-items: center; gap: 13px">
+          <div style="background: #14171a; padding: 22px 24px; display: flex; align-items: center; gap: 13px">
             <span style="width: 9px; height: 9px; border-radius: 100px; border: 1.5px solid #4a5158"></span>
             <div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13px; font-weight: 600">idle</div>
@@ -421,7 +414,7 @@
             font-size: 12px;
             letter-spacing: 0.16em;
             text-transform: uppercase;
-            color: var(--accent, #6d82f3);
+            color: var(--accent, #7ece8f);
             margin-bottom: 16px;
           "
         >
@@ -446,12 +439,12 @@
         </p>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px">
-          <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 30px">
+          <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 30px">
             <svg width="30" height="30" viewBox="0 0 30 30" fill="none" style="margin-bottom: 20px">
-              <rect x="1" y="1" width="12" height="12" rx="2" stroke="#6d82f3" stroke-width="1.6"></rect>
+              <rect x="1" y="1" width="12" height="12" rx="2" stroke="#7ece8f" stroke-width="1.6"></rect>
               <rect x="17" y="1" width="12" height="12" rx="2" stroke="#4a5158" stroke-width="1.6"></rect>
               <rect x="1" y="17" width="12" height="12" rx="2" stroke="#4a5158" stroke-width="1.6"></rect>
-              <rect x="17" y="17" width="12" height="12" rx="2" stroke="#6d82f3" stroke-width="1.6"></rect>
+              <rect x="17" y="17" width="12" height="12" rx="2" stroke="#7ece8f" stroke-width="1.6"></rect>
             </svg>
             <h3
               style="
@@ -470,7 +463,7 @@
             </p>
           </div>
 
-          <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 30px">
+          <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 30px">
             <svg width="30" height="30" viewBox="0 0 30 30" fill="none" style="margin-bottom: 20px">
               <path d="M4 8l6 5-6 5" stroke="#5ea1f2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
               <path d="M15 20h11" stroke="#5ea1f2" stroke-width="1.8" stroke-linecap="round"></path>
@@ -493,9 +486,9 @@
             </p>
           </div>
 
-          <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 30px">
+          <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 30px">
             <svg width="30" height="30" viewBox="0 0 30 30" fill="none" style="margin-bottom: 20px">
-              <circle cx="8" cy="8" r="4" fill="#6d82f3"></circle>
+              <circle cx="8" cy="8" r="4" fill="#7ece8f"></circle>
               <circle cx="8" cy="22" r="4" fill="#f2b45c"></circle>
               <path d="M17 8h9M17 22h9" stroke="#4a5158" stroke-width="1.8" stroke-linecap="round"></path>
             </svg>
@@ -516,12 +509,12 @@
             </p>
           </div>
 
-          <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 30px">
+          <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 30px">
             <svg width="30" height="30" viewBox="0 0 30 30" fill="none" style="margin-bottom: 20px">
-              <rect x="2" y="4" width="26" height="18" rx="2.5" stroke="#6d82f3" stroke-width="1.6"></rect>
+              <rect x="2" y="4" width="26" height="18" rx="2.5" stroke="#7ece8f" stroke-width="1.6"></rect>
               <path
                 d="M6 10l3 3-3 3M13 16h6"
-                stroke="#6d82f3"
+                stroke="#7ece8f"
                 stroke-width="1.6"
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -544,7 +537,7 @@
             </p>
           </div>
 
-          <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 30px">
+          <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 30px">
             <svg width="30" height="30" viewBox="0 0 30 30" fill="none" style="margin-bottom: 20px">
               <path
                 d="M15 2l11 6v8c0 7-5 10-11 12C9 26 4 23 4 16V8l11-6z"
@@ -572,7 +565,7 @@
             </p>
           </div>
 
-          <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 30px">
+          <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 30px">
             <svg width="30" height="30" viewBox="0 0 30 30" fill="none" style="margin-bottom: 20px">
               <path d="M15 3v24M3 9v12M27 9v12" stroke="#f2b45c" stroke-width="1.8" stroke-linecap="round"></path>
             </svg>
@@ -603,7 +596,7 @@
             font-size: 12px;
             letter-spacing: 0.16em;
             text-transform: uppercase;
-            color: var(--accent, #6d82f3);
+            color: var(--accent, #7ece8f);
             margin-bottom: 16px;
           "
         >
@@ -628,7 +621,7 @@
         </p>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-bottom: 16px">
-          <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 26px">
+          <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 26px">
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px">
               <span
                 style="
@@ -660,7 +653,7 @@
             </p>
           </div>
 
-          <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 26px">
+          <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 26px">
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px">
               <span
                 style="
@@ -692,7 +685,7 @@
             </p>
           </div>
 
-          <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 26px">
+          <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 26px">
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px">
               <span
                 style="
@@ -724,7 +717,7 @@
             </p>
           </div>
 
-          <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 26px">
+          <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 26px">
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px">
               <span
                 style="
@@ -761,7 +754,7 @@
         <!-- windows callout -->
         <div
           style="
-            background: #22272b;
+            background: #1a1e21;
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 16px;
             padding: 36px;
@@ -804,7 +797,7 @@
             </p>
           </div>
           <div style="display: flex; flex-direction: column; gap: 12px">
-            <div style="border: 1px solid rgba(109, 130, 243, 0.35); background: #15191c; border-radius: 10px; overflow: hidden">
+            <div style="border: 1px solid rgba(126, 206, 143, 0.35); background: #14171a; border-radius: 10px; overflow: hidden">
               <div
                 style="
                   display: flex;
@@ -822,7 +815,7 @@
                     margin-left: 6px;
                     font-family: &quot;JetBrains Mono&quot;, monospace;
                     font-size: 11.5px;
-                    color: var(--accent, #6d82f3);
+                    color: var(--accent, #7ece8f);
                   "
                   >work</span
                 >
@@ -839,7 +832,7 @@
                 ▸ rook &nbsp;·&nbsp; radio-t &nbsp;·&nbsp; go-pkgz
               </div>
             </div>
-            <div style="border: 1px solid rgba(255, 255, 255, 0.1); background: #15191c; border-radius: 10px; overflow: hidden">
+            <div style="border: 1px solid rgba(255, 255, 255, 0.1); background: #14171a; border-radius: 10px; overflow: hidden">
               <div
                 style="
                   display: flex;
@@ -880,7 +873,7 @@
           <figure
             style="
               margin: 0;
-              background: #22272b;
+              background: #1a1e21;
               border: 1px solid rgba(255, 255, 255, 0.08);
               border-radius: 14px;
               overflow: hidden;
@@ -895,7 +888,7 @@
               style="display: block; width: 100%; height: auto; border-bottom: 1px solid rgba(255, 255, 255, 0.06)"
             />
             <figcaption style="padding: 16px 20px; font-size: 14px; color: #949ba4">
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: var(--accent, #6d82f3); font-size: 12px"
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: var(--accent, #7ece8f); font-size: 12px"
                 >⌃P</span
               >
               &nbsp;Fuzzy session switcher — jump to any session by name or directory.
@@ -904,7 +897,7 @@
           <figure
             style="
               margin: 0;
-              background: #22272b;
+              background: #1a1e21;
               border: 1px solid rgba(255, 255, 255, 0.08);
               border-radius: 14px;
               overflow: hidden;
@@ -926,7 +919,7 @@
           <figure
             style="
               margin: 0;
-              background: #22272b;
+              background: #1a1e21;
               border: 1px solid rgba(255, 255, 255, 0.08);
               border-radius: 14px;
               overflow: hidden;
@@ -948,7 +941,7 @@
           <figure
             style="
               margin: 0;
-              background: #22272b;
+              background: #1a1e21;
               border: 1px solid rgba(255, 255, 255, 0.08);
               border-radius: 14px;
               overflow: hidden;
@@ -963,7 +956,7 @@
               style="display: block; width: 100%; height: auto; border-bottom: 1px solid rgba(255, 255, 255, 0.06)"
             />
             <figcaption style="padding: 16px 20px; font-size: 14px; color: #949ba4">
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: var(--accent, #6d82f3); font-size: 12px"
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: var(--accent, #7ece8f); font-size: 12px"
                 >⌃⇧I</span
               >
               &nbsp;The attention list — jump to any session that needs you.
@@ -972,7 +965,7 @@
           <figure
             style="
               margin: 0;
-              background: #22272b;
+              background: #1a1e21;
               border: 1px solid rgba(255, 255, 255, 0.08);
               border-radius: 14px;
               overflow: hidden;
@@ -987,7 +980,7 @@
               style="display: block; width: 100%; height: auto; border-bottom: 1px solid rgba(255, 255, 255, 0.06)"
             />
             <figcaption style="padding: 16px 20px; font-size: 14px; color: #949ba4">
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: var(--accent, #6d82f3); font-size: 12px"
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: var(--accent, #7ece8f); font-size: 12px"
                 >⌘D</span
               >
               &nbsp;A split session, two panes side by side on different color themes.
@@ -996,7 +989,7 @@
           <figure
             style="
               margin: 0;
-              background: #22272b;
+              background: #1a1e21;
               border: 1px solid rgba(255, 255, 255, 0.08);
               border-radius: 14px;
               overflow: hidden;
@@ -1011,7 +1004,7 @@
               style="display: block; width: 100%; height: auto; border-bottom: 1px solid rgba(255, 255, 255, 0.06)"
             />
             <figcaption style="padding: 16px 20px; font-size: 14px; color: #949ba4">
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: var(--accent, #6d82f3); font-size: 12px"
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: var(--accent, #7ece8f); font-size: 12px"
                 >tui</span
               >
               &nbsp;A full-screen terminal UI running inside a session.
@@ -1022,7 +1015,7 @@
 
       <!-- ===== GENERAL-PURPOSE ===== -->
       <div style="max-width: 1140px; margin: 0 auto; padding: 80px 28px 40px">
-        <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; padding: 48px 40px">
+        <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; padding: 48px 40px">
           <div style="display: grid; grid-template-columns: 1fr; gap: 36px">
             <div style="max-width: 64ch">
               <div
@@ -1057,7 +1050,7 @@
               </p>
             </div>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px">
-              <div style="border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 20px; background: #15191c">
+              <div style="border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 20px; background: #14171a">
                 <div
                   style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 14px; color: #e6e1d7; margin-bottom: 7px"
                 >
@@ -1067,7 +1060,7 @@
                   A live-preview picker applies each theme as you browse — Enter commits, Esc reverts.
                 </p>
               </div>
-              <div style="border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 20px; background: #15191c">
+              <div style="border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 20px; background: #14171a">
                 <div
                   style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 14px; color: #e6e1d7; margin-bottom: 7px"
                 >
@@ -1077,7 +1070,7 @@
                   Every action has a shortcut, and a kitty-flavored keymap.conf rebinds any of them.
                 </p>
               </div>
-              <div style="border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 20px; background: #15191c">
+              <div style="border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 20px; background: #14171a">
                 <div
                   style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 14px; color: #e6e1d7; margin-bottom: 7px"
                 >
@@ -1087,7 +1080,7 @@
                   Tree, names, directories, splits, and windows all restore on the next launch.
                 </p>
               </div>
-              <div style="border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 20px; background: #15191c">
+              <div style="border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 20px; background: #14171a">
                 <div
                   style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 14px; color: #e6e1d7; margin-bottom: 7px"
                 >
@@ -1150,7 +1143,7 @@
               overflow: hidden;
             "
           >
-            <div style="background: #15191c; padding: 22px 24px">
+            <div style="background: #14171a; padding: 22px 24px">
               <div
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #e6e1d7; margin-bottom: 8px"
               >
@@ -1160,7 +1153,7 @@
                 Create, rename, move, reorder, flag, focus, and step between them.
               </p>
             </div>
-            <div style="background: #15191c; padding: 22px 24px">
+            <div style="background: #14171a; padding: 22px 24px">
               <div
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #e6e1d7; margin-bottom: 8px"
               >
@@ -1170,7 +1163,7 @@
                 Type real keystrokes, run programs as the process, read a session's selection.
               </p>
             </div>
-            <div style="background: #15191c; padding: 22px 24px">
+            <div style="background: #14171a; padding: 22px 24px">
               <div
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #e6e1d7; margin-bottom: 8px"
               >
@@ -1180,7 +1173,7 @@
                 Open full or floating overlays, block on their exit status, split and scratch.
               </p>
             </div>
-            <div style="background: #15191c; padding: 22px 24px">
+            <div style="background: #14171a; padding: 22px 24px">
               <div
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #e6e1d7; margin-bottom: 8px"
               >
@@ -1190,7 +1183,7 @@
                 List, open, rename, and target specific named windows and their trees.
               </p>
             </div>
-            <div style="background: #15191c; padding: 22px 24px">
+            <div style="background: #14171a; padding: 22px 24px">
               <div
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #e6e1d7; margin-bottom: 8px"
               >
@@ -1200,7 +1193,7 @@
                 Drive in-terminal search, the quick terminal, font size, and the sidebar mode.
               </p>
             </div>
-            <div style="background: #15191c; padding: 22px 24px">
+            <div style="background: #14171a; padding: 22px 24px">
               <div
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #e6e1d7; margin-bottom: 8px"
               >
@@ -1210,7 +1203,7 @@
                 Set a session's agent status and post desktop notifications tied to it.
               </p>
             </div>
-            <div style="background: #15191c; padding: 22px 24px">
+            <div style="background: #14171a; padding: 22px 24px">
               <div
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #e6e1d7; margin-bottom: 8px"
               >
@@ -1220,7 +1213,7 @@
                 Read back the visible content or scrollback of any session or pane — feed it straight to a script or agent.
               </p>
             </div>
-            <div style="background: #15191c; padding: 22px 24px">
+            <div style="background: #14171a; padding: 22px 24px">
               <div
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #e6e1d7; margin-bottom: 8px"
               >
@@ -1232,7 +1225,7 @@
             </div>
           </div>
 
-          <div style="background: #15191c; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px; overflow: hidden">
+          <div style="background: #14171a; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px; overflow: hidden">
             <div
               style="
                 display: flex;
@@ -1261,7 +1254,7 @@
                 color: #e6e1d7;
               "
             ><span style="color:#6b727a;"># create a workspace and open a session in it</span>
-<span style="color:var(--accent,#6d82f3);">ws</span>=$(rookctl workspace new work)
+<span style="color:var(--accent,#7ece8f);">ws</span>=$(rookctl workspace new work)
 rookctl session new --workspace <span style="color:#f2b45c;">"$ws"</span> --cwd ~/src/rook
 
 <span style="color:#6b727a;"># inject a command into a session by id prefix</span>
@@ -1297,7 +1290,7 @@ rookctl session status completed --auto-reset \
             font-size: 12px;
             letter-spacing: 0.16em;
             text-transform: uppercase;
-            color: var(--accent, #6d82f3);
+            color: var(--accent, #7ece8f);
             margin-bottom: 16px;
           "
         >
@@ -1317,12 +1310,12 @@ rookctl session status completed --auto-reset \
         </h2>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px">
-          <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 28px">
+          <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 28px">
             <div
               style="
                 font-family: &quot;JetBrains Mono&quot;, monospace;
                 font-size: 13px;
-                color: var(--accent, #6d82f3);
+                color: var(--accent, #7ece8f);
                 margin-bottom: 14px;
               "
             >
@@ -1330,7 +1323,7 @@ rookctl session status completed --auto-reset \
             </div>
             <div
               style="
-                background: #191d20;
+                background: #16191c;
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 9px;
                 padding: 14px 16px;
@@ -1340,7 +1333,7 @@ rookctl session status completed --auto-reset \
                 overflow-x: auto;
               "
             >
-              <span style="color: var(--accent, #6d82f3)">$ </span>brew install --cask umputun/apps/rook
+              <span style="color: var(--accent, #7ece8f)">$ </span>brew install --cask jokius/apps/rook
             </div>
             <p style="font-size: 14px; line-height: 1.6; color: #949ba4; margin: 16px 0 0">
               The cask also installs the
@@ -1348,12 +1341,12 @@ rookctl session status completed --auto-reset \
               shouldn't run the in-app installer too.
             </p>
           </div>
-          <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 28px">
+          <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 28px">
             <div
               style="
                 font-family: &quot;JetBrains Mono&quot;, monospace;
                 font-size: 13px;
-                color: var(--accent, #6d82f3);
+                color: var(--accent, #7ece8f);
                 margin-bottom: 14px;
               "
             >
@@ -1372,12 +1365,12 @@ rookctl session status completed --auto-reset \
               >releases page →</a
             >
           </div>
-          <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 28px">
+          <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 28px">
             <div
               style="
                 font-family: &quot;JetBrains Mono&quot;, monospace;
                 font-size: 13px;
-                color: var(--accent, #6d82f3);
+                color: var(--accent, #7ece8f);
                 margin-bottom: 14px;
               "
             >
@@ -1385,7 +1378,7 @@ rookctl session status completed --auto-reset \
             </div>
             <div
               style="
-                background: #191d20;
+                background: #16191c;
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 9px;
                 padding: 14px 16px;
@@ -1396,8 +1389,8 @@ rookctl session status completed --auto-reset \
                 overflow-x: auto;
               "
             >
-              <span style="color: var(--accent, #6d82f3)">$ </span>scripts/setup.sh<br /><span
-                style="color: var(--accent, #6d82f3)"
+              <span style="color: var(--accent, #7ece8f)">$ </span>scripts/setup.sh<br /><span
+                style="color: var(--accent, #7ece8f)"
                 >$ </span
               >scripts/run.sh
             </div>
@@ -1415,8 +1408,8 @@ rookctl session status completed --auto-reset \
       <div style="max-width: 1140px; margin: 0 auto; padding: 80px 28px 60px">
         <div
           style="
-            border: 1px solid rgba(109, 130, 243, 0.25);
-            background: linear-gradient(180deg, rgba(109, 130, 243, 0.06), rgba(109, 130, 243, 0.01));
+            border: 1px solid rgba(126, 206, 143, 0.25);
+            background: linear-gradient(180deg, rgba(126, 206, 143, 0.06), rgba(126, 206, 143, 0.01));
             border-radius: 18px;
             padding: 56px 40px;
             text-align: center;
@@ -1443,8 +1436,8 @@ rookctl session status completed --auto-reset \
                 font-family: &quot;JetBrains Mono&quot;, monospace;
                 font-size: 15px;
                 font-weight: 600;
-                color: #191d20;
-                background: var(--accent, #6d82f3);
+                color: #16191c;
+                background: var(--accent, #7ece8f);
                 padding: 14px 24px;
                 border-radius: 9px;
               "
@@ -1470,7 +1463,7 @@ rookctl session status completed --auto-reset \
       </div>
 
       <!-- ===== FOOTER ===== -->
-      <div style="border-top: 1px solid rgba(255, 255, 255, 0.07); background: #131619">
+      <div style="border-top: 1px solid rgba(255, 255, 255, 0.07); background: #121416">
         <div
           style="
             max-width: 1140px;
@@ -1485,13 +1478,7 @@ rookctl session status completed --auto-reset \
         >
           <div style="max-width: 34ch">
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px">
-              <svg width="24" height="24" viewBox="0 0 100 100" fill="none" style="display: block; border-radius: 22%">
-                <rect width="100" height="100" rx="24" fill="#1e40d8"></rect>
-                <rect x="26" y="26" width="20" height="20" rx="5" stroke="#fff" stroke-width="5"></rect>
-                <rect x="54" y="26" width="20" height="20" rx="5" stroke="#fff" stroke-width="5"></rect>
-                <rect x="26" y="54" width="20" height="20" rx="5" stroke="#fff" stroke-width="5"></rect>
-                <rect x="54" y="54" width="20" height="20" rx="5" stroke="#fff" stroke-width="5"></rect>
-              </svg>
+              <svg width="24" height="24" viewBox="0 0 48 48" fill="none" style="display: block"><defs><linearGradient id="rookTile2" x1="0" y1="0" x2="0.62" y2="1"><stop offset="0" stop-color="#31353C"/><stop offset="0.58" stop-color="#23262B"/><stop offset="1" stop-color="#191C20"/></linearGradient></defs><rect width="48" height="48" rx="11" fill="url(#rookTile2)"/><g transform="translate(9.6 9.6) scale(0.6)"><rect x="8" y="13" width="24" height="5.5" rx="2.75" fill="#fff"/><rect x="8" y="23" width="32" height="5.5" rx="2.75" fill="#fff"/><rect x="8" y="33" width="14" height="5.5" rx="2.75" fill="#7ECE8F"/></g></svg>
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; font-weight: 700; font-size: 15px">rook</span>
             </div>
             <p style="font-size: 13.5px; color: #6b727a; line-height: 1.6; margin: 0">
@@ -1542,15 +1529,19 @@ rookctl session status completed --auto-reset \
               justify-content: space-between;
             "
           >
-            <span>rook.app · terminal for agentic flow</span
-            ><span>by <a href="https://github.com/umputun" style="color: #6b727a" class="hv4">Umputun</a></span>
+            <span>rook.app · a terminal for a flock of agents</span
+            ><span
+              >by <a href="https://github.com/jokius" style="color: #6b727a" class="hv4">jokius</a> · fork of
+              <a href="https://github.com/umputun/agterm" style="color: #6b727a" class="hv4">agterm</a> by Umputun
+              (MIT)</span
+            >
           </div>
         </div>
       </div>
     </div>
     <script>
       function cp(b) {
-        navigator.clipboard.writeText("brew install --cask umputun/apps/rook").then(function () {
+        navigator.clipboard.writeText("brew install --cask jokius/apps/rook").then(function () {
           var t = b.textContent;
           b.textContent = "copied";
           setTimeout(function () {
