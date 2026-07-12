@@ -180,6 +180,33 @@ paths:
   `readPasteboardText`, NOT by `session.type`, which takes its text from the control request.)
   `ShellEscape.path` still escapes file-URL paths so a path with spaces lands as one shell token on Enter;
   the newline-escaping from #96 is now belt-and-suspenders under bracketed paste.
+- **A pasted/dropped IMAGE spills to a temp PNG and inserts its PATH — and the ONLY place to intercept it
+  is `GhosttyCallbacks.readClipboard`, never `NSResponder.paste(_:)`.**
+  Raw image bits (a ⌘⇧4 screenshot, Copy Image, an image dragged out of a browser) carry no URL and no
+  string, so ⌘V used to insert NOTHING at all (the upstream-ghostty behavior).
+  `pasteboardText` now falls through to `pasteboardImagePath`, which writes the bits to
+  `<NSTemporaryDirectory()>/agterm-paste-<uuid>.png` and returns that shell-escaped path — the de-facto
+  terminal convention (iTerm2/kitty/WezTerm/cmux all do this), because a pty has NO channel for image
+  bytes (the kitty graphics protocol is OUTPUT-only) and a coding agent recognizes an image path in its
+  prompt and attaches the file itself.
+  The image branch is deliberately LAST, so every existing textual paste (incl. a Finder copy of an image
+  FILE, which still pastes its own path) is byte-for-byte unchanged.
+  ⌘V does NOT reach `paste(_:)` — the ⌘ branch of `keyDown` hands the event to libghostty, which runs its
+  `paste_from_clipboard` binding and calls BACK into `readClipboard`; so the single interception in the
+  shared `pasteboardText` reader covers ⌘V + Edit ▸ Paste + the binding + drag-drop at once (cmux shipped
+  the `paste(_:)` version and had to fix it in a follow-up PR — same libghostty architecture, same trap).
+  The reader has a SIDE EFFECT (it writes the file), so the "would this paste anything?" question must go
+  to the PURE `hasPasteboardImage` type-probe instead: it backs `hasPasteboardText` (the Edit ▸ Paste menu
+  gate, which would otherwise stay grey with an image on the clipboard — the reader/gate agreement rule
+  above) and `draggingEntered`, which used to ask the reader and would now litter a temp PNG on every
+  hover.
+  Drop also needs `.png`/`.tiff` in `registerForDraggedTypes` (in `updateDropRegistration`, the
+  deck-visible registration — NOT `init`).
+  The spilled files are never cleaned up ON PURPOSE: the path must outlive the paste by an unbounded amount
+  (the agent reads it whenever it reaches that prompt), so macOS's temp reaping is the only sane owner.
+  Covered e2e by `ControlAPIUITests.testSessionPasteWithImageInsertsTempPNGPath` (image data from the
+  sandboxed runner DOES reach the app's pasteboard read — unlike a file URL, which does not; see
+  [[control-api]]).
 - **Search bar placement (NSSplitView-overrun rule).**
   The underlying rule: nothing may change `sessionDetail`'s ZStack SHAPE when a per-session toggle flips —
   adding/removing a child (or flipping a pane modifier) inside that HSplitView-hosting subtree re-hosts the

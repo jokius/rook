@@ -566,6 +566,44 @@ final class ControlAPIUITests: ControlAPITestCase {
         XCTAssertNotNil(found, "the pasted clipboard marker should appear in the buffer")
     }
 
+    // An IMAGE on the clipboard (a ⌘⇧4 screenshot, Copy Image) carries no text at all, so the paste spills the
+    // bits to a temp PNG and inserts THAT path — the only channel a program inside the pty has for a picture,
+    // and what lets a coding agent attach it. Driven through session.paste, the socket analogue of ⌘V, which
+    // takes the SAME libghostty paste callback (GhosttyCallbacks.readClipboard) the keystroke does.
+    func testSessionPasteWithImageInsertsTempPNGPath() throws {
+        let id = try activeSessionID()
+        seedPasteboard { $0.setData(Self.onePixelPNG(), forType: .png) }
+
+        // the inserted path can WRAP at the terminal's right edge, so match against the newline-stripped
+        // buffer. The file itself is NOT asserted: it lands in the APP's temp dir, which the sandboxed test
+        // runner cannot read (the same sandbox that makes a file-URL paste untestable here).
+        var pasted: String?
+        for _ in 0..<8 where pasted == nil {
+            let response = try sendCommand(#"{"cmd":"session.paste","target":"\#(id)"}"#)
+            XCTAssertEqual(response["ok"] as? Bool, true, "session.paste should succeed: \(response)")
+            for _ in 0..<8 {
+                let read = try sendCommand(#"{"cmd":"session.text","target":"\#(id)","args":{"pane":"left"}}"#)
+                let text = ((read["result"] as? [String: Any])?["text"] as? String ?? "")
+                    .replacingOccurrences(of: "\n", with: "")
+                if text.contains("agterm-paste-"), text.contains(".png") {
+                    pasted = text
+                    break
+                }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+            }
+        }
+        XCTAssertNotNil(pasted, "pasting an image should insert the path of a spilled temp .png")
+    }
+
+    /// A 1×1 PNG — the smallest payload that makes `NSPasteboard` carry a real image.
+    private static func onePixelPNG() -> Data {
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 1, pixelsHigh: 1, bitsPerSample: 8,
+                                   samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                   colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        rep.setColor(.red, atX: 0, y: 0)
+        return rep.representation(using: .png, properties: [:])!
+    }
+
     // session.paste is UNGATED, unlike the Edit menu's Paste item (which validateMenuItem disables when the
     // clipboard holds nothing pasteable). An empty clipboard is therefore `ok` with no buffer change, matching
     // every other binding-action arm (font.*, search), which report success without consulting libghostty's

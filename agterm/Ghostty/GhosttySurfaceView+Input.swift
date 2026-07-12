@@ -7,10 +7,12 @@ import GhosttyKit
 extension GhosttySurfaceView {
     // MARK: - Drag and drop (issue #51)
 
-    /// Accept the drag with a copy cursor when it carries something we can insert (a file/web URL or text),
-    /// reject it otherwise — so a session-row drag from the sidebar (a private pasteboard type) is ignored.
+    /// Accept the drag with a copy cursor when it carries something we can insert (a file/web URL, text, or an
+    /// image), reject it otherwise — so a session-row drag from the sidebar (a private pasteboard type) is
+    /// ignored. It asks the PURE `hasPasteboardText` predicate, never the reader: the reader spills an image
+    /// drag to a temp PNG, and hovering must not litter the filesystem — only an actual drop may write.
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        dropText(from: sender) != nil ? .copy : []
+        GhosttyCallbacks.hasPasteboardText(sender.draggingPasteboard) ? .copy : []
     }
 
     /// Insert the dropped file's path (shell-escaped, space-joined for multiple) or text at the cursor as a

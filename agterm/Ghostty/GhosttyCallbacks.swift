@@ -5,6 +5,8 @@ import AppKit
 import GhosttyKit
 import os
 
+private let logger = Logger(subsystem: "com.umputun.agterm", category: "GhosttyCallbacks")
+
 /// Routes libghostty runtime callbacks to the appropriate terminal views.
 ///
 /// `@unchecked Sendable` and NOT `@MainActor`: the C closures run synchronously
@@ -186,12 +188,58 @@ final class GhosttyCallbacks: @unchecked Sendable {
     /// string verbatim (it may be a command the user means to run, so it is NOT escaped). Shared by the
     /// clipboard paste path (`readPasteboardText`) and the drag-drop handler (`GhosttySurfaceView`), so a
     /// dropped file inserts its path exactly like a pasted one.
+    ///
+    /// Raw image BITS (a ⌘⇧4 screenshot, Copy Image, an image dragged out of a browser) carry no URL and no
+    /// string, so they fall through to `pasteboardImagePath`, which spills them to a temp PNG and inserts
+    /// THAT path — see there. The image branch is deliberately LAST: anything textual keeps its existing
+    /// behavior verbatim.
+    ///
+    /// It has a SIDE EFFECT (it writes the file), so it must only be called when the paste/drop is actually
+    /// happening — the "would this paste anything?" question is `hasPasteboardText`, which stays pure.
     static func pasteboardText(_ pb: NSPasteboard) -> String? {
         if let urls = pb.readObjects(forClasses: [NSURL.self]) as? [URL] {
             let parts = urls.map(urlText).filter { !$0.isEmpty }
             if !parts.isEmpty { return parts.joined(separator: " ") }
         }
-        return pb.string(forType: .string).flatMap { !$0.isEmpty ? $0 : nil }
+        if let text = pb.string(forType: .string), !text.isEmpty { return text }
+        return pasteboardImagePath(pb)
+    }
+
+    /// Spills a pasteboard's image to a temp PNG and returns its shell-escaped path — how a terminal hands a
+    /// clipboard image to the program inside it. There is no protocol for feeding image BYTES into a pty (the
+    /// kitty graphics protocol is output-only), so every terminal that supports this pastes a PATH and lets
+    /// the program read the file; a coding agent (Claude Code, Codex) recognizes an image path in its prompt
+    /// and attaches the picture itself. Without this, ⌘V of a screenshot inserts nothing at all.
+    ///
+    /// Straight into `NSTemporaryDirectory()` with a fresh UUID, and never cleaned up: the file must outlive
+    /// the paste by an unbounded amount (the agent reads it whenever it gets around to the prompt, and the
+    /// user may paste the same path again later), so agterm cannot know when it is done — macOS's own temp
+    /// reaping is the only sane owner. PNG data on the pasteboard is written through UNCHANGED; anything else
+    /// (a screenshot's TIFF) is re-encoded once. nil when the pasteboard holds no image or the write fails.
+    private static func pasteboardImagePath(_ pb: NSPasteboard) -> String? {
+        guard let png = pasteboardPNG(pb) else { return nil }
+        let file = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("agterm-paste-\(UUID().uuidString).png")
+        do {
+            try png.write(to: file)
+        } catch {
+            logger.error("clipboard image spill failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+        return ShellEscape.path(file.path)
+    }
+
+    /// The pasteboard's image as PNG bytes, or nil when it carries none.
+    private static func pasteboardPNG(_ pb: NSPasteboard) -> Data? {
+        if let png = pb.data(forType: .png) { return png }
+        guard let tiff = pb.data(forType: .tiff), let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .png, properties: [:])
+    }
+
+    /// Whether the pasteboard carries an image the paste path would spill to a file. A cheap TYPE probe — it
+    /// must NOT decode or write anything, since it runs on every Edit-menu open and every ⌘V lookup.
+    private static func hasPasteboardImage(_ pb: NSPasteboard) -> Bool {
+        pb.availableType(from: [.png, .tiff]) != nil
     }
 
     /// The text one pasteboard URL contributes to a paste: a shell-escaped path for a file URL (so a path
@@ -218,7 +266,8 @@ final class GhosttyCallbacks: @unchecked Sendable {
            urls.contains(where: { !urlText($0).isEmpty }) {
             return true
         }
-        return pb.string(forType: .string).map { !$0.isEmpty } ?? false
+        if pb.string(forType: .string).map({ !$0.isEmpty }) ?? false { return true }
+        return hasPasteboardImage(pb)
     }
 
     func confirmReadClipboard(ud: UnsafeMutableRawPointer?, content: UnsafePointer<CChar>?, state: UnsafeMutableRawPointer?,

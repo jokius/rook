@@ -216,7 +216,7 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     /// fire for the initializer default).
     private func updateDropRegistration() {
         if deckVisible {
-            registerForDraggedTypes([.fileURL, .string, .URL])
+            registerForDraggedTypes([.fileURL, .string, .URL, .png, .tiff])
         } else {
             unregisterDraggedTypes()
         }
