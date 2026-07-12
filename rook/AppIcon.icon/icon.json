@@ -1,15 +1,20 @@
 {
-  "fill" : "automatic",
+  "fill" : {
+    "linear-gradient" : [
+      "srgb:0.19216,0.20784,0.23529,1.00000",
+      "srgb:0.09804,0.10980,0.12549,1.00000"
+    ]
+  },
   "groups" : [
     {
-      "blend-mode" : "hard-light",
-      "blur-material" : 0.5,
+      "blur-material" : null,
       "hidden" : false,
       "layers" : [
         {
-          "glass" : false,
-          "image-name" : "21E595C3-2B37-478F-8762-21397D63C722.png",
-          "name" : "21E595C3-2B37-478F-8762-21397D63C722"
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "Bars.svg",
+          "name" : "Bars"
         }
       ],
       "opacity" : 1,
@@ -20,7 +25,7 @@
       "specular" : true,
       "translucency" : {
         "enabled" : true,
-        "value" : 0.5
+        "value" : 0.2
       }
     }
   ],
