@@ -5,7 +5,7 @@ INSTALL_DIR := $(HOME)/Applications
 RELEASE_APP := build/DerivedData/Build/Products/Release/rook.app
 
 .DEFAULT_GOAL := help
-.PHONY: help prep generate build run release deploy test lint dist clean
+.PHONY: help prep generate build run dev release deploy test lint dist clean
 
 help: ## list targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -23,6 +23,9 @@ build: generate ## debug build, no launch
 
 run: ## debug build + launch (scripts/run.sh)
 	./scripts/run.sh
+
+dev: ## debug build + relaunch an ISOLATED dev instance (FRESH=1 to wipe its state)
+	./scripts/dev.sh
 
 release: ## release build, no launch (scripts/build.sh)
 	./scripts/build.sh

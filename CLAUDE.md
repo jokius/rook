@@ -52,10 +52,15 @@ surface ownership, and the C-boundary concurrency contract before changing the b
   / `Sendable` / async work (esp. across the C-callback boundary).
   Don't wait for a failure to reach for them.
 - **"Show me" / "show it" for a UI feature = BUILD + RUN the app for the user to look at,
-  NOT a screenshot.** When the user asks to see a visual change, `make build` then launch an ISOLATED
-  dev instance (`open -n --env ROOK_STATE_DIR=<tmp> --env ROOK_CONTROL_SOCKET=<tmp>/rook.sock build/DerivedData/.../Debug/rook.app`)
-  so it coexists with the deployed daily-driver and never touches the real `workspaces.json` — then leave
+  NOT a screenshot.** When the user asks to see a visual change, run **`make dev`** (`scripts/dev.sh`):
+  it builds Debug, kills only the PREVIOUS DEV instance (matched by its build path), seeds the isolated
+  state dir from the real config, and launches with `ROOK_STATE_DIR=/tmp/rook-dev` plus a PATH that
+  puts the freshly built `rookctl` first.
+  It coexists with the deployed daily-driver and never touches the real `workspaces.json` — then leave
   it running and tell the user how to reach the feature.
+  (`make dev FRESH=1` wipes the dev state dir first.
+  Do NOT hand-assemble the `open -n --env …` invocation any more, and never `make run` for this — that
+  one is NOT isolated and only re-activates a stale instance.)
   Do NOT take a screenshot (`screencapture`) or capture an image via XCUITest (`XCUIScreen.screenshot`/`XCTAttachment`)
   — the user wants to interact with the running app themselves.
   The XCUITest runner is sandboxed and can't write `/tmp` anyway.
