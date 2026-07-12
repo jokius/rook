@@ -207,6 +207,34 @@ paths:
   Covered e2e by `ControlAPIUITests.testSessionPasteWithImageInsertsTempPNGPath` (image data from the
   sandboxed runner DOES reach the app's pasteboard read — unlike a file URL, which does not; see
   [[control-api]]).
+- **`unshifted_codepoint` is what decides whether a TUI sees Ctrl-C on a NON-LATIN layout — under Ctrl/Option
+  it must carry the ASCII-capable layout's character, not the layout's own.**
+  libghostty has TWO key encoders and they disagree about non-latin layouts.
+  The LEGACY one maps a Ctrl chord through the PHYSICAL key (`key_encode.zig` `ctrlSeq` has an explicit
+  Cyrillic branch: a multi-byte utf8 falls back to `logical_key.codepoint()`), so `Ctrl+C` on a Russian
+  layout still emits `0x03` and the SHELL interrupts fine.
+  But the KITTY keyboard protocol — which Claude Code, vim and tmux turn on — reports the key as
+  `event.unshifted_codepoint` verbatim, so the same keystroke went out as `CSI 1089;5u` ("Ctrl + с",
+  U+0441) instead of `CSI 99;5u`, and the program never recognized an interrupt.
+  The latin key rides only in the OPTIONAL "base layout" alternate field (`report_alternates`), which
+  virtually no program reads.
+  That split is exactly why the bug reads as "Ctrl-C works in the shell but not in Claude Code" — the
+  report to chase is the TUI, not the terminal.
+  `GhosttySurfaceView+Input.unshiftedCodepoint` therefore substitutes the character the same PHYSICAL key
+  carries on the user's ASCII-capable layout (`KeyboardLayout.asciiCodepoint` — `TISCopyCurrentASCIICapableKeyboardLayoutInputSource`
+  + `UCKeyTranslate`, the trick iTerm2/kitty/WezTerm all use) — but ONLY when a shortcut modifier
+  (Ctrl or Option) is held AND the layout's own character is non-ASCII.
+  Both guards are load-bearing: unmodified typing keeps reporting the REAL character (so Cyrillic text
+  input is untouched), and a latin layout is never rewritten (Dvorak/Colemak key POSITIONS are the user's
+  deliberate choice — `KeyCodepoint.unshifted` in `agtermCore` owns that rule and is unit-tested).
+  Ghostty.app computes this field the same way agterm used to (`characters(byApplyingModifiers: [])`),
+  so this is an UPSTREAM behavior agterm fixes on its own side — do not expect a libghostty bump to
+  make it redundant.
+  NOT XCUITest-able (XCUITest cannot switch the input source), so it is verified by a real keystroke on a
+  real layout: run `printf '\033[>1u'; stty -isig; cat -v` in a session (turns the kitty protocol on and
+  PRINTS the bytes instead of acting on them), press Ctrl-C on both layouts, and read the buffer back with
+  `agtermctl session text` — both must show `^[[99;5u`.
+  That probe is the whole diagnosis in one line; reach for it before theorizing.
 - **Search bar placement (NSSplitView-overrun rule).**
   The underlying rule: nothing may change `sessionDetail`'s ZStack SHAPE when a per-session toggle flips —
   adding/removing a child (or flipping a pane modifier) inside that HSplitView-hosting subtree re-hosts the

@@ -103,6 +103,19 @@ paths:
   To diagnose a non-delivering drag, `NSLog` from `validateDrop`/`acceptDrop` and read it with `log show --last 90s --predicate 'eventMessage CONTAINS "…"'`:
   *zero* events = the drag never started (selection/gesture problem); events present but the wrong `dest`
   = a drop-resolution bug in the delegate.
+- **NEVER start a UI run — or ANYTHING else that seizes the screen, keyboard, or focus — without the user
+  saying so in the CURRENT message.**
+  The maintainer works on other projects on the same machine WHILE the agent runs, so a UI pass does not
+  merely risk colliding with a hand-off (the note below): it interrupts whatever they are actually doing,
+  synthesizing keystrokes into their windows for minutes.
+  This covers `xcodebuild test` on `agtermUITests`, synthetic `CGEvent`s, and programmatic keyboard-layout
+  switching (`TISSelectInputSource`) alike.
+  So: run everything that is SAFE (build, `make lint`, `swift test`, a dev-instance launch) on your own,
+  then TELL the user a UI run is pending and OFFER it — never launch it silently, never "just quickly".
+  Committing without the UI pass is fine for a narrow, otherwise-verified change; say so in the report
+  instead of buying coverage with their screen.
+  The same applies to any check needing their HANDS (a keystroke on a non-latin layout,
+  a visual confirmation): state what is needed and WAIT.
 - **NEVER run XCUITests while the user is interacting with a handed-off dev build — it HIJACKS their
   screen.** XCUITest launches/activates app instances and synthesizes REAL keyboard + mouse events on
   the live screen (`typeText`/`typeKey`/`click` drive the actual cursor and focus),
