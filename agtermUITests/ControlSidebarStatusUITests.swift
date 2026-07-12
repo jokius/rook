@@ -168,6 +168,48 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
         XCTAssertTrue((bad["error"] as? String ?? "").contains("invalid focus mode"), "should report invalid mode: \(bad)")
     }
 
+    // workspace.color sets the workspace's sidebar icon tint and reads back on the tree node, so a script
+    // can record-then-restore it; `clear` resets it and a malformed hex errors without mutating. The TINT
+    // itself is not accessibility-observable (like the status glyph's --color), so this asserts the command
+    // path + the read-back, which is what a driving script depends on.
+    func testWorkspaceColorSetAndClear() throws {
+        XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 10), "seeded session row")
+
+        let tree = try sendCommand(#"{"cmd":"tree"}"#)
+        let result = try XCTUnwrap(tree["result"] as? [String: Any], "tree should carry a result")
+        let t = try XCTUnwrap(result["tree"] as? [String: Any], "result should carry a tree")
+        let ws = try XCTUnwrap((t["workspaces"] as? [[String: Any]])?.first, "should have a workspace")
+        let wsID = try XCTUnwrap(ws["id"] as? String, "should have a seeded workspace id")
+        XCTAssertNil(ws["color"], "an uncolored workspace must omit `color` from the tree node")
+
+        // set: the node reads back the hex we wrote. NOTE the ##"…"## delimiter — a plain #"…"# literal
+        // would be CLOSED early by the `"#` in `"#ff8800"`.
+        let set = try sendCommand(##"{"cmd":"workspace.color","target":"\##(wsID)","args":{"color":"#ff8800"}}"##)
+        XCTAssertEqual(set["ok"] as? Bool, true, "workspace.color should succeed: \(set)")
+        XCTAssertEqual(try workspaceColor(ofWorkspace: wsID), "#ff8800", "the tree node should read back the color")
+
+        // a malformed color errors and leaves the existing color untouched.
+        let bad = try sendCommand(#"{"cmd":"workspace.color","target":"\#(wsID)","args":{"color":"orange"}}"#)
+        XCTAssertEqual(bad["ok"] as? Bool, false, "a malformed color should error: \(bad)")
+        XCTAssertTrue((bad["error"] as? String ?? "").contains("invalid color"), "should report an invalid color: \(bad)")
+        XCTAssertEqual(try workspaceColor(ofWorkspace: wsID), "#ff8800", "a rejected color must not overwrite the current one")
+
+        // clear: back to the theme default, so the field is omitted again.
+        let cleared = try sendCommand(#"{"cmd":"workspace.color","target":"\#(wsID)","args":{"color":"clear"}}"#)
+        XCTAssertEqual(cleared["ok"] as? Bool, true, "workspace.color clear should succeed: \(cleared)")
+        XCTAssertNil(try workspaceColor(ofWorkspace: wsID), "a cleared workspace must omit `color` again")
+    }
+
+    /// The `color` field of one workspace node in a freshly built tree (nil when omitted).
+    private func workspaceColor(ofWorkspace id: String) throws -> String? {
+        let tree = try sendCommand(#"{"cmd":"tree"}"#)
+        let result = try XCTUnwrap(tree["result"] as? [String: Any], "tree should carry a result")
+        let t = try XCTUnwrap(result["tree"] as? [String: Any], "result should carry a tree")
+        let nodes = try XCTUnwrap(t["workspaces"] as? [[String: Any]], "tree should carry workspaces")
+        let node = try XCTUnwrap(nodes.first { $0["id"] as? String == id }, "workspace \(id) should be in the tree")
+        return node["color"] as? String
+    }
+
     // sidebar.collapse collapses every workspace except the active session's — the others' session rows
     // leave the AX tree while the active workspace's stay; sidebar.expand re-expands every workspace and
     // restores them.

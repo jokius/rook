@@ -144,6 +144,27 @@ paths:
   The filled variant is tree-mode only — the flat flagged view shows the unfilled base icon,
   so a split session still gets the split-rectangle to stay distinguishable;
   only the FILLED flag variant is suppressed there (every row is flagged).
+- **Per-workspace icon color (`Workspace.colorHex`).**
+  A workspace can carry its own `#rrggbb` tint for its sidebar ICON (never the row text — one choke point,
+  no layout risk), set from the row's context menu (Color… → the system `NSColorPanel`,
+  which previews live because it is CONTINUOUS; Reset Color, shown only when a color is set) or over the
+  socket with `workspace.color` (see the Control API rule).
+  **The tint MUST be applied inside `SidebarCellView.setColors(selected:)`** (via the cell's `iconTint`
+  override), because that is the single point all four tint paths re-assert through — the cell build,
+  `SidebarRowView.didAddSubview`, `retintCellViews` on a selection flip, and the theme-change re-run.
+  A tint written straight onto `cell.imageView` from the row builder is silently clobbered by the very
+  next re-assert.
+  `iconTint` is reset on cell REUSE alongside the badge/status glyph, and the icon is a TEMPLATE image,
+  so `contentTintColor` recolors it.
+  A custom color wins in BOTH the selected and unselected states, at full alpha — it is a deliberate
+  signal, not chrome.
+  `colorHex` is folded into `RowContent` (the Equatable per-row diff) so a color change re-renders ONLY
+  that row, and it is read in `updateNSView`'s dependency touch so the observation actually fires.
+  Persisted per workspace (`WorkspaceSnapshot.colorHex`, Optional → no `Snapshot` version bump) and
+  threaded through all FIVE `Workspace` construction sites — including `rebuiltWorkspaceShell`
+  (`AppStore+PendingClose.swift`), or a workspace reopened from Open Recent comes back gray.
+  The store mutator (`AppStore+Appearance.setWorkspaceColor`) persists through `scheduleSave()`, NOT
+  `save()`: the color panel drags continuously, and each `save()` re-encodes the whole snapshot.
 - **Focus filter (`AppStore.focusedWorkspaceID`).**
   A per-workspace toggle collapses the `.tree` to a single root: `visibleWorkspaces` is the focused workspace
   when `focusedWorkspaceID` is set AND still present, else ALL workspaces — the source of truth the tree

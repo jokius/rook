@@ -289,6 +289,22 @@ agtermctl workspace focus toggle --target a1b2                # flip focus on an
 agtermctl workspace focus off                                 # restore the full tree
 ```
 
+## Color the workspaces so they're tellable apart
+
+Tint each workspace's sidebar icon (persisted, so it survives a relaunch). The tree read-back makes a
+record-then-restore safe.
+
+```bash
+agtermctl workspace color "#ff8800" --target "$AGTERM_WORKSPACE_ID"  # this workspace: orange
+agtermctl workspace color "#3b82f6" --target a1b2                    # another one: blue
+agtermctl workspace color clear --target a1b2                        # back to the theme default
+
+# record the current color, change it, restore it
+old=$(agtermctl tree --json | jq -r '.workspaces[] | select(.id | startswith("a1b2")) | .color // "clear"')
+agtermctl workspace color "#ef4444" --target a1b2
+agtermctl workspace color "$old" --target a1b2
+```
+
 ## Expand or collapse the sidebar tree
 
 Open every workspace at once, or collapse all but the active one (the workspace of the active session,

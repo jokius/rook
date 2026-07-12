@@ -131,6 +131,19 @@ extension WorkspaceSidebar.Coordinator {
             focus.representedObject = node
             menu.addItem(focus)
             menu.addItem(.separator())
+            // icon color: the system color panel previews live (it's continuous); Reset drops back to the
+            // theme tint and is only offered when a color is actually set.
+            let color = NSMenuItem(title: "Color…", action: #selector(menuPickWorkspaceColor(_:)), keyEquivalent: "")
+            color.target = self
+            color.representedObject = node
+            menu.addItem(color)
+            if store.workspaces.first(where: { $0.id == node.id })?.colorHex != nil {
+                let reset = NSMenuItem(title: "Reset Color", action: #selector(menuResetWorkspaceColor(_:)), keyEquivalent: "")
+                reset.target = self
+                reset.representedObject = node
+                menu.addItem(reset)
+            }
+            menu.addItem(.separator())
             let delete = NSMenuItem(title: "Delete Workspace", action: #selector(menuDeleteWorkspace(_:)), keyEquivalent: "")
             delete.target = self
             delete.representedObject = node
@@ -201,6 +214,19 @@ extension WorkspaceSidebar.Coordinator {
     @objc private func menuFocusWorkspace(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode else { return }
         actions.focusWorkspace(node.id)
+    }
+
+    /// "Color…": pick this workspace's sidebar icon color in the system color panel (live preview).
+    /// Passes THIS sidebar's window-local store — a background window's row must color its own workspace,
+    /// not the frontmost window's (which `AppActions.store` would resolve to), like Close/Flag above.
+    @objc private func menuPickWorkspaceColor(_ sender: NSMenuItem) {
+        guard let node = sender.representedObject as? SidebarNode else { return }
+        actions.pickWorkspaceColor(node.id, in: store)
+    }
+
+    @objc private func menuResetWorkspaceColor(_ sender: NSMenuItem) {
+        guard let node = sender.representedObject as? SidebarNode else { return }
+        actions.setWorkspaceColor(node.id, hex: nil, in: store)
     }
 
     /// "Open Directory…": pick a folder and add a session rooted there.

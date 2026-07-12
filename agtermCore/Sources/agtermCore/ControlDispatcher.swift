@@ -21,6 +21,9 @@ public protocol ControlActions {
     func moveSessions(_ targets: [String], window: String?, move: ControlSessionMove) -> ControlResponse
     func moveWorkspace(_ target: String?, window: String?, direction: ReorderDirection) -> ControlResponse
     func focusWorkspace(_ target: String?, window: String?, mode: String?) -> ControlResponse
+    /// Sets the workspace's sidebar icon color; `hex` is a validated `#rrggbb`, or nil to reset it to the
+    /// theme default. The dispatcher owns the validation — this only resolves the target and mutates.
+    func setWorkspaceColor(_ target: String?, window: String?, hex: String?) -> ControlResponse
     func setSessionFlag(_ target: String?, window: String?, mode: String?) -> ControlResponse
     func markSessionSeen(_ target: String?, window: String?) -> ControlResponse
     func setSessionStatus(_ target: String?, window: String?, update: ControlSessionStatusUpdate) -> ControlResponse
@@ -145,7 +148,7 @@ public struct ControlDispatcher {
                 .sessionText:
             return await dispatchSessionSurfaceCommand(request)
         case .workspaceNew, .workspaceSelect, .workspaceRename, .workspaceDelete,
-                .workspaceMove, .workspaceFocus:
+                .workspaceMove, .workspaceFocus, .workspaceColor:
             return dispatchWorkspaceCommand(request)
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarExpand,
@@ -313,9 +316,27 @@ public struct ControlDispatcher {
             return actions.moveWorkspace(request.target, window: request.args?.window, direction: direction)
         case .workspaceFocus:
             return actions.focusWorkspace(request.target, window: request.args?.window, mode: request.args?.mode)
+        case .workspaceColor:
+            return dispatchWorkspaceColor(request)
         default:
             preconditionFailure("unexpected workspace command: \(request.cmd.rawValue)")
         }
+    }
+
+    /// `workspace.color <target> <#rrggbb|clear>` — the literal `clear` (and an omitted color) resets the
+    /// icon to the theme default, mirroring the `clear` mode the other set/clear commands use. Any other
+    /// value must be a `#rrggbb` hex, validated by the same `WatermarkConfig.isValidColorHex` the
+    /// `session.status`/`session.background` colors go through, so a malformed value is rejected at the
+    /// boundary rather than silently falling back to the default tint.
+    private func dispatchWorkspaceColor(_ request: ControlRequest) -> ControlResponse {
+        let raw = request.args?.color?.trimmedOrNil
+        guard let raw, raw != "clear" else {
+            return actions.setWorkspaceColor(request.target, window: request.args?.window, hex: nil)
+        }
+        guard WatermarkConfig.isValidColorHex(raw) else {
+            return ControlResponse(ok: false, error: "invalid color (expected #rrggbb)")
+        }
+        return actions.setWorkspaceColor(request.target, window: request.args?.window, hex: raw)
     }
 
     private func dispatchSessionSurfaceCommand(_ request: ControlRequest) async -> ControlResponse {

@@ -18,6 +18,7 @@ public enum Command: String, Codable, Sendable {
     case sessionMove = "session.move"
     case workspaceMove = "workspace.move"
     case workspaceFocus = "workspace.focus"
+    case workspaceColor = "workspace.color"
     case sessionType = "session.type"
     case sessionStatus = "session.status"
     case sessionFlag = "session.flag"
@@ -112,7 +113,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// `session.overlay.open` (the overlay pane's own color, independent of the session's); nil = the
     /// default theme background, honoring the same window translucency. And the optional per-call glyph-tint
     /// override for `session.status` (rides the ephemeral indicator, so it lasts only until the next
-    /// `session.status` without a color); nil = the Settings-configured status color.
+    /// `session.status` without a color); nil = the Settings-configured status color. And the sidebar icon
+    /// tint for `workspace.color` — PERSISTED there (unlike the ephemeral status tint), with the literal
+    /// `clear` resetting it to the theme default.
     public var color: String?
     /// The `background-image-opacity` for `session.background` (image + text), 0...1; nil = ghostty's 1.0.
     public var opacity: Double?
@@ -420,13 +423,19 @@ public struct ControlWorkspaceNode: Codable, Sendable, Equatable {
     /// SELECTED workspace): focus collapses the sidebar to a single workspace. The read side of the
     /// write-only `workspace.focus` — so a script can record which workspace is focused and restore it.
     public let focused: Bool?
+    /// The workspace's sidebar icon color as `#rrggbb`, or nil when it uses the theme default (omitted
+    /// from the JSON). The read side of `workspace.color` — so a script can record a workspace's color,
+    /// change it, and restore it.
+    public let color: String?
     public let sessions: [ControlSessionNode]
 
-    public init(id: String, name: String, active: Bool, focused: Bool? = nil, sessions: [ControlSessionNode]) {
+    public init(id: String, name: String, active: Bool, focused: Bool? = nil, color: String? = nil,
+                sessions: [ControlSessionNode]) {
         self.id = id
         self.name = name
         self.active = active
         self.focused = focused
+        self.color = color
         self.sessions = sessions
     }
 }

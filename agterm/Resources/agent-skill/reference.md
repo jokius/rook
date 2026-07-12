@@ -78,9 +78,11 @@ so a script can zoom them without changing split/scratch visibility first. Cavea
 derive from the session's own flags, not from zoom — and `visible` reads false for a pane behind a
 FLOATING overlay even though it is visually on screen; address by `id`/`kind`, and read the zoom state
 from the top-level `zoomedSurface`. Workspace nodes carry
-`id`, `name`, `active`, `sessions`, and `focused` (whether the sidebar
+`id`, `name`, `active`, `sessions`, `focused` (whether the sidebar
 tree is collapsed to this workspace — the read side of `workspace focus`, distinct from `active` the
-SELECTED workspace; omitted unless this is the focused one, and absent entirely when nothing is focused).
+SELECTED workspace; omitted unless this is the focused one, and absent entirely when nothing is focused),
+and `color` (the workspace's sidebar icon tint as `#rrggbb` — the read side of `workspace color`; omitted
+when it uses the theme default, so a script can record a color, change it, and restore it).
 
 The tree object itself carries six top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
@@ -117,6 +119,12 @@ All six are read-only projections of GUI state.
   While a workspace is focused, `session go` navigation is scoped to that workspace's sessions (and to
   the flagged set in flagged mode); an explicit `session select` of a session outside the focused
   workspace still auto-unfocuses to reveal it. An unknown mode errors.
+- `workspace color <#rrggbb|clear> [--target] [--window W]` — tint the workspace's sidebar ICON (only
+  the icon; the row text keeps the theme color); returns the workspace id. `clear` resets it to the
+  theme default. A malformed color errors (`invalid color (expected #rrggbb)`) and leaves the workspace
+  unchanged. PERSISTED (unlike the ephemeral `session status --color` glyph tint), so it survives a
+  relaunch and a reopen from Open Recent. Read back from the tree workspace node's `color`, so a script
+  can record-then-restore. The GUI equivalent is the workspace row's context menu → Color… / Reset Color.
 
 ## session
 
@@ -579,6 +587,7 @@ user-edited file read at launch — there is no control command for it.
 `invalid fit` / `invalid position` / `invalid opacity` / `invalid color` / `text too long` /
 `unsupported image (PNG or JPEG only)` / `no such image file` / `image path must not contain control characters` / `invalid background mode` (session background),
 `invalid sidebar mode` (sidebar), `invalid focus mode` (workspace focus),
+`invalid color (expected #rrggbb)` (workspace color — the CLI rejects it locally too),
 `no open window` (quick/sidebar), `quick terminal not open` / `quick terminal not realized` (quick type) /
 `failed to read surface buffer` (quick text / session text), `window not open`
 (resize/move/`--window`), `unknown theme: <name>` (theme set), `unknown sound: <name>` (session status --sound),

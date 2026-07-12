@@ -37,9 +37,10 @@ extension WorkspaceSidebar.Coordinator {
         field.isEditable = false
         field.isBordered = false
         field.drawsBackground = false
-        // a recycled cell may carry the prior row's badge/status; reset before use
+        // a recycled cell may carry the prior row's badge/status/icon tint; reset before use
         applyBadge(toCell: cell, count: 0)
         cell.statusIcon.apply(AgentIndicator())
+        cell.iconTint = nil
         switch node.kind {
         case .workspace:
             let workspace = store.workspaces.first(where: { $0.id == node.id })
@@ -52,6 +53,9 @@ extension WorkspaceSidebar.Coordinator {
             // (gated by the Settings badge toggle, like the session badge below)
             applyBadge(toCell: cell, count: effectiveUnseen(workspace?.unseenCount ?? 0))
             cell.imageView?.image = workspaceIcon
+            // the workspace's own icon color, when set; a malformed hex falls back to the theme tint. the
+            // icon is a TEMPLATE image, so contentTintColor (applied in setColors) recolors it.
+            cell.iconTint = NSColor(agtermHex: workspace?.colorHex)
             cell.imageView?.setAccessibilityIdentifier("workspace-icon")
         case .session:
             field.stringValue = rowLabel(forSession: node.id)

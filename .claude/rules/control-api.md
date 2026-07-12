@@ -124,7 +124,7 @@ paths:
   The skill is a REFERENCE/knowledge skill (both user-invocable via `/agterm` and model-triggered,
   `allowed-tools: Bash(agtermctl *)`; the agent-neutral `description` carries the trigger nouns since
   Codex may ignore the extra `when_to_use` field — unknown frontmatter is harmless),
-  authored at `agterm/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 60-command
+  authored at `agterm/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 61-command
   summary + the image-display helper + a troubleshooting/reporting pointer;
   `reference.md` full per-command detail + keymap format; `examples.md` agtermctl recipes;
   `troubleshooting.md` diagnosing the common problems (keymap editor, custom actions,
@@ -202,9 +202,9 @@ paths:
   rules, then remaining targets resolve inside that same store so one command never mutates multiple windows.
   The top-level `target` also carries the first explicit batch target so a new CLI talking to a still-running
   pre-batch server degrades to a named session instead of accidentally acting on `active`.
-- **Command catalog (60 commands):**
+- **Command catalog (61 commands):**
   - `tree`
-  - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`
+  - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.color`
   - `session.new`/`session.close`/`session.select`/`session.rename`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.flag`/`session.seen`/`session.background`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
   - `surface.zoom`
   - `quick`/`quick.type`/`quick.text`
@@ -229,7 +229,7 @@ paths:
   Setting echoes the resulting effective side in `result.text`; the BARE form (no name) reads the side
   the last config feed applied (`SettingsModel.lastAppliedIsDark`), which the test polls to prove the
   flip actually drove the reload.
-  `AppearanceFlipUITests` is its only consumer; the public command count stays 60.
+  `AppearanceFlipUITests` is its only consumer; the public command count stays 61.
 
   `workspace.delete` honors keep-at-least-one and returns an error instead of the GUI confirm alert (nothing
   blocks on a modal).
@@ -1022,6 +1022,36 @@ paths:
   (3) the `workspace focus on|off|toggle` subcommand (`Focus`) in `agtermctlKit`,
   (4) round-trip in `ControlProtocolTests` + the e2e `testWorkspaceFocusHidesOtherWorkspaces` in `ControlSidebarStatusUITests`
   plus the `FocusWorkspaceUITests` XCUITest.
+  `workspace.color` (target = workspace) tints that workspace's sidebar ICON — the positional arg is a
+  `#rrggbb` hex or the literal `clear` (which, like an omitted color, resets it to the theme default),
+  REUSING `ControlArgs.color` (no new arg) and validated by the shared `WatermarkConfig.isValidColorHex`
+  in the dispatcher — an `invalid color (expected #rrggbb)` error that leaves the workspace UNCHANGED,
+  pre-validated CLI-side by `validate()` too.
+  UNLIKE the ephemeral `session.status --color` glyph tint, this one is PERSISTED
+  (`Workspace.colorHex` → `WorkspaceSnapshot.colorHex`, an Optional field so an existing `workspaces.json`
+  decodes with NO `Snapshot` version bump), so it survives a relaunch AND a close/reopen from Open Recent.
+  It drives `AppStore.setWorkspaceColor` (delta-guarded, so a repeated set is a clean no-op), which
+  persists through `scheduleSave()` rather than `save()` — the GUI half is a CONTINUOUS `NSColorPanel`,
+  whose live drag would otherwise re-encode and rewrite the whole snapshot on every tick (the same reason
+  `selectSession`/`setFontSize` debounce).
+  Only the icon is tinted, never the row text: the tint is applied in `SidebarCellView.setColors`, the
+  single choke point all four tint paths (cell build, `didAddSubview`, selection flip, theme change)
+  re-assert through — a tint written anywhere else is clobbered by the next re-assert — and the row's
+  `colorHex` is folded into `RowContent` so a change re-renders just that row.
+  Its READ side is `ControlWorkspaceNode.color` on each `tree` workspace node (omitted when nil), so a
+  script can record a workspace's color, change it, and restore it.
+  GUI half: the workspace row's context menu — Color… (the system color panel, which previews live
+  because it is continuous) and Reset Color (shown only when a color is set).
+  There is deliberately NO menu-bar/palette entry: coloring is a per-row property, like Focus/Unfocus.
+  Four-point keep-in-sync audit: (1) `case workspaceColor = "workspace.color"` in `ControlProtocol.swift`
+  (reuses `ControlArgs.color`; adds `color` to `ControlWorkspaceNode`), (2) the `.workspaceColor` arm in
+  `ControlDispatcher` (hex validation + the `clear` idiom) → `ControlActions.setWorkspaceColor`
+  (app-side `ControlServer+SessionActions`), (3) the `workspace color <#rrggbb|clear>` subcommand
+  (`Color`, `validate()`-guarded) in `agtermctlKit`, (4) round-trip + omit-when-nil in `ControlProtocolTests`
+  + dispatcher validation in `ControlDispatcherTests` + `AppStoreAppearanceTests` (mutator, persistence,
+  tree read-back, and the reopen-from-Recent round-trip) + `PersistenceTests` (legacy snapshot without
+  the key) + CLI mapping in `CommandsTests` + the e2e `testWorkspaceColorSetAndClear` in
+  `ControlSidebarStatusUITests`.
   `tree` now also surfaces, on each `ControlSessionNode`, `foreground`/`splitForeground` — the LIVE foreground-process
   argv of the main + split panes (nil/omitted at the shell prompt), the SAME `ForegroundProcess.command(for:shellBasename:)`
   capture the restore-running-command feature uses (`ghostty_surface_foreground_pid` → `sysctl(KERN_PROCARGS2)`
@@ -1158,4 +1188,4 @@ paths:
   (image/text/color set/clear + tree read-back).
   **Agent-skill mirror (HARD keep-in-sync, 4th surface):** all commands are documented in the bundled
   `agterm/Resources/agent-skill/` (SKILL.md summary, reference.md detail,
-  examples.md recipes) and the command count there is bumped to 60 to match.
+  examples.md recipes) and the command count there is bumped to 61 to match.

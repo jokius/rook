@@ -408,6 +408,33 @@ final class PersistenceTests {
         #expect(app.workspaces[0].isExpanded)
     }
 
+    @Test func legacyWorkspaceWithoutColorDecodesUncolored() throws {
+        // the same forward-compat contract for `colorHex`: an existing workspaces.json has no key, so it
+        // must decode (never throw and wipe the tree) and restore with the theme-default icon tint.
+        let ws = UUID()
+        let session = UUID()
+        let json = #"{ "version": 1, "workspaces": "# +
+            #"[ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ] }"#
+        try Data(json.utf8).write(to: fileURL)
+        let loaded = store.load()
+        #expect(loaded.workspaces[0].colorHex == nil)
+
+        let app = AppStore(persistence: store)
+        app.restore(from: loaded)
+        #expect(app.workspaces[0].colorHex == nil)
+    }
+
+    @Test func workspaceColorRoundTripsThroughDisk() throws {
+        let app = AppStore(persistence: store)
+        let ws = app.addWorkspace(name: "work")
+        app.setWorkspaceColor(ws.id, hex: "#ff8800")
+        app.save() // the color write is debounced; save() flushes it
+
+        let restored = AppStore(persistence: store)
+        restored.restore(from: store.load())
+        #expect(restored.workspaces.first { $0.id == ws.id }?.colorHex == "#ff8800")
+    }
+
     @Test func explicitCollapsedFalseDecodesExpanded() throws {
         // an explicit `collapsed: false` (a hand-edit, or a snapshot from a future build that always writes
         // the field) must decode to expanded, same as an absent key — `!(false ?? false)` == expanded.

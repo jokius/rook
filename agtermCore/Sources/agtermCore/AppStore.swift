@@ -229,6 +229,7 @@ public final class AppStore {
             return ControlWorkspaceNode(id: workspace.id.uuidString, name: workspace.name,
                                         active: workspace.id == activeWorkspaceID,
                                         focused: workspace.id == focusedWorkspaceID ? true : nil,
+                                        color: workspace.colorHex,
                                         sessions: sessions)
         }
         return ControlTree(workspaces: nodes, idleMs: idleMs(), autoFollowMs: autoFollowMs,
@@ -807,7 +808,7 @@ public final class AppStore {
             // only a collapsed workspace writes the flag; an expanded one omits it (nil) so an all-expanded
             // tree serializes identically to a legacy snapshot.
             return WorkspaceSnapshot(id: workspace.id, name: workspace.name, sessions: sessions,
-                                     collapsed: workspace.isExpanded ? nil : true)
+                                     collapsed: workspace.isExpanded ? nil : true, colorHex: workspace.colorHex)
         }
         return Snapshot(selectedSessionID: selectedSessionID, workspaces: workspaceSnapshots,
                         sidebarWidth: sidebarWidth, fileTreeWidth: fileTreeWidth,
@@ -838,7 +839,8 @@ public final class AppStore {
             }
             // absent/nil collapsed → expanded (back-compat with snapshots written before the field existed).
             restored.append(Workspace(id: workspaceSnapshot.id, name: workspaceSnapshot.name, sessions: sessions,
-                                      isExpanded: !(workspaceSnapshot.collapsed ?? false)))
+                                      isExpanded: !(workspaceSnapshot.collapsed ?? false),
+                                      colorHex: workspaceSnapshot.colorHex))
         }
         // clamp on restore (not just nil-default) so a corrupt or hand-edited snapshot can't drive an
         // out-of-range frame width; the drag path clamps to the same bounds.
@@ -877,10 +879,11 @@ public final class AppStore {
         }
     }
 
-    /// Debounces a `save()` ~0.3 s out, coalescing the rapid selection/font writes. Used only by
-    /// `selectSession`/`setFontSize`; structural mutations call `save()` immediately. A `save()`
-    /// (or the quit-flush) cancels the pending schedule, so the latest state is always captured.
-    private func scheduleSave() {
+    /// Debounces a `save()` ~0.3 s out, coalescing the rapid selection/font writes. Used by
+    /// `selectSession`/`setFontSize` and `setWorkspaceColor` (the color panel drags continuously);
+    /// structural mutations call `save()` immediately. A `save()` (or the quit-flush) cancels the pending
+    /// schedule, so the latest state is always captured. Not `private`: `AppStore+Appearance` needs it.
+    func scheduleSave() {
         saveDebouncer.schedule(after: AppStore.saveDebounceInterval) { [weak self] in
             self?.save()
         }
@@ -955,7 +958,7 @@ public final class AppStore {
 
     func workspaceSnapshot(_ workspace: Workspace) -> WorkspaceSnapshot {
         WorkspaceSnapshot(id: workspace.id, name: workspace.name, sessions: workspace.sessions.map(sessionSnapshot),
-                          collapsed: workspace.isExpanded ? nil : true)
+                          collapsed: workspace.isExpanded ? nil : true, colorHex: workspace.colorHex)
     }
 
     func session(from snapshot: SessionSnapshot) -> Session {
@@ -982,7 +985,7 @@ public final class AppStore {
 
     func workspace(from snapshot: WorkspaceSnapshot) -> Workspace {
         Workspace(id: snapshot.id, name: snapshot.name, sessions: snapshot.sessions.map(session(from:)),
-                  isExpanded: !(snapshot.collapsed ?? false))
+                  isExpanded: !(snapshot.collapsed ?? false), colorHex: snapshot.colorHex)
     }
 
 }

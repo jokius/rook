@@ -85,12 +85,18 @@ public struct WorkspaceSnapshot: Codable, Equatable, Sendable {
     /// `SessionSnapshot`. Only a collapsed workspace writes it (`true`); an expanded one omits it, so an
     /// all-expanded tree serializes byte-identically to a legacy snapshot.
     public var collapsed: Bool?
+    /// The sidebar icon's tint as `#rrggbb`, or nil for the theme default. Optional so a snapshot already
+    /// on disk before this field was added still decodes (missing → nil → the theme default) instead of
+    /// failing the load and wiping the saved tree, like `collapsed` above.
+    public var colorHex: String?
 
-    public init(id: UUID, name: String, sessions: [SessionSnapshot], collapsed: Bool? = nil) {
+    public init(id: UUID, name: String, sessions: [SessionSnapshot], collapsed: Bool? = nil,
+                colorHex: String? = nil) {
         self.id = id
         self.name = name
         self.sessions = sessions
         self.collapsed = collapsed
+        self.colorHex = colorHex
     }
 }
 

@@ -6,7 +6,7 @@ import agtermCore
 struct Workspace: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Workspace commands.",
-        subcommands: [New.self, Rename.self, Delete.self, Select.self, Move.self, Focus.self]
+        subcommands: [New.self, Rename.self, Delete.self, Select.self, Move.self, Focus.self, Color.self]
     )
 
     struct New: RequestCommand {
@@ -76,6 +76,23 @@ struct Workspace: ParsableCommand {
 
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .workspaceFocus, target: target.target, args: options.withWindow(ControlArgs(mode: mode)))
+        }
+    }
+
+    struct Color: RequestCommand {
+        static let configuration = CommandConfiguration(abstract: "Color a workspace's sidebar icon (#rrggbb, or clear).")
+        @Argument(help: "Color as #rrggbb, or `clear` to reset to the theme default.") var color: String
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func validate() throws {
+            guard color == "clear" || WatermarkConfig.isValidColorHex(color) else {
+                throw ValidationError("color must be #rrggbb or clear")
+            }
+        }
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .workspaceColor, target: target.target, args: options.withWindow(ControlArgs(color: color)))
         }
     }
 }

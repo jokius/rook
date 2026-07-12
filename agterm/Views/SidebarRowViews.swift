@@ -14,9 +14,18 @@ final class SidebarCellView: NSTableCellView {
     /// Hidden on `.idle` (workspace rows always idle for now).
     let statusIcon = StatusIconView()
 
+    /// A per-row override for the icon tint — the workspace's own `colorHex`, or nil to follow the theme.
+    /// It must live HERE, applied inside `setColors`, because that is the single choke point every tint
+    /// path funnels through (cell build, `didAddSubview`, the selection flip, and the theme change all
+    /// re-assert it): a tint written straight onto `imageView` from the row builder would be clobbered by
+    /// the very next re-assert. Reset on cell reuse, like the badge and status glyph.
+    var iconTint: NSColor?
+
     /// Color the row text/icon from the terminal theme: a selected row pairs with the selection
     /// foreground (over the selection-background pill the row draws), or white over the soft wash when
     /// the theme exposes no selection color; an unselected row uses the theme foreground, icons dimmed.
+    /// A row with an `iconTint` keeps its OWN icon color in both states (at full alpha — a deliberate
+    /// signal, not chrome), while the text still tracks the theme.
     /// Driven from the real selection state (not `backgroundStyle`, which AppKit only flips while the
     /// table is first responder): the hosting `SidebarRowView` re-asserts it from its live `isSelected`
     /// on attach and on every selection flip, and the coordinator re-runs it on theme changes.
@@ -26,7 +35,7 @@ final class SidebarCellView: NSTableCellView {
             ? (app.terminalSelectionForegroundColor ?? .white)
             : (app.terminalForegroundColor ?? .labelColor)
         textField?.textColor = color
-        imageView?.contentTintColor = color.withAlphaComponent(selected ? 0.85 : 0.6)
+        imageView?.contentTintColor = iconTint ?? color.withAlphaComponent(selected ? 0.85 : 0.6)
     }
 }
 

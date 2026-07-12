@@ -497,6 +497,45 @@ struct ControlDispatcherTests {
         #expect(actions.calls == [.workspaceFocus(target: "workspace", window: "win", "on")])
     }
 
+    @Test func workspaceColorPassesValidHexThrough() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let colored = await dispatcher.dispatch(ControlRequest(
+            cmd: .workspaceColor,
+            target: "workspace",
+            args: ControlArgs(window: "win", color: "#ff8800")
+        ))
+
+        #expect(colored == ControlResponse(ok: true))
+        #expect(actions.calls == [.workspaceColor(target: "workspace", window: "win", hex: "#ff8800")])
+    }
+
+    @Test func workspaceColorClearsOnClearAndOnMissingColor() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .workspaceColor, target: "a", args: ControlArgs(color: "clear")))
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .workspaceColor, target: "b"))
+
+        #expect(actions.calls == [.workspaceColor(target: "a", window: nil, hex: nil),
+                                  .workspaceColor(target: "b", window: nil, hex: nil)])
+    }
+
+    @Test func workspaceColorRejectsMalformedHexWithoutMutating() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let rejected = await dispatcher.dispatch(ControlRequest(
+            cmd: .workspaceColor,
+            target: "workspace",
+            args: ControlArgs(color: "orange")
+        ))
+
+        #expect(rejected == ControlResponse(ok: false, error: "invalid color (expected #rrggbb)"))
+        #expect(actions.calls.isEmpty) // a bad color must leave the workspace untouched
+    }
+
     @Test func sessionFlagRoutesModeForHostSideValidation() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)
@@ -1514,6 +1553,7 @@ private final class MockControlActions: ControlActions {
         case sessionMoveBatch(targets: [String], window: String?, ControlSessionMove)
         case workspaceMove(target: String?, window: String?, ReorderDirection)
         case workspaceFocus(target: String?, window: String?, String?)
+        case workspaceColor(target: String?, window: String?, hex: String?)
         case sessionFlag(target: String?, window: String?, String?)
         case markSessionSeen(target: String?, window: String?)
         case sessionStatus(target: String?, window: String?, ControlSessionStatusUpdate)
@@ -1677,6 +1717,11 @@ private final class MockControlActions: ControlActions {
 
     func focusWorkspace(_ target: String?, window: String?, mode: String?) -> ControlResponse {
         calls.append(.workspaceFocus(target: target, window: window, mode))
+        return ControlResponse(ok: true)
+    }
+
+    func setWorkspaceColor(_ target: String?, window: String?, hex: String?) -> ControlResponse {
+        calls.append(.workspaceColor(target: target, window: window, hex: hex))
         return ControlResponse(ok: true)
     }
 

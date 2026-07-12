@@ -765,6 +765,33 @@ struct ControlProtocolTests {
         #expect(decoded.focused == nil)
     }
 
+    @Test func workspaceColorRoundTrips() throws {
+        let request = ControlRequest(cmd: .workspaceColor, target: "work",
+                                     args: ControlArgs(window: "w1", color: "#ff8800"))
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.cmd == .workspaceColor)
+        #expect(decoded.args?.color == "#ff8800")
+    }
+
+    @Test func workspaceNodeRoundTripsWithColor() throws {
+        // the read side of workspace.color: a script records a workspace's icon color, changes it, restores it.
+        let ws = ControlWorkspaceNode(id: "w1", name: "work", active: true, color: "#ff8800", sessions: [])
+        let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(workspaces: [ws])))
+        let decoded = try roundTrip(response)
+        #expect(decoded == response)
+        #expect(decoded.result?.tree?.workspaces.first?.color == "#ff8800")
+    }
+
+    @Test func workspaceNodeOmitsColorWhenNil() throws {
+        // no custom color (the theme default) — the key must be omitted, not emitted as null.
+        let ws = ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [])
+        let json = String(data: try JSONEncoder().encode(ws), encoding: .utf8) ?? ""
+        #expect(!json.contains("color"), "a nil color must be omitted from the JSON; got \(json)")
+        let decoded = try JSONDecoder().decode(ControlWorkspaceNode.self, from: Data(json.utf8))
+        #expect(decoded.color == nil)
+    }
+
     @Test func treeRoundTripsWithSidebarMode() throws {
         // the read side of sidebar.mode: the sidebar view mode (tree/flagged) rides the tree top level.
         let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(

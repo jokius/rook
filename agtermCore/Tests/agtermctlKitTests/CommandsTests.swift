@@ -72,6 +72,22 @@ struct CommandsTests {
         #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["workspace", "focus", "sideways"]) }
     }
 
+    @Test func workspaceColorWithTarget() throws {
+        let expected = ControlRequest(cmd: .workspaceColor, target: "9f3c", args: ControlArgs(color: "#ff8800"))
+        #expect(try request(["workspace", "color", "#ff8800", "--target", "9f3c"]) == expected)
+    }
+
+    @Test func workspaceColorClear() throws {
+        let expected = ControlRequest(cmd: .workspaceColor, target: "active", args: ControlArgs(color: "clear"))
+        #expect(try request(["workspace", "color", "clear"]) == expected)
+    }
+
+    @Test func workspaceColorRejectsMalformedHex() {
+        // caught CLI-side by validate(), so a typo fails offline instead of round-tripping to the server
+        #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["workspace", "color", "orange"]) }
+        #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["workspace", "color", "#ff88"]) }
+    }
+
     @Test func sessionNewWithCwdAndWorkspace() throws {
         let expected = ControlRequest(cmd: .sessionNew, args: ControlArgs(cwd: "/tmp", workspace: "ws1"))
         #expect(try request(["session", "new", "--cwd", "/tmp", "--workspace", "ws1"]) == expected)
