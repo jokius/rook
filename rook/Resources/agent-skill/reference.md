@@ -75,9 +75,10 @@ position?, repeats?}` object; `kind` is `image`/`text`/`color` — omitted when 
 (the unseen-notification badge count — raised by `notify`/OSC 9/777, cleared by `session seen` — omitted
 when zero), `fontSize`/`splitFontSize`/`scratchFontSize` (the LIVE font size in points of each pane —
 the read side of `font --pane`; each omitted when that pane isn't realized. `fontSize` tracks the
-default/left target (the main pane, or the promoted split survivor once the primary exits — the same pane
-`font --pane left` writes); only the main pane's size survives a relaunch, so the split/scratch sizes and a
-promoted survivor are live-only — read them back here rather than from the snapshot), and `surfaces` (array
+default/left target (the main pane — including a promoted split survivor, which moves INTO the main slot
+once the primary exits; the same pane `font --pane left` writes); only the main pane's size survives a
+relaunch, so the split/scratch sizes are live-only — read them back here rather than from the snapshot),
+and `surfaces` (array
 of `{id, kind, active, visible}` where `kind` is `left`|`right`|`scratch`|`overlay`).
 The surface `id` is the address for `surface zoom`; hidden-but-alive split/scratch surfaces are included
 so a script can zoom them without changing split/scratch visibility first. Caveat: `active`/`visible`
@@ -209,6 +210,10 @@ All six are read-only projections of GUI state.
   session's scratch terminal even while it is hidden (`session has no scratch terminal` when none opened);
   like `session text`, no `other` value. `--select` realizes the MAIN pane only — a split pane must
   already exist.
+  When a split session's MAIN (left) shell exits, the surviving split pane is PROMOTED into the main slot:
+  the session becomes an ordinary single pane, `tree` reports `split:false`, and it is addressed as the
+  MAIN pane — no `--pane` (or `--pane left`) reaches it, `--pane right` now errors, and a later
+  `session split on` opens a fresh right pane beside it.
 - `session copy [--target] [--window W]` — returns `result.text` with the session's current selection.
   Does NOT touch the system clipboard (pipe the returned text into another `session type`). No/empty
   selection → `no selection` error. Selection is readable on any realized session regardless of focus.

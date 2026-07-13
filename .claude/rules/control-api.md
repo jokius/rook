@@ -565,10 +565,24 @@ paths:
   (and so does `font.*`'s omitted/`left` default — its `right`/`scratch` panes resolve `splitSurface`/`scratchSurface`
   instead, via its own pane switch rather than `surfaceBindingAction`),
   and `addressableSurface` is `surface ?? splitSurface`: identical to `surface` for every ordinary or split
-  session, but falling back to a PROMOTED SPLIT SURVIVOR whose primary shell exited (`closePrimaryPane` nils
-  `surface` and keeps the live shell in `splitSurface`, asserted by `AppStorePaneTests`).
-  Resolving through `surface` alone returned `session not realized` for a session the user was actively typing
-  in. It is deliberately NOT focus-aware (unlike `activeSurface`) — a shown split keeps addressing the main
+  session — INCLUDING a promoted split survivor, which `closePrimaryPane` now MOVES into `surface` (nilling
+  `splitSurface`), so the `?? splitSurface` term is a DEFENSIVE fallback rather than the promotion path it
+  was written for (asserted by `AppStorePaneTests`).
+  **A promoted survivor is the MAIN/left pane, everywhere.** Its primary shell exited, the split pane took
+  over the main slot, and `tree` reports `split:false`, so `session.type`/`session.text` with no `--pane`
+  (or `--pane left`) reach it, `--pane right` errors "session has no split pane", `session.focus` errors,
+  `{AGT_PANE}` reports `left`, and a later `session.split` opens a FRESH right pane beside it.
+  This SUPERSEDES the old contract, where the survivor stayed parked in `splitSurface` and was reachable
+  only as `--pane right` while `tree` already said `split:false` — a self-contradiction under which a plain
+  `session.type` (no `--pane`) returned `session not realized` for a session the user was actively typing in.
+  Scripts written against the old contract (addressing a collapsed session as `--pane right`) must switch to
+  the default/left addressing.
+  The survivor's agent-status tag migrates with it: a `.right` block is re-tagged `.left` at promotion, and
+  `AppStore.setAgentIndicator` COERCES a `.right` tag to `.left` on any session with `!hasSplit` (the
+  promoted shell keeps its baked `ROOK_PANE=right`, so its hook keeps sending `--pane right`) — gated on
+  `hasSplit`, NOT `splitSurface == nil`, so a scripted `session.split` + immediate `session.status --pane
+  right` inside the surface-realization window keeps the correct forward `.right` tag.
+  It is deliberately NOT focus-aware (unlike `activeSurface`) — a shown split keeps addressing the main
   pane, which is what keeps `session.selectall` and its `session.copy` read-back on the SAME surface.
   READ-BACK: neither adds a `ControlSessionNode` field — `session.selectall`'s read-back is `session.copy`
   (reads the resulting selection) and `session.paste`'s is `session.text` (reads the inserted buffer), the

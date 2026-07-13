@@ -111,10 +111,19 @@ paths:
   — `detailPane`'s collapsed branch renders `\.splitSurface` when `splitFocused`,
   else `\.surface` — so reopening restores the two panes in place; nothing is destroyed (`closeSplit`
   only runs when the split shell exits).
-  **Exiting a pane's shell keeps the session, collapsed to the survivor:** the primary's `onExit` is
-  `AppStore.closePrimaryPane` (promotes the split pane to a single non-split session,
-  its cwd promoted to the session's) and the split's is `closeSplitPane` (collapses to the primary,
-  or closes the session if the primary already exited).
+  **Exiting a pane's shell keeps the session, collapsed to the survivor:** the primary's exit runs
+  `AppStore.closePrimaryPane`, which PROMOTES the surviving split pane INTO the main slot — the survivor
+  MOVES from `splitSurface` to `surface` (`promoteToPrimaryPane()` clears its split-role flag, and its
+  cwd/title/foregroundCommand + agent-status `.right` tag migrate up to the main fields), so the session
+  becomes indistinguishable from a fresh single pane (`splitSurface == nil`, `hasSplit == false`,
+  `splitFocused == false`) and is addressed as the MAIN/left pane everywhere.
+  The split's exit runs `closeSplitPane` (collapses to the primary, or closes the session when there is no
+  genuine two-pane split left — which is how a PROMOTED survivor's own exit closes the session instead of
+  leaving a zombie, since it keeps the split factory's `onExit`).
+  Both `onExit`s route through the shared `rookApp.handlePaneExit`, which dispatches on the surface's LIVE
+  role (`view.isSplitPane`), NOT the factory that built it — otherwise a promote → re-split → exit-main
+  sequence fires the survivor's stale `closeSplitPane` and tears down the FRESH right pane.
+  `wireStatusClear` and the split factory's `onFocusChange` read the same live role for the same reason.
   Only a single (non-split) session's exit closes it.
   The collapse re-hosts the survivor (HSplitView → standalone), which drops focus,
   so `GhosttySurfaceView.focusAfterReparent` re-grabs first responder until it sticks past the re-host.
@@ -212,8 +221,9 @@ paths:
   EVERY user-initiated GUI selection now REVEALS the blocked PANE, not just the session: the shared
   `AppActions.revealActiveBlockedPane()` (formerly private, now called on all selection paths) reads the
   landed session's `agentIndicator.statusPane` and focuses that pane — for `right`, the split surface via
-  `focusSplitPane(_:wantSplit: true)` (a FIXED target, UNGATED on `hasSplit`, so a promoted split survivor
-  is still focused, and its `onFocusChange` re-asserts `splitFocused` to win the shown-split re-render race);
+  `focusSplitPane(_:wantSplit: true)` (a FIXED target, gated on `splitSurface != nil`; a promoted survivor
+  has NO split surface and its `.right` tag was re-tagged to `.left` at promotion, so it falls through to
+  `focusActiveSession` as the sole main pane);
   for `scratch`, shows a hidden scratch via `AppStore.toggleScratch` then focuses it;
   for `left`/nil, the main pane; and it is a no-op (plain `focusActiveSession`) for an IDLE session
   (no status set), so ordinary selections are unaffected (the idle gate is what keeps a plain nav to a
