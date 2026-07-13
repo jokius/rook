@@ -146,6 +146,19 @@ paths:
   The filled variant is tree-mode only — the flat flagged view shows the unfilled base icon,
   so a split session still gets the split-rectangle to stay distinguishable;
   only the FILLED flag variant is suppressed there (every row is flagged).
+- **The selected row's pill is BRAND chrome, not the terminal theme's selection color.**
+  `SidebarRowView.drawBackground` fills the row pill with `NSColor.rookGreen` (`#7ece8f`) and
+  `SidebarCellView.setColors` puts `NSColor.rookGraphite` (`#191c20`) on it — the selection pair of the
+  bundled `rook` theme (`rook/Resources/custom-themes/rook`, pinned by `BundledRookThemeTests`), so the
+  selection looks like rook under EVERY theme instead of inheriting whatever the active theme calls a
+  selection.
+  Both constants live in `NSColor+RookHex` (the app target; `rookCore` is CoreGraphics-free and can hold no
+  color).
+  The pill still dims to 0.55 alpha for a background (non-key) window via the `isEmphasized` override.
+  This REPLACED the theme-following pill (`GhosttyApp.terminalSelectionBackgroundColor`, resolved by
+  re-parsing the config sources + theme file); the sidebar was that resolver's only consumer,
+  so it was deleted with it (see [[libghostty]]).
+  An UNSELECTED row still follows the theme foreground — only the selection is brand.
 - **Status row highlight (`blocked`/`completed` wash the whole row).**
   A session whose agent `needsAttention` (`blocked` or `completed` — NEVER `active`,
   which is the steady state and would keep half the sidebar colored) washes its ROW in that status's color:
@@ -160,10 +173,10 @@ paths:
   (`reloadItem`), never `rowViewForItem`.
   Setting `statusTint` invalidates the row's background (`didSet` → the row view's `needsDisplay`), and
   `didAddSubview` repaints when a cell attaches.
-  The wash is drawn FIRST, UNDER the selection pill: a selected row keeps the theme's own selection color
+  The wash is drawn FIRST, UNDER the selection pill: a selected row keeps the plain brand pill
   (its status is on screen anyway, and the glyph still reports it), and `setColors` gives the status color
-  to the text only when UNSELECTED — on the inverted-selection themes (`selection-background == foreground`)
-  a status-colored label over the pill would vanish outright.
+  to the text only when UNSELECTED — a status-colored label over the pill would fight the graphite it must
+  pair with.
   Gated by `AppSettings.statusRowHighlightEnabled` (nil = ON, mirrored into the non-observable
   `GhosttyApp.statusRowHighlightEnabled` by `SettingsModel.applyStatusRowHighlight`), so — like the status
   COLORS — a flip is GLOBAL, invisible to `reconcile`'s per-row `RowContent` diff, and rides

@@ -1,6 +1,13 @@
 import AppKit
 
 extension NSColor {
+    /// Rook's brand pair — the green and the graphite of the bundled `rook` theme
+    /// (`rook/Resources/custom-themes/rook`, whose hexes `BundledRookThemeTests` pins). The sidebar's
+    /// selected row draws its pill in these two REGARDLESS of the terminal theme, so the selection is
+    /// rook chrome rather than whatever the active theme calls a selection.
+    static let rookGreen = NSColor(srgbRed: 0x7E / 255.0, green: 0xCE / 255.0, blue: 0x8F / 255.0, alpha: 1)      // #7ece8f
+    static let rookGraphite = NSColor(srgbRed: 0x19 / 255.0, green: 0x1C / 255.0, blue: 0x20 / 255.0, alpha: 1)   // #191c20
+
     /// Parse a `#RRGGBB` (or bare `RRGGBB`) hex string into an sRGB color. Returns nil for nil or
     /// malformed input, so callers can fall back to a default.
     convenience init?(rookHex hex: String?) {

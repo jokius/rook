@@ -35,23 +35,18 @@ final class SidebarCellView: NSTableCellView {
         }
     }
 
-    /// Color the row text/icon from the terminal theme: a selected row pairs with the selection
-    /// foreground (over the selection-background pill the row draws), or white over the soft wash when
-    /// the theme exposes no selection color; an unselected row uses the theme foreground, icons dimmed.
+    /// Color the row text/icon: a SELECTED row is brand chrome — graphite over the brand-green pill the
+    /// row draws — while an UNSELECTED one follows the terminal theme's foreground, icons dimmed.
     /// A row with an `iconTint` keeps its OWN icon color in both states (at full alpha — a deliberate
     /// signal, not chrome), while the text still tracks the theme.
     /// An UNSELECTED row with a `statusTint` takes the status color for its TEXT instead of the theme
     /// foreground; a SELECTED row does not — the selection pill is drawn OVER the status wash, so the text
-    /// must pair with the pill, and on the inverted-selection themes (`selection-background == foreground`)
-    /// a status-colored label over the pill can vanish outright.
+    /// must pair with the pill.
     /// Driven from the real selection state (not `backgroundStyle`, which AppKit only flips while the
     /// table is first responder): the hosting `SidebarRowView` re-asserts it from its live `isSelected`
     /// on attach and on every selection flip, and the coordinator re-runs it on theme changes.
     func setColors(selected: Bool) {
-        let app = GhosttyApp.shared
-        let color = selected
-            ? (app.terminalSelectionForegroundColor ?? .white)
-            : (app.terminalForegroundColor ?? .labelColor)
+        let color = selected ? .rookGraphite : (GhosttyApp.shared.terminalForegroundColor ?? .labelColor)
         textField?.textColor = selected ? color : (statusTint ?? color)
         imageView?.contentTintColor = iconTint ?? color.withAlphaComponent(selected ? 0.85 : 0.6)
     }
@@ -185,24 +180,20 @@ final class StatusIconView: NSImageView {
     }
 }
 
-/// Row view that draws its own selection pill in `drawBackground`, so the selection is the terminal's
-/// `selection-background` color in every state. The table's `selectionHighlightStyle` is `.none` (set
-/// in `makeNSView`), so AppKit draws nothing of its own — otherwise it paints a gray unemphasized fill
-/// whenever the sidebar isn't first responder (the normal case, since focus lives in the terminal),
-/// which would override a custom `drawSelection`. `isEmphasized` is overridden so the row redraws when
-/// the window's key state changes (the brightness dims for a background window).
+/// Row view that draws its own selection pill in `drawBackground`, in rook's brand green in every
+/// state — the selection is brand chrome, not the terminal theme's own selection color. The table's
+/// `selectionHighlightStyle` is `.none` (set in `makeNSView`), so AppKit draws nothing of its own —
+/// otherwise it paints a gray unemphasized fill whenever the sidebar isn't first responder (the normal
+/// case, since focus lives in the terminal), which would override a custom `drawSelection`.
+/// `isEmphasized` is overridden so the row redraws when the window's key state changes (the brightness
+/// dims for a background window).
 ///
 /// The row view is the single source of truth for the cell's selection tint: `isSelected` (the same
 /// live state the pill draws from) re-tints the hosted `SidebarCellView` whenever AppKit updates it,
 /// and `didAddSubview` tints a cell the moment it attaches. Without this, the pill (drawn live) and
-/// the text color (applied imperatively at cell build) can desync — and on the many themes where
-/// `foreground == selection-background` (the inverted-selection idiom), a stale tint renders the row
-/// text fully invisible.
+/// the text color (applied imperatively at cell build) can desync — and a stale graphite tint on an
+/// unselected row is invisible against a dark theme background.
 final class SidebarRowView: NSTableRowView {
-    /// White-wash fallback opacity (themes with no selection color): brighter for the key window,
-    /// dimmer for a background one.
-    private static let keyAlpha: CGFloat = 0.13
-    private static let inactiveAlpha: CGFloat = 0.07
     /// Agent-status wash opacity: strong enough to read across the sidebar at a glance, light enough to
     /// keep the row text legible on both a light and a dark theme. Dimmer for a background window, like
     /// the selection pill.
@@ -251,19 +242,14 @@ final class SidebarRowView: NSTableRowView {
     override func drawBackground(in dirtyRect: NSRect) {
         super.drawBackground(in: dirtyRect)
         // the status wash goes FIRST, under the selection pill: a selected row reads as selected (its pill
-        // is the theme's own color and must not be tinted), while the glyph still says which status it is.
+        // is the brand green and must not be tinted), while the glyph still says which status it is.
         if let status = statusTint {
             status.withAlphaComponent(isEmphasized ? Self.statusAlpha : Self.statusInactiveAlpha).setFill()
             rowPill().fill()
         }
         guard isSelected else { return }
-        if let selection = GhosttyApp.shared.terminalSelectionBackgroundColor {
-            // the terminal's own selection color; dim it for a background (non-key) window.
-            selection.withAlphaComponent(isEmphasized ? 1 : 0.55).setFill()
-        } else {
-            // no theme selection color: a soft white wash, brighter for the key window.
-            NSColor(white: 1, alpha: isEmphasized ? Self.keyAlpha : Self.inactiveAlpha).setFill()
-        }
+        // the brand green, dimmed for a background (non-key) window.
+        NSColor.rookGreen.withAlphaComponent(isEmphasized ? 1 : 0.55).setFill()
         rowPill().fill()
     }
 

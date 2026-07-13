@@ -13,20 +13,22 @@ paths:
 
 ## libghostty gotchas
 
-- **Chrome colors track the terminal theme; `config_get` can't read the optional `selection-*` keys.**
+- **Chrome colors track the terminal theme — but the SELECTION is brand chrome, not the theme's.**
   The non-terminal chrome (sidebar row text + icons, title-bar text + buttons,
   the bottom add-buttons) uses the theme's colors instead of system label colors:
   `GhosttyApp.resolveThemeColors` reads `background`/`foreground` via `ghostty_config_get` and mirrors
   `terminalForegroundColor` into the views (refreshed on `.rookAppearanceChanged`,
   like `terminalColor`).
-  But `ghostty_config_get` returns the non-optional `background`/`foreground` and **returns false for
-  the optional `selection-background`/`selection-foreground`** (verified:
-  `selBg=false` even when the theme sets them).
-  So the selection colors are resolved by `resolveSelectionColors()` — parsing the same config sources
-  `loadConfig` loads (defaults → `~/.config/ghostty/config` → the rook settings conf,
-  last-wins) for `theme`/explicit `selection-*`, then reading the named theme file under `Bundle.main/ghostty/themes/<name>`.
-  The selected sidebar row draws the theme's `selection-background` pill with `selection-foreground`
-  text (a luminance-contrast black/white fallback when only the background is set).
+  The SELECTED sidebar row is the deliberate exception: it draws rook's brand pill
+  (`NSColor.rookGreen` `#7ece8f` on `.rookGraphite` `#191c20` text — the bundled `rook` theme's own
+  selection pair, see [[sidebar]]) in EVERY theme, so the selection reads as rook and not as whatever the
+  active theme happens to call a selection.
+  This REPLACED a `resolveSelectionColors()` that re-parsed the config sources + the theme file for
+  `selection-background`/`selection-foreground` — needed because `ghostty_config_get` returns the
+  non-optional `background`/`foreground` but **returns false for the optional `selection-*` keys**
+  (verified: `selBg=false` even when the theme sets them).
+  Nothing reads those keys any more, so that whole resolver is gone;
+  if a future feature needs them, this is why it can't just ask `ghostty_config_get`.
   The borderless New-Session `Menu` glyph ignores `foregroundStyle` on its label,
   so it's tinted via `.tint(chromeText)`.
 - **Light/dark theme following is NATIVE — feed the raw dual value, don't pre-resolve.**
@@ -100,7 +102,8 @@ paths:
   also reverts the outline's `backgroundColor` to an OPAQUE `controlBackgroundColor`, so
   `outline.backgroundColor = .clear` is set alongside `scroll.drawsBackground = false` to keep the column
   transparent over the terminal-colored/translucent window backing.
-  The row draws the themed pill in `drawBackground(in:)` for every state,
+  The row draws the BRAND pill in `drawBackground(in:)` for every state (`NSColor.rookGreen`, dimmed to
+  0.55 alpha for a background window; graphite text — see [[sidebar]]),
   and the Coordinator's `refreshSelectionAppearance()` repaints the pills + re-tints the row text on
   selection change (AppKit won't redraw rows on its own with `.none`) and on `.rookAppearanceChanged`.
   **The row view is the single source of truth for the cell's selection tint.**
@@ -108,9 +111,9 @@ paths:
   (`SidebarCellView.setColors`), so the two can desync when a re-tint event is missed —
   the cell builder's `row(forItem:)` can return -1 mid-reload/expand-collapse animation
   (the constant OSC-title `reloadItem` ticks make this window easy to hit),
-  and on the ~1/3 of themes using the inverted-selection idiom (`selection-background == foreground`,
-  e.g. `Ghostty Default Style Dark`) a stale tint renders the row text fully INVISIBLE
-  (white-on-white pill, plus the previously-selected row dark-on-dark).
+  and a stale tint renders the row text INVISIBLE (the selected row's graphite left on an unselected row
+  is dark-on-dark against a dark theme background; before the brand pill this was the same failure in
+  reverse — white-on-white on the ~1/3 of themes using the inverted-selection idiom).
   `SidebarRowView` therefore re-asserts `setColors` from its own live `isSelected`:
   its `didSet` re-tints the hosted cell on every selection flip,
   and `didAddSubview` tints a cell the moment it attaches (superseding the builder's build-time guess).
