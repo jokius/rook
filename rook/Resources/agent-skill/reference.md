@@ -141,8 +141,9 @@ All six are read-only projections of GUI state.
   `clear` restores the default glyph.
   An image file is COPIED into the state dir, so the icon survives you moving or deleting the original —
   which is why the tree reports the copy's path, not the one you passed.
-  **The workspace color applies only to a symbol or an SVG** (both are monochrome templates); a raster
-  image and an emoji keep their own colors, and the color is ignored for them.
+  **The workspace color applies only to a symbol or a MONOCHROME image** (one color over transparency —
+  those render as templates the color can repaint); a colored image of any format and an emoji keep their
+  own colors, and the color is ignored for them.
   Errors: `unknown SF Symbol: <name>` (the name doesn't resolve — so a typo fails instead of silently
   showing the default glyph), `no such image file: <path>`, `unsupported icon image (svg, png, or jpeg)`.
   Read back from the tree workspace node's `icon` + `iconKind`; feeding `icon` straight back restores it.

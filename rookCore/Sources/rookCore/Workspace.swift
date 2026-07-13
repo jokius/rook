@@ -12,7 +12,8 @@ public struct Workspace: Identifiable {
     public var isExpanded: Bool
     /// The sidebar icon's tint as `#rrggbb`, or nil for the theme default. Set from the row's context menu
     /// or `workspace.color`; read back on the `tree` node so a script can record-then-restore it.
-    /// Applies only to a TINTABLE icon (a symbol or an SVG — see `WorkspaceIcon.isTintable`).
+    /// Applies only to an icon that renders as a TEMPLATE — a symbol, or an image whose pixels are one
+    /// color (see `WorkspaceIcon.isMonochrome`); a colored image and an emoji keep their own colors.
     public var colorHex: String?
     /// The sidebar icon (SF Symbol / emoji / image file), or nil for the default workspace glyph.
     public var icon: WorkspaceIcon?

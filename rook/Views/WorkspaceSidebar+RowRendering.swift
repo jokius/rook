@@ -55,13 +55,13 @@ extension WorkspaceSidebar.Coordinator {
             applyBadge(toCell: cell, count: effectiveUnseen(workspace?.unseenCount ?? 0))
             // the workspace's own icon (symbol / emoji / image file), else the default grid glyph — which
             // is also the fallback for an unresolvable symbol or a missing file.
-            let icon = workspace?.icon
-            cell.imageView?.image = WorkspaceIconImage.image(for: icon) ?? workspaceIcon
-            // the workspace's color, but ONLY on an icon it can apply to: a raster image and a color emoji
-            // carry their own colors, so tinting would paint over the picture. The default glyph and a
-            // symbol/SVG are templates, so contentTintColor (applied in setColors) recolors them.
-            let tintable = icon?.isTintable ?? true
-            cell.iconTint = tintable ? NSColor(rookHex: workspace?.colorHex) : nil
+            let image = WorkspaceIconImage.image(for: workspace?.icon) ?? workspaceIcon
+            cell.imageView?.image = image
+            // the workspace's color, but ONLY on an icon it can apply to — and the icon itself is the one
+            // that knows: a TEMPLATE image is a mask contentTintColor (applied in setColors) recolors (the
+            // default glyph, a symbol, a monochrome file), while a colored image and a color emoji carry
+            // their own colors, so tinting would paint over the picture.
+            cell.iconTint = image?.isTemplate == true ? NSColor(rookHex: workspace?.colorHex) : nil
             cell.imageView?.setAccessibilityIdentifier("workspace-icon")
         case .session:
             field.stringValue = rowLabel(forSession: node.id)

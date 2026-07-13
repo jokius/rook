@@ -156,8 +156,8 @@ focused from the tree workspace node's `focused` flag) · `color <#rrggbb|clear>
 sidebar icon; persisted, read back from the tree workspace node's `color`) ·
 `icon <symbol|emoji|path|clear>` (set the workspace's sidebar icon — an SF Symbol name like `hammer.fill`,
 a single emoji, or a path to an svg/png/jpeg, which is copied into the state dir; read back from the tree
-workspace node's `icon` + `iconKind`. The color applies only to a symbol or an SVG — a raster image and an
-emoji keep their own colors).
+workspace node's `icon` + `iconKind`. The color applies only to a symbol or a monochrome image — a colored
+image and an emoji keep their own colors).
 
 **session**
 - `new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--name NAME] [--after SID | --before SID]` —

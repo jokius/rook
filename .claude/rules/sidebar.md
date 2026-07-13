@@ -230,9 +230,20 @@ paths:
   A workspace can replace the default `square.grid.2x2` glyph with an SF Symbol name, a single emoji, or an
   image file (svg/png/jpeg), set from the row's context menu (Icon… → an `NSOpenPanel`; Reset Appearance
   clears icon + color) or with `workspace.icon` (see the Control API rule).
-  **The COLOR applies only to a TINTABLE icon** (`WorkspaceIcon.isTintable`): a symbol and an SVG load as
-  TEMPLATE images, so `contentTintColor` recolors them; a raster image and a color emoji carry their own
-  colors, so `iconTint` is left nil for them — tinting would paint over the picture.
+  **The COLOR applies only to a TEMPLATE icon, and the PIXELS decide — not the file format.**
+  AppKit template rendering keeps only the ALPHA and repaints every visible pixel in `contentTintColor`,
+  so it preserves the picture only when the picture is ONE color.
+  An image is therefore made a template exactly when `WorkspaceIcon.isMonochrome(rgba:)` (host-free, over
+  the raster `WorkspaceIconImage` produces) says every visible pixel shares one color; the row's `iconTint`
+  is then read straight off `NSImage.isTemplate`, so the icon itself is the single source of truth.
+  A colored image and a color emoji keep their own colors — `iconTint` is left nil, since tinting would
+  paint over the picture.
+  This REPLACED an "an SVG is a monochrome vector, so tint it" assumption that was simply false: an SVG
+  whose background is an opaque full-bleed `<rect>` (the norm for a downloaded logo) masked to a SOLID
+  BLOCK of the tint — the sidebar drew an empty rectangle instead of the icon — and a multi-color SVG
+  flattened to a silhouette.
+  A monochrome PNG is now tinted too, which is the same rule read forward (and it is what keeps a black
+  glyph visible on a dark sidebar).
   `WorkspaceIconImage` (app target) resolves a spec to an `NSImage`, memoized by spec: a symbol through the
   existing `rowIcon` factory, a file through `NSImage(contentsOf:)` (an `.svg` loads as an `_NSSVGImageRep`
   that scales vectorially and honors `isTemplate`), an emoji rasterized via `NSAttributedString.draw`.

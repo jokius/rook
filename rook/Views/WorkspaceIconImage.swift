@@ -38,17 +38,48 @@ enum WorkspaceIconImage {
         case .image:
             guard let image = NSImage(contentsOf: URL(fileURLWithPath: icon.value)) else { return nil }
             image.size = size
-            // an SVG is a monochrome vector: as a template it takes the workspace's tint like a symbol.
-            // a raster keeps its own colors — tinting it would paint over the picture.
-            image.isTemplate = icon.isTintable
+            // a MONOCHROME picture (of any format) is a mask in disguise: as a template it takes the
+            // workspace's tint like a symbol. anything else keeps its own colors — a template would repaint
+            // every visible pixel in the tint, flattening a colored icon to a silhouette and one with an
+            // opaque background to a solid block.
+            image.isTemplate = isMonochrome(image)
             return image
         case .emoji:
             return rasterize(emoji: icon.value)
         }
     }
 
+    /// Whether `image` is one color over transparency — the AppKit half of `WorkspaceIcon.isMonochrome`,
+    /// which owns the actual verdict. Rasterizes at 2× the row glyph (the sidebar never draws it bigger,
+    /// and it runs once per spec thanks to the memo), then reads the pixels back through `colorAt`, which
+    /// UN-premultiplies — so an antialiased white icon still reads as white rather than as a gray ramp.
+    private static func isMonochrome(_ image: NSImage) -> Bool {
+        let side = Int(size.width) * 2
+        guard let raster = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side,
+                                            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                            isPlanar: false, colorSpaceName: .deviceRGB,
+                                            bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: raster) else { return false }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        image.draw(in: NSRect(origin: .zero, size: NSSize(width: side, height: side)))
+        NSGraphicsContext.restoreGraphicsState()
+
+        var rgba: [UInt8] = []
+        rgba.reserveCapacity(side * side * 4)
+        for x in 0..<side {
+            for y in 0..<side {
+                guard let color = raster.colorAt(x: x, y: y) else { continue }
+                for component in [color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent] {
+                    rgba.append(UInt8(min(max(component, 0), 1) * 255))
+                }
+            }
+        }
+        return WorkspaceIcon.isMonochrome(rgba: rgba)
+    }
+
     /// A color emoji has no `NSImage` form, so draw the grapheme into one. Never a template — the glyph
-    /// carries its own colors (which is why `WorkspaceIcon.isTintable` is false for it).
+    /// carries its own colors, so the workspace color is not applied to it.
     private static func rasterize(emoji: String) -> NSImage? {
         let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: pointSize)]
         let string = NSAttributedString(string: emoji, attributes: attributes)

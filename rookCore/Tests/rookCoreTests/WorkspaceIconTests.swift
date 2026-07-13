@@ -5,15 +5,24 @@ import Testing
 /// The host-free half of the workspace icon: the spec's tint rule, the raw-argument classifier, and the
 /// state-dir storage (which is what makes an icon survive the user moving the original file).
 struct WorkspaceIconTests {
-    @Test func tintAppliesOnlyToMonochromeVectors() {
-        // a symbol and an SVG load as TEMPLATE images, so the workspace color recolors them...
-        #expect(WorkspaceIcon(kind: .symbol, value: "hammer.fill").isTintable)
-        #expect(WorkspaceIcon(kind: .image, value: "/icons/rocket.svg").isTintable)
-        #expect(WorkspaceIcon(kind: .image, value: "/icons/ROCKET.SVG").isTintable) // extension check is case-insensitive
-        // ...while a raster and a color emoji carry their own colors: tinting would paint over the picture.
-        #expect(!WorkspaceIcon(kind: .image, value: "/icons/logo.png").isTintable)
-        #expect(!WorkspaceIcon(kind: .image, value: "/icons/photo.jpeg").isTintable)
-        #expect(!WorkspaceIcon(kind: .emoji, value: "🚀").isTintable)
+    /// The tint rule: an `.image` may be tinted only when it is ONE color over transparency, because AppKit
+    /// template rendering keeps just the alpha. The format says nothing — these are the pixels that matter.
+    @Test func monochromeDetectionDrivesTheTint() {
+        func pixels(_ colors: [[UInt8]]) -> [UInt8] { colors.flatMap { $0 } } // each is one r,g,b,a pixel
+
+        // one color over transparency — a glyph-like icon, tintable
+        #expect(WorkspaceIcon.isMonochrome(rgba: pixels([[0, 0, 0, 255], [0, 0, 0, 0], [0, 0, 0, 128]])))
+        #expect(WorkspaceIcon.isMonochrome(rgba: pixels([[255, 255, 255, 255], [255, 255, 255, 0]]))) // a WHITE icon too
+        // the antialiasing fringe rounds a single color a little, and an all-but-invisible pixel is ignored
+        #expect(WorkspaceIcon.isMonochrome(rgba: pixels([[0, 0, 0, 255], [8, 8, 8, 200], [255, 0, 0, 4]])))
+        // two colors — a colored icon: a template would flatten it to a silhouette
+        #expect(!WorkspaceIcon.isMonochrome(rgba: pixels([[255, 0, 0, 255], [0, 255, 0, 255]])))
+        // an opaque background behind a dark glyph (the downloaded-logo case): a template masked this to a
+        // SOLID BLOCK of tint — the empty rectangle the sidebar drew instead of the icon
+        #expect(!WorkspaceIcon.isMonochrome(rgba: pixels([[255, 255, 255, 255], [0, 0, 0, 255]])))
+        // nothing visible at all: draw it as-is rather than turn emptiness into a mask
+        #expect(!WorkspaceIcon.isMonochrome(rgba: pixels([[0, 0, 0, 0], [255, 0, 0, 2]])))
+        #expect(!WorkspaceIcon.isMonochrome(rgba: []))
     }
 
     @Test func classifierSeparatesPathsEmojiAndSymbols() {

@@ -1096,10 +1096,13 @@ paths:
   Rendering is `WorkspaceIconImage` (app target, memoized by spec): a symbol via the existing `rowIcon`
   factory, an image via `NSImage(contentsOf:)`, an emoji rasterized into an `NSImage`; anything that fails
   to resolve degrades to the default glyph rather than an empty row.
-  **The workspace COLOR applies only to a TINTABLE icon** (`WorkspaceIcon.isTintable`): a symbol and an SVG
-  load as TEMPLATE images so `contentTintColor` recolors them, while a raster image (PNG/JPEG) and a color
-  emoji carry their own colors — tinting those would paint over the picture, so the color is deliberately
-  ignored there.
+  **The workspace COLOR applies only to a TEMPLATE icon, decided by the PIXELS, not the extension**:
+  a symbol always, and an image only when `WorkspaceIcon.isMonochrome(rgba:)` finds every visible pixel to
+  be one color, since AppKit template rendering keeps only the alpha and repaints the rest in the tint.
+  A colored image (of any format) and a color emoji carry their own colors — tinting those would paint over
+  the picture, so the color is deliberately ignored there.
+  Tinting every SVG on sight was the old rule and it was a bug: an SVG with an opaque background masked to
+  a solid block of tint (an empty rectangle in the sidebar) and a multi-color one to a silhouette.
   Its READ side is `ControlWorkspaceNode.icon` + `iconKind` (`symbol`|`emoji`|`image`, both omitted when
   there is no custom icon), so a script can record the icon and restore it by feeding the value back.
   GUI half: the workspace row's context menu — Icon… (an `NSOpenPanel` limited to svg/png/jpeg) and Reset

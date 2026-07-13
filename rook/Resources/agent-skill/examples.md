@@ -327,8 +327,9 @@ rookctl workspace icon leaf.fill --target a1b2
 rookctl workspace icon "$old" --target a1b2
 ```
 
-The color applies only to a symbol or an SVG (monochrome templates). A PNG/JPEG and an emoji carry their
-own colors, so the color is ignored for them.
+The color applies only to a symbol or a MONOCHROME image (one color over transparency — those render as
+templates the color can repaint). A colored image of any format and an emoji carry their own colors, so the
+color is ignored for them.
 
 ## Expand or collapse the sidebar tree
 

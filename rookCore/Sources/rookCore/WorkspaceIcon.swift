@@ -22,19 +22,6 @@ public struct WorkspaceIcon: Codable, Sendable, Equatable, Hashable {
         self.value = value
     }
 
-    /// Whether the workspace's `colorHex` applies to this icon.
-    ///
-    /// A symbol and an SVG are monochrome vectors — they load as TEMPLATE images, so `contentTintColor`
-    /// recolors them. A raster image (PNG/JPEG) and a color emoji carry their own colors: tinting them
-    /// would paint over the picture, so the color is deliberately ignored there.
-    public var isTintable: Bool {
-        switch kind {
-        case .symbol: true
-        case .emoji: false
-        case .image: WorkspaceIcon.isVectorImage(value)
-        }
-    }
-
     /// Image formats accepted for an icon. SVG is included (and `NSImage` reads it natively, as an
     /// `_NSSVGImageRep` that scales vectorially and honors `isTemplate`), unlike the watermark's
     /// PNG/JPEG-only set — libghostty reads that one, AppKit reads this one.
@@ -44,9 +31,32 @@ public struct WorkspaceIcon: Codable, Sendable, Equatable, Hashable {
         supportedImageExtensions.contains((path as NSString).pathExtension.lowercased())
     }
 
-    /// Whether the image at `path` is a monochrome VECTOR (an SVG) — the tintable half of `.image`.
-    public static func isVectorImage(_ path: String) -> Bool {
-        (path as NSString).pathExtension.lowercased() == "svg"
+    /// Whether every VISIBLE pixel of an un-premultiplied RGBA8 raster carries the SAME color — the one
+    /// case where AppKit TEMPLATE rendering preserves the picture, since a template keeps only the ALPHA
+    /// and repaints every visible pixel in `contentTintColor`.
+    ///
+    /// This is what decides whether the workspace's `colorHex` may tint an `.image` icon. It replaces the
+    /// old "an SVG is a monochrome vector" assumption, which was simply false: an SVG whose background is
+    /// an opaque full-bleed `<rect>` (the norm for a downloaded logo) masked to a SOLID BLOCK of the tint
+    /// — the empty rectangle the sidebar drew instead of the icon — and a multi-color one flattened to a
+    /// silhouette. Format has nothing to do with it; the pixels do.
+    ///
+    /// `alphaFloor` drops all-but-invisible pixels (antialiasing fringe, a stray 1% halo) so they cannot
+    /// out-vote the picture, and `tolerance` absorbs the rounding of a single color through rasterization.
+    public static func isMonochrome(rgba: [UInt8], alphaFloor: UInt8 = 26, tolerance: UInt8 = 16) -> Bool {
+        var lowest: [UInt8] = [.max, .max, .max]
+        var highest: [UInt8] = [.min, .min, .min]
+        var sawVisiblePixel = false
+        for pixel in stride(from: 0, to: rgba.count - 3, by: 4) {
+            guard rgba[pixel + 3] >= alphaFloor else { continue }
+            sawVisiblePixel = true
+            for channel in 0..<3 {
+                lowest[channel] = min(lowest[channel], rgba[pixel + channel])
+                highest[channel] = max(highest[channel], rgba[pixel + channel])
+            }
+        }
+        guard sawVisiblePixel else { return false } // nothing to tint: draw it as-is rather than mask it
+        return (0..<3).allSatisfy { highest[$0] - lowest[$0] <= tolerance }
     }
 
     /// Exactly one emoji grapheme. The single-cluster check rejects `"🚀🚀"`, and the emoji-presentation
