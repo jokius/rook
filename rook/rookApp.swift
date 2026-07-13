@@ -26,6 +26,10 @@ struct rookApp: App {
     /// The plain `WindowGroup`'s scene id, used by `openWindow(id:)` to spawn additional windows.
     private static let windowGroupID = "terminal"
 
+    /// The version paired with rook's `TERM_PROGRAM` identity in every spawned terminal.
+    private static let terminalProgramVersion =
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+
     init() {
         // one-shot import of a pre-rebrand agterm install (state + config), before anything reads either.
         rookApp.migrateLegacyInstall()
@@ -472,8 +476,9 @@ struct rookApp: App {
         return view
     }
 
-    /// The `ROOK_*` environment a tree surface (main / split / overlay / scratch) exposes to its spawned
-    /// shell. The window id comes from the open store that owns the session (split/overlay/scratch inherit it
+    /// The environment a tree surface (main / split / overlay / scratch) exposes to its spawned shell: the
+    /// `ROOK_*` session facts plus rook's app identity (`TERM_PROGRAM`/`TERM_PROGRAM_VERSION`).
+    /// The window id comes from the open store that owns the session (split/overlay/scratch inherit it
     /// via the same session); the workspace from the session's owning workspace; `ROOK_SOCKET` is the path
     /// `ControlServer` will bind (resolved at init, so a launch-window shell that materializes before
     /// `start()` binds still sees it), honoring a test's `ROOK_CONTROL_SOCKET` override. `pane` injects the
@@ -491,13 +496,15 @@ struct rookApp: App {
         }
         return SurfaceEnvironment.session(sessionID: session.id, windowID: windowID,
                                           workspaceID: workspaceID, socketPath: controlServer.resolvedSocketPath,
+                                          programVersion: Self.terminalProgramVersion,
                                           pane: pane)
     }
 
-    /// The `ROOK_*` environment a window's quick terminal exposes — scratch, not in the tree, so it
-    /// carries only `ROOK_ENABLED`, `ROOK_WINDOW_ID`, and `ROOK_SOCKET` (no workspace/session ids).
+    /// The environment a window's quick terminal exposes — scratch, not in the tree, so its `ROOK_*`
+    /// values carry only enabled, window, and socket facts (no workspace/session ids), plus app identity.
     @MainActor
     func quickTerminalEnv(for windowID: WindowInfo.ID) -> [String: String] {
-        SurfaceEnvironment.quickTerminal(windowID: windowID, socketPath: controlServer.resolvedSocketPath)
+        SurfaceEnvironment.quickTerminal(windowID: windowID, socketPath: controlServer.resolvedSocketPath,
+                                         programVersion: Self.terminalProgramVersion)
     }
 }

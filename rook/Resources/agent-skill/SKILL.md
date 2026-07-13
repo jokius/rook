@@ -44,6 +44,9 @@ the control channel is available:
 - `ROOK_WINDOW_ID` / `ROOK_WORKSPACE_ID` — the owning window / workspace UUIDs.
 - `ROOK_SOCKET` — the absolute path to the control socket this app bound.
 
+Every spawned shell also identifies its host terminal as `TERM_PROGRAM=rook` (with the app version in
+`TERM_PROGRAM_VERSION`), overriding the `ghostty` identity embedded libghostty would otherwise report.
+
 The quick terminal is scratch (not in the tree), so it only gets `ROOK_ENABLED`, `ROOK_WINDOW_ID`,
 and `ROOK_SOCKET` (no session/workspace ids).
 
