@@ -88,6 +88,10 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.rook.app
         PRODUCT_NAME: rook
+        # The name macOS shows (Dock, menu bar, Finder, ⌘-Tab). Info.plist takes it as a variable so the
+        # Debug/dev build can call itself "Rook Dev" and be told apart from the deployed daily driver at a
+        # glance — they are separate apps (distinct bundle ids), but both used to render as plain "Rook".
+        BUNDLE_DISPLAY_NAME: Rook
         INFOPLIST_FILE: rook/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: rook/rook.entitlements
@@ -111,6 +115,9 @@ targets:
         # set ROOK_STATE_DIR to avoid touching the real app-support state.)
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.rook.app.debug
+          # …and its own display name, so the dev instance is obvious in the Dock and ⌘-Tab next to the
+          # deployed "Rook". Cosmetic only — the bundle id above is what actually separates them.
+          BUNDLE_DISPLAY_NAME: Rook Dev
     postBuildScripts:
       # build the rookctl CLI and bundle it at Contents/MacOS/rookctl so the
       # in-app "Install Command Line Tool" can symlink it into PATH. Runs before

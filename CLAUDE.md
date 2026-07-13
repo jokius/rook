@@ -24,8 +24,11 @@ surface ownership, and the C-boundary concurrency contract before changing the b
   Read the upstream commit for its INTENT (`scripts/upstream.sh <sha>` / `diff <sha>`),
   then re-apply that intent by hand against our names — never resolve the conflict by inventing behavior
   that exists in neither side.
-- The working directory is still called `agterm` on disk; only the folder name lags, the contents are
-  Rook. It gets renamed separately.
+- The working directory is `~/myProjects/rook` (it used to lag behind the rename as `agterm`).
+  A stale SwiftPM `.build` or Xcode `DerivedData` from the old path fails with a ModuleCache
+  path mismatch (`compiled with module cache path …/agterm/…`) — `swift package clean` in `rookCore/`
+  fixes it, and a `make dev` launched from the new path must be re-registered with LaunchServices
+  (`lsregister -f -R -trusted <app>`) or the Dock keeps showing the old cached name.
 
 ## Working norms
 
@@ -190,6 +193,12 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   For APP-code changes, do NOT quit the deployed app (see the next note — it is the user's live daily
   driver); Debug builds carry a DISTINCT bundle id (`com.rook.app.debug`,
   project.yml per-config) so they run as a SEPARATE instance alongside the deployed Release.
+  They also carry a distinct DISPLAY NAME — the Debug config sets `BUNDLE_DISPLAY_NAME = Rook Dev`
+  (Release keeps `Rook`; `Info.plist` takes both `CFBundleName`/`CFBundleDisplayName` from that variable),
+  so the dev instance is tellable from the daily driver in the Dock and ⌘-Tab.
+  A dev instance is only truly isolated when the DAILY DRIVER is the deployed RELEASE: running the Debug
+  build itself as the daily terminal gives it the same `com.rook.app.debug` identity as `make dev`, and two
+  instances of one identity fight (the second can come up with no scene and no control socket).
   The XCUITests no longer collide either: the `.debug` bundle id means XCUITest's launch-time terminate
   hits only the `.debug` instance, not the deployed `com.rook.app`,
   and they still use an isolated `ROOK_STATE_DIR`/socket.

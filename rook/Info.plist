@@ -7,9 +7,9 @@
 	<key>CFBundleExecutable</key>
 	<string>rook</string>
 	<key>CFBundleName</key>
-	<string>Rook</string>
+	<string>$(BUNDLE_DISPLAY_NAME)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Rook</string>
+	<string>$(BUNDLE_DISPLAY_NAME)</string>
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
