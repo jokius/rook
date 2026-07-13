@@ -244,11 +244,12 @@ paths:
   rules, then remaining targets resolve inside that same store so one command never mutates multiple windows.
   The top-level `target` also carries the first explicit batch target so a new CLI talking to a still-running
   pre-batch server degrades to a named session instead of accidentally acting on `active`.
-- **Command catalog (63 commands):**
+- **Command catalog (64 commands):**
   - `tree`
   - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.color`/`workspace.icon`
   - `session.new`/`session.close`/`session.select`/`session.rename`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.flag`/`session.seen`/`session.background`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
   - `surface.zoom`
+  - `dashboard`
   - `quick`/`quick.type`/`quick.text`
   - `sidebar`/`sidebar.mode`/`sidebar.expand`/`sidebar.collapse`
   - `notify`
@@ -812,6 +813,38 @@ paths:
   (4) round-trip in `ControlProtocolTests` (incl. `treeRoundTripsWithZoomedSurface`/`…OmitsZoomedSurfaceWhenNil`)
   + `TerminalZoomTests` + the e2e `ControlSurfaceZoomUITests` (incl. the tree read-back and the
   `--window`-scoped error paths).
+  `dashboard` opens a view-only GRID of live session surfaces over the window (up to `DashboardLayout.maxCells`
+  = 9 cells, laid out `ceil(sqrt(n))`), or `--close`s the open one.
+  The cell unit is a session+PANE: a non-split session is one cell, a split session expands to TWO (its
+  `.primary` and `.split` panes), so the 9-cell cap counts PANES — the expansion + cap live in the host-free
+  `AppStore.dashboardMembers(for:limit:)`, shared by the control arm and the GUI toggle, and any dropped pane
+  is REPORTED in `result.text` alongside any unresolved id (never a silent drop).
+  Args: positional ids (`ControlArgs.targets`), `--mru` (fill from the window's recency instead of naming ids
+  — resolved app-side via `AppStore.recentSessions(limit:)`, so it takes no ids), `--font-size N` (absolute
+  points) XOR `--auto-size` (scale to the grid), `--close`, and the global `--window`.
+  The dispatcher (`ControlDispatcher.dispatchDashboard`) owns every flag rule host-free — `--close` takes
+  nothing else, `--mru` excludes explicit ids, `--font-size` excludes `--auto-size`, a non-finite/non-positive
+  size errors — and builds the `DashboardFontMode`; the app-side `ControlServer.setDashboard`
+  (`ControlServer+Dashboard.swift`) owns target resolution, the pane expansion, the surface reparent, and the
+  per-window `DashboardController` via `DashboardControllerRegistry`.
+  Zoom and the dashboard are MUTUALLY EXCLUSIVE (opening one closes the other), and while it is open the
+  window swaps its full titlebar for a stripped `dashboardTitlebar` (exit button only) so no chrome button can
+  steal first responder from the grid's key-catcher and strand Esc.
+  Our Markdown/file-tree panels stay MOUNTED but non-interactive behind it (the existing `deckInteractive`
+  gate covers hit-testing) — they are NOT dismissed.
+  GUI half: `BuiltinAction.dashboard` (⌘⇧D) → `AppActions.toggleDashboard()` (opens the MRU set, auto-sized),
+  the Navigate ▸ Dashboard menu item, and the ⌃⇧P palette's "Dashboard".
+  READ-BACK: four `tree` TOP-LEVEL fields, all LIVE (resolved app-side per request from the window's
+  `DashboardController`, `tree`-only like `zoomedSurface` since the keyboard-driven grid bypasses the command
+  path): `dashboardMembers` (the pane refs `<session-uuid>:left`/`:right` in grid order),
+  `dashboardHighlighted` (the cell Enter would jump into), `dashboardFontSize` (the applied points), and
+  `dashboardFontMode` (`auto`|`fixed`|`untouched`) — all omitted when no dashboard is open.
+  Four-point keep-in-sync audit: (1) `case dashboard` + `ControlArgs.close`/`fontSize`/`autoSize`/`mru` + the
+  four `ControlTree` fields in `ControlProtocol.swift`, (2) the `.dashboard` dispatcher arm →
+  `ControlActions.setDashboard` (app-side `ControlServer+Dashboard`) + the four read-back closures in
+  `buildTree`, (3) the `dashboard` subcommand (`validate()`-guarded) in `rookctlKit`, (4) round-trip in
+  `ControlProtocolTests` + `ControlDispatcherDashboardTests` + `DashboardLayoutTests`/`DashboardControllerTests`
+  + `AppStoreDashboardTests` + CLI mapping in `CommandsTests` + the e2e `DashboardUITests`.
   Mode-bearing commands (`session.split`/`quick`) compute the delta against current state so `on`/`off`/`show`/`hide`
   are idempotent, and an unknown mode is an error.
   `quick`'s visibility reads back on `ControlTree.quickVisible` at the tree TOP level — LIVE, resolved

@@ -258,6 +258,27 @@ paths:
   pane(s) VISIBLE behind its opaque panel.
   (`overlayPanel` is per-session in the eager deck, so its program runs regardless of which session is
   active — see the surface-lifecycle note.)
+- **The dashboard grid REPARENTS live surfaces into cells — the deck must YIELD them, and a cell must be
+  view-only.**
+  A dashboard cell hosts the member session's REAL `GhosttySurfaceView` (never a screenshot), and an NSView
+  lives in exactly one host at a time, so `WindowContentView.deckHostsSurface` returns false for any surface
+  an open dashboard owns (`dashboardHostsSurface`) — the deck slot renders the same `Color.clear` placeholder
+  the terminal-zoom yield uses, keeping the deck entry's SHAPE constant (the NSSplitView-overrun rule) while
+  every non-member surface stays mounted and running behind the grid.
+  Zoom and the dashboard are mutually exclusive, so at most one yield is ever active.
+  **A cell must refuse input at the AppKit level, not just in SwiftUI:** `.allowsHitTesting(false)` does NOT
+  stop AppKit routing a click to the real NSView (the same reason `deckVisible` gates drag registration), so
+  `GhosttySurfaceView.viewOnly` makes `hitTest` return nil and `acceptsFirstResponder` false — and its `didSet`
+  RESIGNS first responder when it is set, because a surface that carried first responder in from the deck (the
+  focused pane when the grid opened) keeps it across a reparent-within-window and would eat the key-catcher's
+  keystrokes.
+  **The cell font is a TRANSIENT per-surface override, not a session font:** `dashboardFontOverride` composes
+  through the same `applyWatermarkFromSession` config overlay (preferred over `session.fontSize`), is re-emitted
+  by `reapplySessionConfigIfNeeded` across a config reload, and is dropped by `reportFontSize` so a CELL_SIZE
+  round-trip can never persist the grid's size into the session.
+  Clearing it fires a CELL_SIZE report ~0.4 s LATER, so `pendingFontRestore` remembers the size the surface
+  reverts to and swallows exactly that report — otherwise restoring the grid font would PIN a
+  default-following session's `session.fontSize` and stop it tracking a later Settings change.
 - **Window overlays sit BELOW the custom titlebar, NOT as a body-level `.overlay` (transparent-titlebar-scrim
   rule).** The quick terminal, command palettes, and Ctrl-Tab switcher render via `windowOverlayLayer`
   — a ZStack sibling INSIDE the body's root ZStack, inset by `titlebarHeight` (`.padding(.top, titlebarHeight)`)

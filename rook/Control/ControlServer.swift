@@ -377,7 +377,7 @@ final class ControlServer {
                 .sessionOverlayResult, .sessionBackground, .sessionText, .quick, .quickType, .quickText,
                 .windowNew, .windowList, .windowSelect,
                 .windowClose, .windowRename, .windowDelete, .windowResize, .windowMove, .windowZoom,
-                .windowFullscreen, .restoreClear:
+                .windowFullscreen, .restoreClear, .dashboard:
             return ControlResponse(ok: false, error: "control dispatcher did not handle \(request.cmd.rawValue)")
         case .debugAppearance:
             return setDebugAppearance(args: request.args)
@@ -438,7 +438,11 @@ final class ControlServer {
         // the projected window owns its quick terminal; find its id by store identity to read the live
         // QuickTerminalController.isVisible (a nil controller — never opened, or the window is tearing
         // down — reads as not visible).
-        let windowID = library.openIDs().first { library.store(for: $0) === store }
+        let windowID = library.windowID(for: store)
+        // the projected window's dashboard controller (nil until WindowContentView registers it), read
+        // LIVE for the four dashboard read-backs — tree-only, since the keyboard-driven dashboard bypasses
+        // the command path and a cached copy would go stale (same reason as zoomedSurface/quickVisible).
+        let dashboard = DashboardControllerRegistry.shared.controller(for: windowID)
         return store.controlTree(
             foreground: { session in
                 (session.surface as? GhosttySurfaceView).flatMap {
@@ -454,7 +458,27 @@ final class ControlServer {
             splitFontSize: { ($0.splitSurface as? GhosttySurfaceView)?.currentFontSize() },
             scratchFontSize: { ($0.scratchSurface as? GhosttySurfaceView)?.currentFontSize() },
             quickVisible: { windowID.flatMap { QuickTerminalRegistry.shared.controller(for: $0)?.isVisible } ?? false },
-            zoomedSurface: { windowID.flatMap { TerminalZoomRegistry.shared.controller(for: $0)?.target?.controlID } }
+            zoomedSurface: { windowID.flatMap { TerminalZoomRegistry.shared.controller(for: $0)?.target?.controlID } },
+            dashboardMembers: {
+                guard let dashboard, dashboard.isOpen else { return nil }
+                return dashboard.members.map(\.controlRef)
+            },
+            dashboardHighlighted: {
+                guard let dashboard, dashboard.isOpen else { return nil }
+                return dashboard.highlighted?.controlRef
+            },
+            dashboardFontSize: {
+                guard let dashboard, dashboard.isOpen else { return nil }
+                return dashboard.appliedFontSize
+            },
+            dashboardFontMode: {
+                guard let dashboard, dashboard.isOpen else { return nil }
+                switch dashboard.fontMode {
+                case .auto: return "auto"
+                case .fixed: return "fixed"
+                case .untouched: return "untouched"
+                }
+            }
         )
     }
 

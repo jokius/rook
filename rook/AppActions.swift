@@ -37,6 +37,12 @@ final class AppActions {
         frontmostTerminalZoom?.target != nil
     }
 
+    /// The frontmost window's dashboard controller (each window owns its own), resolved through the same
+    /// `activeWindowID` accessor as `frontmostQuickTerminal`/`frontmostTerminalZoom`. Nil when no window is open.
+    var frontmostDashboard: DashboardController? {
+        DashboardControllerRegistry.shared.controller(for: library.activeWindowID)
+    }
+
     /// Whether terminal zoom is active in the window OWNING this session. The right gate for the
     /// session-addressed focus paths: control commands resolve sessions across ALL windows, so gating
     /// them on the FRONTMOST window's zoom would silently drop the focus step for an un-zoomed
@@ -46,9 +52,12 @@ final class AppActions {
         return TerminalZoomRegistry.shared.controller(for: windowID)?.target != nil
     }
 
-    /// While terminal zoom is active, the UI is modal: keyboard/menu/palette actions must not mutate the
-    /// hidden deck. The zoom toggle, socket commands, and macOS window controls remain separate paths.
-    var uiActionsEnabled: Bool { !terminalZoomActive }
+    /// While terminal zoom OR the dashboard grid is active, the UI is modal: keyboard/menu/palette actions
+    /// must not mutate the deck behind it. The zoom/dashboard toggles, socket commands, and macOS window
+    /// controls remain separate paths (they never gate on this), so the user is never trapped and can always
+    /// dismiss the modal. `frontmostDashboard?.isOpen` mirrors `terminalZoomActive`, resolved on the frontmost
+    /// window like the zoom target.
+    var uiActionsEnabled: Bool { !terminalZoomActive && !(frontmostDashboard?.isOpen ?? false) }
 
     /// Set briefly while a rename is being started, so the focus-restore that runs when a palette
     /// or the quick terminal closes doesn't steal first responder from the inline rename field.
@@ -695,6 +704,29 @@ final class AppActions {
     /// (quick, overlay, scratch, split, or primary); the owning window renders it above all chrome.
     func toggleTerminalZoom() { frontmostTerminalZoom?.toggle() }
 
+    /// Toggle the frontmost window's dashboard grid (⌘⇧D / the palette / the menu). The GUI open has no
+    /// explicit member list, so it fills the grid from the window's most-recently-used sessions (the same
+    /// set `dashboard --mru` uses) at the `.auto` font size; closing returns focus to the active session.
+    /// Zoom and the dashboard are mutually exclusive, so a zoomed window can't open one.
+    func toggleDashboard() {
+        guard !terminalZoomActive else { return }
+        guard let dashboard = frontmostDashboard else { return }
+        if dashboard.isOpen {
+            dashboard.close()
+            focusActiveSession()
+            return
+        }
+        guard let store else { return }
+        let members = store.dashboardMRUMembers(limit: DashboardLayout.maxCells)
+        guard !members.isEmpty else { return }
+        dashboard.open(members: members, fontMode: .auto)
+        // set the applied font size synchronously (the SwiftUI onChange applies the surface overrides a runloop
+        // turn later), resolving through the same DashboardFontMode seam as ControlServer.setDashboard so the
+        // GUI and control opens land on the identical auto size.
+        let base = settingsModel?.settings.fontSize ?? DashboardLayout.ghosttyDefaultFontSize
+        dashboard.setAppliedFontSize(DashboardFontMode.auto.appliedFontSize(memberCount: members.count, base: base))
+    }
+
     /// Toggle native macOS full screen for the key window (the frontmost terminal window). Native full
     /// screen matches the green traffic-light button and moves the window to its own Space; a second
     /// invocation exits. Shared by the View ▸ Toggle Full Screen menu item (⌃⌘F), the ⌃⇧P palette, the
@@ -871,6 +903,9 @@ final class AppActions {
     /// and re-focuses the session on its own hide, so don't fight it here.
     func focusActiveSession(attempt: Int = 0) {
         if terminalZoomActive { return }
+        // the open dashboard is modal: its key-catcher owns first responder, and the active session's
+        // surface is a view-only grid cell, so grabbing focus for it would strand the grid's Esc.
+        if dashboardActive { return }
         if renamePending { return }
         // never grab terminal focus while a command palette is open — the palette owns the keyboard.
         // this also kills the retry loop the instant a palette (re)opens, so the action-palette "Select

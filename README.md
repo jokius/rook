@@ -152,6 +152,8 @@ Rook arranges terminals into a small hierarchy. These are the only terms you nee
 
 **Terminal zoom.** Zoom fills the whole window with one terminal surface — a pane, the scratch, an overlay, or the quick terminal — hiding the sidebar and collapsing the title bar to a slim strip that keeps the traffic lights and an exit button. Cmd+Shift+Return toggles it on the active surface (rebindable as `toggle_terminal_zoom`; the exit button, ⌘W, and View ▸ Toggle Terminal Zoom all leave it). It is a view mode, not a layout change: entering closes transient chrome (an open palette or search), and exiting restores split ratios, focus, and visibility exactly as they were. Everything else keeps running behind the zoomed surface, and a script can zoom any surface by id with `rookctl surface zoom`. Distinct from macOS window zoom and full screen, which size the window itself.
 
+**Dashboard.** For watching several agents or builds at once, the dashboard shows sessions' live output side by side in a grid (laid out `ceil(sqrt(n))`), overlaid on the window. The cell unit is a session+pane: a non-split session is one cell, and a split session shows as two cells — its left/primary and right/split panes. It is view-only — no cell takes input; the keyboard navigates a highlight between cells with the arrow keys, Enter jumps into the highlighted session and focuses that exact pane (and closes the grid), and Esc closes it. It is opened over the control channel with `rookctl dashboard <ids…>` — or with `rookctl dashboard --mru` to fill the grid from the window's most-recently-used sessions instead of naming ids — and closed with `--close` (or Enter/Esc). The most-recently-used grid also has a built-in opener: **⌘⇧D** (or **Navigate ▸ Dashboard**, or the command palette's **Dashboard**) toggles it, auto-sized, so the recent-sessions view is one keystroke away without a script. Cell fonts can be sized absolutely with `--font-size` or scaled to the grid with `--auto-size`; the nine-cell cap counts panes, so a set whose panes exceed nine is capped with the drop reported, and `--window` picks a window (default frontmost). The dashboard and terminal zoom are mutually exclusive. While it is open the title bar strips down to an exit button, so nothing behind the grid can steal its keyboard.
+
 **Markdown preview.** Cmd-click a Markdown file in the terminal — a `plan.md` an agent just wrote, a `README.md` a build printed — and it opens rendered in a preview panel on the right of the session, instead of bouncing you to Finder or an editor. Rook renders it itself (headings, lists, code blocks, quotes, links, GFM tables), so nothing is launched, and the panel watches the file: an agent rewriting the plan re-renders it live. The panel is per session, its width is remembered per window, and the open file survives a restart. Links inside the document work by the same rules — a `[plan](./plan.md)` cross-link re-targets the panel, a web link opens in the browser. Close it with the ✕ in the header or View ▸ Close Markdown Preview (there is no "open" menu item — a preview needs a file, so it starts from a click or from `rookctl session markdown open <path>`). Images, syntax highlighting inside code blocks, and task-list checkboxes are not rendered.
 
 **Workspace.** A workspace is a named group of sessions for one project or context, for example "work" or "personal". Sessions belong to a workspace and can move between workspaces while still running, keeping their shell and scrollback. There is always at least one workspace.
@@ -190,7 +192,7 @@ The theme picker (View ▸ Select Theme…, or the action palette) previews each
 
 `rook` can be driven from a script over a local unix-domain socket through a companion CLI, `rookctl`. This is for personal scripting — fire-and-forget commands that manage workspaces and sessions, inject text, and invoke control actions. There is no terminal-output streaming and no event subscription.
 
-The sections below cover the common cases. All 63 commands, with every argument, return value, and error, are documented in the **[Command reference](https://rook.app/commands)**.
+The sections below cover the common cases. All 64 commands, with every argument, return value, and error, are documented in the **[Command reference](https://rook.app/commands)**.
 
 The app bundles `rookctl` inside `rook.app`. The easiest way to put it on your PATH is **Help ▸ Install Command Line Tool…**, which symlinks the bundled binary into `/usr/local/bin` (the first entry in macOS's default PATH). When that directory is user-writable it installs silently; otherwise it asks once for an administrator password.
 
@@ -243,6 +245,8 @@ rookctl quick toggle                           # toggle the quick terminal (show
 rookctl quick type 'ls -la'$'\n'               # type into the frontmost window's quick terminal (or --stdin); quick text reads it back
 rookctl surface zoom                           # fill the window with the active terminal surface (show|hide|toggle)
 rookctl surface zoom show --target "surface:$ROOK_SESSION_ID:right"  # zoom a specific surface by id (ids in tree --json)
+rookctl dashboard "$a" "$b" "$c" --auto-size   # view-only grid; a split session is two cells, capped at 9 panes (--font-size N | --auto-size; --close)
+rookctl dashboard --mru --auto-size            # ...or fill it from the window's most-recently-used sessions (no ids)
 rookctl font inc                               # increase the session's (main pane's) font size
 rookctl font dec --pane right                   # shrink just the split pane's font (--pane left|right|scratch)
 rookctl theme set --light "Builtin Light" --dark Dracula  # set the light/dark theme slots (--dark none turns following off)
@@ -332,7 +336,7 @@ The format is line-based with two verbs. Blank lines and lines starting with `#`
 
 ```
 # rebind a built-in to a single chord (mods joined by +; no leader sequences for built-ins)
-map cmd+shift+d   toggle_split
+map cmd+shift+l   toggle_split
 map ctrl+shift+k  command_palette
 
 # define custom commands ("name" shows in the palette; chord is optional)

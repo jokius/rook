@@ -215,6 +215,55 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
         didSet { updateDropRegistration() }
     }
 
+    /// View-only mode: the surface is rendered but takes NO mouse or keyboard input (the dashboard grid
+    /// cell). SwiftUI's `.allowsHitTesting(false)` does NOT stop AppKit routing a click to this real NSView
+    /// (the same reason `deckVisible` gates drag registration — AppKit's hit resolution bypasses SwiftUI),
+    /// so a click would reach `mouseDown` and grab first responder, defeating the view-only dashboard and
+    /// stealing the keyboard from its key-catcher. When set, `hitTest` returns nil (clicks fall through to
+    /// the SwiftUI cell overlay) and the surface refuses first responder, so keystrokes never reach it.
+    /// `TerminalView` sets it; the dashboard cell turns it on and the deck slot turns it back off on the
+    /// same reparent.
+    var viewOnly = false {
+        didSet {
+            guard viewOnly, !oldValue else { return }
+            // acceptsFirstResponder=false only blocks NEW grabs — a surface that carried first responder in
+            // from the deck (the focused split pane when the dashboard opened) keeps it across the
+            // reparent-within-window, so keystrokes reach the cell and defeat the dashboard's key-catcher.
+            // Resign it here; once view-only, nothing can re-grab it, so the key-catcher owns the keyboard.
+            if let window, window.firstResponder === self { window.makeFirstResponder(nil) }
+        }
+    }
+
+    /// Transient dashboard font size in points that overrides `session.fontSize` for this surface while it
+    /// is hosted in a dashboard grid cell; nil = not overriding. The composer prefers it,
+    /// `reapplySessionConfigIfNeeded` re-emits it across a config reload, and `reportFontSize` won't persist
+    /// it (so a CELL_SIZE round-trip can't write the transient size into `session.fontSize`). Writing it
+    /// re-composes the surface config — a value shrinks the cell's font, nil rebuilds from the session model.
+    var dashboardFontOverride: Double? {
+        didSet {
+            applyWatermarkFromSession()
+            // a SET override (-> value) can't strand a revert report — reportFontSize's
+            // `dashboardFontOverride == nil` guard drops its CELL_SIZE report while the override is active
+            // — so just drop any pending restore.
+            guard dashboardFontOverride == nil, let cleared = oldValue else { pendingFontRestore = nil; return }
+            // CLEARING the override reverts the surface to session.fontSize (the app default when nil). that
+            // fires a CELL_SIZE report ~0.4s LATER (async), long after any same-runloop latch would clear.
+            // when session.fontSize is nil, persisting that report would PIN the session to the default and
+            // stop it following a later Settings change. remember the size the surface reverts to so
+            // reportFontSize consumes THAT report without persisting. only arm when the font actually changes
+            // — an override equal to the target emits no report and would leak the flag onto a later zoom.
+            let target = session?.fontSize ?? GhosttyApp.shared.baseFontSize
+            pendingFontRestore = abs(cleared - target) > 0.5 ? target : nil
+        }
+    }
+
+    /// The font size (points) the surface reverts to when `dashboardFontOverride` is CLEARED — the value
+    /// the async CELL_SIZE report for that revert will carry. Set in the override's `didSet`, consumed by
+    /// `reportFontSize`, which drops the matching report WITHOUT persisting so restoring the dashboard grid
+    /// font never pins a default-following session's `session.fontSize`. State (not a one-runloop latch), so
+    /// it survives the ~0.4s gap before the report arrives.
+    var pendingFontRestore: Double?
+
     /// Register the file/text drag types only while this surface is the on-screen deck pane; unregister
     /// otherwise, so an eagerly-realized background surface is not a drag target and a drop can only reach
     /// the visible pane. Called from `deckVisible`'s didSet and once from `createSurface` (didSet does not
@@ -448,7 +497,11 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
         // a session carrying a background watermark (set earlier on a never-shown session, or restored from
         // a snapshot) applies it now that the surface exists — covering deferred-size creation, the eager
         // deck, and relaunch. No-op for the sessionless overlay/scratch/quick surfaces.
-        if session?.backgroundWatermark != nil { applyWatermarkFromSession() }
+        // ALSO re-applies a standalone `dashboardFontOverride` (a dashboard member whose surface realizes
+        // AFTER the dashboard set the transient font): `applyWatermarkFromSession` honors
+        // `dashboardFontOverride ?? session.fontSize`, so without this the late-realized cell renders at the
+        // default font. Mirrors `reapplySessionConfigIfNeeded`.
+        if session?.backgroundWatermark != nil || dashboardFontOverride != nil { applyWatermarkFromSession() }
         // an overlay surface with its own background color (session.overlay.open --background-color) applies
         // it here too — the overlay is sessionless, so the watermark path above skips it.
         if overlayBackgroundColorHex != nil { applyOverlayBackgroundColor() }
@@ -639,7 +692,15 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
 
     // MARK: - First responder
 
-    override var acceptsFirstResponder: Bool { true }
+    override var acceptsFirstResponder: Bool { !viewOnly }
+
+    /// In view-only mode (a dashboard grid cell) refuse hit-testing so a click passes THROUGH to the SwiftUI
+    /// cell overlay (highlight/enter) instead of reaching `mouseDown` and grabbing first responder. AppKit
+    /// routes clicks to this real NSView regardless of SwiftUI `.allowsHitTesting(false)`, so the block must
+    /// live here.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        viewOnly ? nil : super.hitTest(point)
+    }
 
     /// Deliver the LEFT click that reactivates a background/inactive window straight to the surface (a
     /// "first mouse") instead of AppKit swallowing it just to raise the window. Without this, clicking a

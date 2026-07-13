@@ -22,6 +22,9 @@ extension WindowContentView {
             quickTerminalOverlay
             commandPaletteOverlay
             sessionSwitcherOverlay
+            // the dashboard is the topmost window overlay: opening it closes the three above (mirrors the
+            // zoom lifecycle), so ordering only settles the empty case, but it renders last for clarity.
+            dashboardOverlay
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

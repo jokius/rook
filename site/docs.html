@@ -734,6 +734,27 @@
                   from macOS window zoom and full screen, which size the window itself.
                 </p>
               </div>
+              <div
+                style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 20px 22px"
+              >
+                <div
+                  style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 14px; color: #7ece8f; margin-bottom: 8px"
+                >
+                  Dashboard <span style="color: #6b727a">⇧⌘D</span>
+                </div>
+                <p style="font-size: 15px; line-height: 1.6; color: #949ba4; margin: 0">
+                  Watch several agents or builds at once: sessions' live output in one grid overlaid on the window. The cell unit
+                  is a session+pane — a non-split session is one cell, a split session is two (its left and right panes), capped at
+                  nine cells. It is view-only — no cell takes input; the arrow keys move a highlight, Enter jumps into the
+                  highlighted session and focuses that exact pane, and Esc closes. <strong>⇧⌘D</strong> (or Navigate ▸ Dashboard,
+                  or the command palette) opens it auto-sized from the window's most-recently-used sessions; a script picks the
+                  members with <code style="color: #e6e1d7">rookctl dashboard &lt;ids…&gt;</code> or
+                  <code style="color: #e6e1d7">rookctl dashboard --mru</code>, sizes the cells with
+                  <code style="color: #e6e1d7">--font-size</code> / <code style="color: #e6e1d7">--auto-size</code>, and closes with
+                  <code style="color: #e6e1d7">--close</code>. While it is open the title bar strips to an exit button. Mutually
+                  exclusive with terminal zoom.
+                </p>
+              </div>
             </div>
           </section>
 
@@ -1053,7 +1074,7 @@
               "
             >
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 0">
-                Looking for the full list? All 63 commands, with every argument, return value, and error, live on the
+                Looking for the full list? All 64 commands, with every argument, return value, and error, live on the
                 <a href="/commands" style="color: #7ece8f; font-weight: 500">Command reference →</a>
               </p>
             </div>

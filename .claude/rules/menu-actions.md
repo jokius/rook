@@ -177,6 +177,22 @@ paths:
   split-rectangle (`rectangle.split.2x1.fill`) while the split is shown side-by-side, and a half-filled
   glyph naming the visible pane once the split is collapsed to one pane
   (`rectangle.lefthalf.filled` = primary, `rectangle.righthalf.filled` = split pane, driven by `splitFocused`).
+- **Dashboard grid (⌘⇧D).**
+  `BuiltinAction.dashboard` (`defaultChord` ⌘⇧D — expressible, so pure-`defaultChord`-driven) drives
+  `AppActions.toggleDashboard()`, which opens a VIEW-ONLY grid of the frontmost window's most-recently-used
+  sessions (`AppStore.dashboardMRUMembers`, auto-sized) and closes an open one.
+  It is a real Navigate ▸ Dashboard menu item (reading `equivalent(for: .dashboard)`) plus a ⌃⇧P palette
+  "Dashboard" entry — the same three surfaces as every other action.
+  The grid is MODAL: `uiActionsEnabled` now gates on `!terminalZoomActive && !(frontmostDashboard?.isOpen ?? false)`,
+  so keyboard/menu/palette actions can't mutate the deck behind it, and the menu items mirror that with a
+  `modalActive` `.disabled` — EXCEPT the Dashboard toggle itself, which stays zoomed-only so ⌘⇧D is always the
+  escape hatch that closes it.
+  `focusActiveSession` and `focusSplitPane` gain the matching guards (`dashboardActive` /
+  `dashboardActive(for:)`, in `AppActions+Focus.swift`): the grid's key-catcher owns first responder, so a
+  focus move into a hidden deck surface would steal the keyboard from it.
+  Zoom and the dashboard are mutually exclusive.
+  The control half is the `dashboard` command (see the Control API catalog) — the GUI open is the `--mru`
+  set at `--auto-size`, so the two land on the identical grid.
 - `Close Session` is ⌘W (terminal-style).
   `AppActions.closeActiveSession()` first dismisses a focus-stealing cover in z-order — the frontmost
   window's quick terminal (`hide`), else the active session's open overlay (`closeOverlay`,

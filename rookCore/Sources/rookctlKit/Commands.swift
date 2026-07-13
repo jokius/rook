@@ -90,7 +90,8 @@ public struct Rookctl: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "rookctl",
         abstract: "Drive rook over its control socket.",
-        subcommands: [Tree.self, Workspace.self, Session.self, Surface.self, Window.self, Quick.self, Sidebar.self, Notify.self, Font.self, Keymap.self, Config.self, Theme.self, Restore.self]
+        subcommands: [Tree.self, Workspace.self, Session.self, Surface.self, Dashboard.self, Window.self, Quick.self,
+                      Sidebar.self, Notify.self, Font.self, Keymap.self, Config.self, Theme.self, Restore.self]
     )
 
     public init() {}

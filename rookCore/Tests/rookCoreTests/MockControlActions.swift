@@ -39,6 +39,7 @@ final class MockControlActions: ControlActions {
         case sessionFocus(target: String?, window: String?, String?)
         case sessionResize(target: String?, window: String?, ControlSplitResize)
         case surfaceZoom(target: String?, window: String?, ControlToggleMode)
+        case dashboard(targets: [String], window: String?, close: Bool, fontMode: DashboardFontMode, mru: Bool)
         case font(target: String?, window: String?, pane: String?, String)
         case keymapReload
         case configReload
@@ -104,6 +105,7 @@ final class MockControlActions: ControlActions {
     var nextSessionBackgroundResponse = ControlResponse(ok: true)
     var nextSessionTextResponse = ControlResponse(ok: true)
     var nextSurfaceZoomResponse = ControlResponse(ok: true)
+    var nextDashboardResponse = ControlResponse(ok: true)
     var nextWindowNewResponse = ControlResponse(ok: true)
     var nextWindowListResponse = ControlResponse(ok: true)
     var nextWindowSelectResponse = ControlResponse(ok: true)

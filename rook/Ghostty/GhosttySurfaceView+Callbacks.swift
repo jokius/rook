@@ -237,7 +237,8 @@ extension GhosttySurfaceView {
         guard let surface, let session else { return }
         let resolvedImagePath = WatermarkRenderer.materialize(session.backgroundWatermark, sessionID: session.id)
         let overlay = WatermarkConfig.overlayText(watermark: session.backgroundWatermark,
-                                                  resolvedImagePath: resolvedImagePath, fontSize: session.fontSize,
+                                                  resolvedImagePath: resolvedImagePath,
+                                                  fontSize: dashboardFontOverride ?? session.fontSize,
                                                   windowOpacity: GhosttyApp.shared.windowOpacity)
         guard let config = GhosttyApp.shared.configWithOverlay(overlay) else {
             NSLog("watermark: per-surface config build failed for session %@", session.id.uuidString)
@@ -259,7 +260,8 @@ extension GhosttySurfaceView {
     /// before the broadcast, so only a watermark re-applies there — the appearance-flip reload skips the
     /// reset, and this is what carries each session's zoom across the flip.
     func reapplySessionConfigIfNeeded() {
-        guard session?.backgroundWatermark != nil || session?.fontSize != nil else { return }
+        guard session?.backgroundWatermark != nil || session?.fontSize != nil
+                || dashboardFontOverride != nil else { return }
         applyWatermarkFromSession()
     }
 
@@ -306,9 +308,19 @@ extension GhosttySurfaceView {
 
     func reportFontSize() {
         // Already on the main actor (the CELL_SIZE callback hops via DispatchQueue.main.async).
+        // While a dashboard font override is active, don't persist: it would write the transient dashboard
+        // size into session.fontSize.
+        guard dashboardFontOverride == nil else { return }
         // currentFontSize reads the surface's live font size; nil means libghostty hasn't resolved one
         // yet, so skip it. The store no-ops a same-value write.
         guard let size = currentFontSize() else { return }
+        // clearing the override reverts the surface font and fires its own CELL_SIZE report ~0.4s later
+        // (see dashboardFontOverride.didSet): drop the one whose size matches the reverted-to value so a
+        // default-following session isn't pinned, then clear the flag so a later genuine zoom persists.
+        if let pending = pendingFontRestore {
+            pendingFontRestore = nil
+            if abs(size - pending) <= 0.5 { return }
+        }
         onFontSizeChange?(size)
     }
 

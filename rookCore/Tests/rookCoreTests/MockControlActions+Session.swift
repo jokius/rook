@@ -95,6 +95,12 @@ extension MockControlActions {
         return nextSurfaceZoomResponse
     }
 
+    func setDashboard(targets: [String], window: String?, close: Bool,
+                      fontMode: DashboardFontMode, mru: Bool) -> ControlResponse {
+        calls.append(.dashboard(targets: targets, window: window, close: close, fontMode: fontMode, mru: mru))
+        return nextDashboardResponse
+    }
+
     func typeSession(_ target: String?, window: String?,
                      options: ControlSessionTypeOptions) async -> ControlResponse {
         calls.append(.sessionType(target: target, window: window, options))

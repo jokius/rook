@@ -3,6 +3,25 @@ import AppKit
 import SwiftUI
 
 extension AppActions {
+    /// Whether the frontmost window's dashboard grid overlay is open. Like a zoom or an open palette, the
+    /// dashboard is modal and its key-catcher owns first responder, so `focusActiveSession` must not grab
+    /// the active session's surface while it is up (that surface is a view-only grid cell).
+    var dashboardActive: Bool {
+        DashboardControllerRegistry.shared.controller(for: library.activeWindowID)?.isOpen == true
+    }
+
+    /// Whether the dashboard overlay is open in the window OWNING this session — the session-scoped twin of
+    /// the frontmost `dashboardActive`, mirroring `terminalZoomActive(for:)`. The right gate for
+    /// `focusSplitPane`, whose callers (⌃1/⌃2, ⌘D, the control `session.focus --pane`) can target a session
+    /// in ANY window: while that window's dashboard is up its key-catcher owns first responder, and a
+    /// NON-member deck surface behind the modal is NOT view-only, so grabbing first responder for it would
+    /// steal keystrokes from the catcher into a hidden terminal. Gates on the session's window, not the
+    /// frontmost one, for the same cross-window reason as `terminalZoomActive(for:)`.
+    func dashboardActive(for session: Session) -> Bool {
+        guard let windowID = library.windowID(forSession: session.id) else { return false }
+        return DashboardControllerRegistry.shared.controller(for: windowID)?.isOpen == true
+    }
+
     /// Move first responder to the split (right) pane on open, or the primary on close.
     /// Re-asserts over a short window because the split surface materializes a beat after the
     /// toggle and the HSplitView collapse churns the primary view. While a full-coverage surface
@@ -31,6 +50,7 @@ extension AppActions {
         // gate on the SESSION's window, not the frontmost one: this path is cross-window (the control
         // channel focuses sessions in background windows), where the frontmost window's zoom is irrelevant.
         if terminalZoomActive(for: session) { return }
+        if dashboardActive(for: session) { return }
         // the quick terminal is a window-level cover above the session; while it's up it owns focus, so
         // don't move first responder to a pane behind it (its own hide restores the session). The caller
         // has already set `splitFocused`, so the right pane shows once the quick terminal is dismissed.

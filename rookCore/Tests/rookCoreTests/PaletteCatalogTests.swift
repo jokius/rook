@@ -28,6 +28,7 @@ struct PaletteCatalogTests {
             "Focus Workspace",
             "Find…",
             "Quick Terminal",
+            "Dashboard",
             "Toggle Full Screen",
             "Increase Font Size",
             "Decrease Font Size",
@@ -49,7 +50,7 @@ struct PaletteCatalogTests {
     }
 
     @Test func catalogHasTheExpectedStaticCommandCount() {
-        #expect(PaletteCommand.allCases.count == 41)
+        #expect(PaletteCommand.allCases.count == 42)
     }
 
     @Test func idsRoundTripThroughRawValue() {
