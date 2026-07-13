@@ -1,0 +1,118 @@
+import Foundation
+@testable import rookCore
+
+/// The `ControlActions` double every dispatcher test drives: it records each call and returns a stubbed
+/// response, so `ControlDispatcher` can be exercised with no app host.
+///
+/// `ControlActions` has one method per control command, so the mock grows with the catalog — its witnesses
+/// are therefore split by command family (`+Session`, `+Workspace`, `+Window`, `+App`) rather than living in
+/// the test file, which was within three lines of the 2000-line test budget. A new command adds its `Call`
+/// case here and its witness to the matching family file.
+@MainActor
+final class MockControlActions: ControlActions {
+    enum Call: Equatable {
+        case tree(window: String?)
+        case sessionNew(ControlSessionCreateOptions)
+        case sessionSelect(target: String?, window: String?)
+        case sessionGo(window: String?, SessionNavigation)
+        case sessionClose(target: String?, window: String?)
+        case sessionCloseBatch(targets: [String], window: String?)
+        case sessionRename(target: String?, window: String?, String)
+        case sessionReveal(target: String?, window: String?)
+        case workspaceNew(window: String?, String?)
+        case workspaceSelect(target: String?, window: String?)
+        case workspaceRename(target: String?, window: String?, String)
+        case workspaceDelete(target: String?, window: String?)
+        case sessionMove(target: String?, window: String?, ControlSessionMove)
+        case sessionMoveBatch(targets: [String], window: String?, ControlSessionMove)
+        case workspaceMove(target: String?, window: String?, ReorderDirection)
+        case workspaceFocus(target: String?, window: String?, String?)
+        case workspaceColor(target: String?, window: String?, hex: String?)
+        case workspaceIcon(target: String?, window: String?, icon: WorkspaceIcon?)
+        case sessionFlag(target: String?, window: String?, String?)
+        case markSessionSeen(target: String?, window: String?)
+        case sessionStatus(target: String?, window: String?, ControlSessionStatusUpdate)
+        case sessionSplit(target: String?, window: String?, String?)
+        case sessionScratch(target: String?, window: String?, String?, command: String?)
+        case sessionFileTree(target: String?, window: String?, String?, path: String?)
+        case sessionMarkdown(target: String?, window: String?, ControlToggleMode, path: String?)
+        case sessionFocus(target: String?, window: String?, String?)
+        case sessionResize(target: String?, window: String?, ControlSplitResize)
+        case surfaceZoom(target: String?, window: String?, ControlToggleMode)
+        case font(target: String?, window: String?, pane: String?, String)
+        case keymapReload
+        case configReload
+        case notify(target: String?, window: String?, title: String?, body: String)
+        case themeSet(String?)
+        case themeList
+        case sidebarVisibility(ControlToggleMode)
+        case sidebarViewMode(ControlSidebarViewMode)
+        case expand(window: String?)
+        case collapse(window: String?)
+        case quick(String?)
+        case quickType(text: String)
+        case quickText(all: Bool, lines: Int?)
+        case sessionType(target: String?, window: String?, ControlSessionTypeOptions)
+        case sessionCopy(target: String?, window: String?)
+        case sessionPaste(target: String?, window: String?)
+        case sessionSelectAll(target: String?, window: String?)
+        case sessionSearch(target: String?, window: String?, text: String?, to: String?)
+        case overlayOpen(target: String?, window: String?, ControlSessionOverlayOpenOptions)
+        case overlayClose(target: String?, window: String?)
+        case overlayResize(target: String?, window: String?, sizePercent: Int?)
+        case overlayResult(target: String?, window: String?)
+        case sessionBackground(target: String?, window: String?, ControlSessionBackgroundOptions)
+        case sessionText(target: String?, window: String?, ControlSessionTextOptions)
+        case windowNew(String?)
+        case windowList
+        case windowSelect(target: String?)
+        case windowClose(target: String?)
+        case windowRename(target: String?, String)
+        case windowDelete(target: String?)
+        case windowResize(target: String?, width: Int, height: Int)
+        case windowMove(target: String?, x: Int, y: Int, display: Int?)
+        case windowZoom(target: String?)
+        case windowFullscreen(target: String?)
+        case restoreClear
+    }
+
+    var calls: [Call] = []
+    var nextTreeResponse = ControlResponse(ok: false, error: "tree not stubbed")
+    var nextSessionNewResponse = ControlResponse(ok: true)
+    var nextSidebarVisibilityResponse = ControlResponse(ok: true)
+    var nextSidebarViewModeResponse = ControlResponse(ok: true)
+    var nextExpandResponse = ControlResponse(ok: true)
+    var nextCollapseResponse = ControlResponse(ok: true)
+    var nextFontResponse = ControlResponse(ok: true)
+    var nextNotifyResponse = ControlResponse(ok: true)
+    var nextKeymapResponse = ControlResponse(ok: true)
+    var nextConfigResponse = ControlResponse(ok: true)
+    var nextThemeSetResponse = ControlResponse(ok: true)
+    var nextThemeListResponse = ControlResponse(ok: true)
+    var nextQuickResponse = ControlResponse(ok: true)
+    var nextQuickTypeResponse = ControlResponse(ok: true)
+    var nextQuickTextResponse = ControlResponse(ok: true)
+    var nextSessionTypeResponse = ControlResponse(ok: true)
+    var nextSessionCopyResponse = ControlResponse(ok: true)
+    var nextSessionPasteResponse = ControlResponse(ok: true)
+    var nextSessionSelectAllResponse = ControlResponse(ok: true)
+    var nextSessionSearchResponse = ControlResponse(ok: true)
+    var nextOverlayOpenResponse = ControlResponse(ok: true)
+    var nextOverlayCloseResponse = ControlResponse(ok: true)
+    var nextOverlayResizeResponse = ControlResponse(ok: true)
+    var nextOverlayResultResponse = ControlResponse(ok: true)
+    var nextSessionBackgroundResponse = ControlResponse(ok: true)
+    var nextSessionTextResponse = ControlResponse(ok: true)
+    var nextSurfaceZoomResponse = ControlResponse(ok: true)
+    var nextWindowNewResponse = ControlResponse(ok: true)
+    var nextWindowListResponse = ControlResponse(ok: true)
+    var nextWindowSelectResponse = ControlResponse(ok: true)
+    var nextWindowCloseResponse = ControlResponse(ok: true)
+    var nextWindowRenameResponse = ControlResponse(ok: true)
+    var nextWindowDeleteResponse = ControlResponse(ok: true)
+    var nextWindowResizeResponse = ControlResponse(ok: true)
+    var nextWindowMoveResponse = ControlResponse(ok: true)
+    var nextWindowZoomResponse = ControlResponse(ok: true)
+    var nextWindowFullscreenResponse = ControlResponse(ok: true)
+    var nextRestoreClearResponse = ControlResponse(ok: true)
+}

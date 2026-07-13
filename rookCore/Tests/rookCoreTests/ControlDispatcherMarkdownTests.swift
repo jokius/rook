@@ -71,11 +71,3 @@ struct ControlDispatcherMarkdownTests {
         #expect(actions.calls.isEmpty)
     }
 }
-
-extension MockControlActions {
-    func markdownSession(_ target: String?, window: String?, mode: ControlToggleMode,
-                         path: String?) -> ControlResponse {
-        calls.append(.sessionMarkdown(target: target, window: window, mode, path: path))
-        return ControlResponse(ok: true)
-    }
-}
