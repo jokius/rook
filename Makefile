@@ -1,7 +1,7 @@
 # rook tasks — a thin front door over scripts/*.sh (the scripts stay the source of truth).
 # Run `make` (or `make help`) to list targets.
 
-INSTALL_DIR := $(HOME)/Applications
+INSTALL_DIR := /Applications
 RELEASE_APP := build/DerivedData/Build/Products/Release/rook.app
 
 .DEFAULT_GOAL := help
@@ -30,7 +30,7 @@ dev: ## debug build + relaunch an ISOLATED dev instance (FRESH=1 to wipe its sta
 release: ## release build, no launch (scripts/build.sh)
 	./scripts/build.sh
 
-deploy: release ## release build + copy to ~/Applications
+deploy: release ## release build + copy to /Applications (same dir the cask/DMG installs to)
 	rm -rf "$(INSTALL_DIR)/rook.app"
 	cp -R "$(RELEASE_APP)" "$(INSTALL_DIR)/rook.app"
 	@echo "installed $(INSTALL_DIR)/rook.app"

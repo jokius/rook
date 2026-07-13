@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and (re)launch an ISOLATED dev instance, side by side with the deployed ~/Applications/rook.app.
+# Build and (re)launch an ISOLATED dev instance, side by side with the deployed /Applications/rook.app.
 #
 # The Debug build already carries its own bundle id (com.rook.app.debug), so it is a separate app to
 # LaunchServices. State and the control socket, however, are PATH-based, not bundle-id-derived — without

@@ -116,7 +116,7 @@ surface ownership, and the C-boundary concurrency contract before changing the b
 - `scripts/build.sh` — same but Release, no launch.
 - `cd rookCore && swift test` — run the host-free unit tests (`scripts/test.sh` wraps this).
 - `Makefile` — a thin front door over the scripts: `make prep`/`build` (Debug,
-  no launch)/`run`/`release`/`deploy` (Release build + copy to `~/Applications`)/`test`/`lint`/`dist VERSION=x.y.z [PUBLISH=1]`
+  no launch)/`run`/`release`/`deploy` (Release build + copy to `/Applications`)/`test`/`lint`/`dist VERSION=x.y.z [PUBLISH=1]`
   (the `release.sh` DMG)/`clean`; a bare `make` lists them.
   The scripts stay the source of truth — only `build`, `deploy`, and `lint` carry their own recipe.
 - `make lint` runs `swiftlint lint --strict` over the tree, configured by `.swiftlint.yml` at the repo
@@ -177,14 +177,14 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   To actually test a rebuild, fully quit the running app first (then `open`,
   or launch `…/Debug/rook.app` directly / `open -n`); otherwise visual verification runs against the
   old build and a real fix looks like it failed.
-- **A `make deploy`'d copy in `~/Applications` SHADOWS the dev build — for the CLI,
-  the hooks, AND the app.** Once Rook is installed via `make deploy` (Release → `~/Applications/rook.app`),
+- **A `make deploy`'d copy in `/Applications` SHADOWS the dev build — for the CLI,
+  the hooks, AND the app.** Once Rook is installed via `make deploy` (Release → `/Applications/rook.app`),
   the Help-menu installers run off that copy and point `/usr/local/bin/rookctl` and the agent-status
   hooks' baked `ROOKCTL` (in `~/.config/rook/agent-status/rook-agent-status.sh`) at it.
   (Check before assuming — a machine may have no deployed copy at all,
   in which case the PATH CLI and the hooks simply aren't installed.)
   So once deployed, a bare `rookctl …` on PATH, the agent-status hooks,
-  AND a plain launch/activate (LaunchServices resolves `com.rook.app` to `~/Applications`) all
+  AND a plain launch/activate (LaunchServices resolves `com.rook.app` to `/Applications`) all
   hit the DEPLOYED build — NOT whatever you just rebuilt into `build/DerivedData`.
   When iterating on `rookctl` or the hook scripts, the change is therefore NOT exercised by the PATH
   CLI / the hooks until you either (a) invoke the fresh binary by full path — `build/DerivedData/Build/Products/Debug/rook.app/Contents/MacOS/rookctl …`
@@ -202,11 +202,11 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   The XCUITests no longer collide either: the `.debug` bundle id means XCUITest's launch-time terminate
   hits only the `.debug` instance, not the deployed `com.rook.app`,
   and they still use an isolated `ROOK_STATE_DIR`/socket.
-- **NEVER kill or relaunch a deployed `~/Applications/rook.app` (or a still-installed `agterm.app`) —
+- **NEVER kill or relaunch a deployed `/Applications/rook.app` (or a still-installed `agterm.app`) —
   assume it is the user's REAL, in-use daily terminal with LIVE sessions.** BANNED: `pkill rook` / `pkill -x rook`,
   `osascript -e 'tell application "rook" to quit'`, and ANY quit-then-relaunch of the deployed app
   (including the quit+`open` after `make deploy`).
-  After `make deploy` the Release build is COPIED into `~/Applications`,
+  After `make deploy` the Release build is COPIED into `/Applications`,
   but the RUNNING instance keeps the old code until the USER relaunches it on their own schedule (so
   their live sessions survive) — just report it's installed; do NOT relaunch it.
   For dev-build UI acceptance / socket probes, open a SEPARATE ISOLATED instance that coexists with the
