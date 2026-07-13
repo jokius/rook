@@ -33,4 +33,39 @@ struct TerminalTextTests {
     @Test func emptyStaysEmpty() {
         #expect(TerminalText.sanitized("") == "")
     }
+
+    @Test(arguments: [
+        ("\u{2733} Implement the parser", "Implement the parser"), // ✳ — Claude Code at rest
+        ("\u{2733}\u{FE0F} Implement the parser", "Implement the parser"), // with the emoji variation selector
+        ("\u{280B} Thinking…", "Thinking…"), // ⠋ — a braille spinner frame
+        ("\u{2839} Running tests", "Running tests"), // a different frame collapses to the SAME title
+        ("\u{2733}  double space", "double space"),
+        ("\u{273B} starry", "starry"),
+    ])
+    func stripsTheLeadingAgentMarker(_ raw: String, _ expected: String) {
+        #expect(TerminalText.withoutAgentMarker(raw) == expected)
+    }
+
+    @Test(arguments: [
+        "konayre@Mac: ~/myProjects/rook", // an SSH / prompt title
+        "* wildcard build", // ASCII asterisk is NOT a marker — a title may legitimately start with one
+        "🚀 deploy", // an emoji title is left alone
+        "\u{2733}no-space", // no separator after the marker: not the agent's format, so hands off
+        "\u{2733}", // a bare marker with no text: nothing to fall back to, keep it
+        "\u{2733} ", // marker + whitespace only
+        "make test",
+        "",
+    ])
+    func leavesAnOrdinaryTitleAlone(_ raw: String) {
+        #expect(TerminalText.withoutAgentMarker(raw) == raw)
+    }
+
+    @Test func isIdempotent() {
+        let once = TerminalText.withoutAgentMarker("\u{2733} Implement the parser")
+        #expect(TerminalText.withoutAgentMarker(once) == once)
+    }
+
+    @Test func stripsOnlyAtTheStart() {
+        #expect(TerminalText.withoutAgentMarker("rename \u{2733} to star") == "rename \u{2733} to star")
+    }
 }

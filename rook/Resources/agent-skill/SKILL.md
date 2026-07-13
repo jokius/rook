@@ -123,7 +123,9 @@ Run `rookctl <area> <cmd> --help` for exact flags. Full detail in **reference.md
 
 **tree** — print the workspace/session tree (`--json` for structured). Each session node carries
 `foreground`/`splitForeground` (the live argv of each pane's foreground process, omitted when the pane
-is at its shell prompt) — i.e. what each pane is currently running — `status` (the agent-status set
+is at its shell prompt) — i.e. what each pane is currently running — `agent` (the coding agent detected in
+the focused pane: `claude`|`codex`, omitted otherwise — observed from the process, not reported by the
+agent, and distinct from `status`, which the agent's own hooks set), `status` (the agent-status set
 via `session status`: `active`|`completed`|`blocked`, omitted when idle), `statusPane` (which pane set
 that status: `left` (main) | `right` (split) | `scratch`, from `session status --pane`, omitted when
 unset or idle), `statusBlink`/`statusColor` (the status glyph's `--blink` flag and `--color` `#rrggbb`

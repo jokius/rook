@@ -136,6 +136,11 @@ struct rookApp: App {
                     // total (the same Session.unseenCount the sidebar pills track, summed across windows).
                     DockBadgeController.shared.library = library
                     DockBadgeController.shared.start()
+                    // detect which coding agent each session's focused pane runs (claude/codex), so the
+                    // sidebar row shows its logo. The app's only repeating timer — libghostty has no
+                    // child-spawn action to subscribe to; see AgentMonitor.
+                    AgentMonitor.shared.library = library
+                    AgentMonitor.shared.start()
                     // surface keymap parse errors / conflicts loaded at SettingsModel init (too early to
                     // post then — before notification registration above). Only on the launch window:
                     // `hasReopened` is still false here for the first window's `.task` (reopenWindows()

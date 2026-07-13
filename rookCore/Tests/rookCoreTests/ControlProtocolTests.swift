@@ -427,6 +427,23 @@ struct ControlProtocolTests {
         #expect(node?.splitForeground == ["tail", "-f", "/x"])
     }
 
+    @Test func treeSessionNodeRoundTripsWithAgent() throws {
+        let session = ControlSessionNode(id: "s1", name: "fix the parser", cwd: "/tmp", active: true,
+                                         split: false, foreground: ["claude"], agent: "claude")
+        let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(
+            workspaces: [ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [session])])))
+        let decoded = try roundTrip(response)
+        #expect(decoded == response)
+        #expect(decoded.result?.tree?.workspaces.first?.sessions.first?.agent == "claude")
+    }
+
+    @Test func treeSessionNodeOmitsAgentWhenNil() throws {
+        // a pane running anything but a coding agent reports no agent — the key must be omitted, not null.
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false)
+        let json = String(data: try JSONEncoder().encode(session), encoding: .utf8) ?? ""
+        #expect(!json.contains("agent"), "a nil agent must be omitted from the JSON; got \(json)")
+    }
+
     @Test func treeSessionNodeOmitsForegroundWhenNil() throws {
         // a pane at its prompt has no foreground command — the keys must be omitted, not emitted as null.
         let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false)

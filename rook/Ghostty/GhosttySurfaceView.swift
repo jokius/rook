@@ -373,10 +373,10 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
         // `oscTitle`/`splitTitle` are observed, so the sidebar row and window title refresh live. Like
         // applyPwd, this deliberately does NOT save(): OSC set-title re-fires on every prompt redraw.
         //
-        // Strip control characters from the OSC 0/1/2 title first: it flows unquoted into a /bin/sh -c
-        // line via {AGT_SESSION_NAME}, so a newline (an sh -c command separator) must never survive; a
-        // real title has no control chars.
-        let title = TerminalText.sanitized(rawTitle)
+        // Strip control characters first (the title flows unquoted into a /bin/sh -c line via {AGT_SESSION_NAME},
+        // where a newline is a command separator), then a coding agent's progress marker — the sidebar carries the
+        // agent as a LOGO, and collapsing every spinner frame to one title lets the guard below swallow the re-emits.
+        let title = TerminalText.withoutAgentMarker(TerminalText.sanitized(rawTitle))
 
         // Guard on a real value change so an equal re-emit doesn't notify observers and churn the sidebar.
         if isSplitPane {

@@ -81,8 +81,12 @@ extension WorkspaceSidebar.Coordinator {
             // view every row is flagged, so the fill marker would be noise.
             let showSplitIcon = session?.hasSplit == true
             let flagged = store.sidebarMode == .tree && session?.flagged == true
-            cell.imageView?.image = iconForSession(split: showSplitIcon, flagged: flagged)
+            let agent = session?.agentKind
+            cell.imageView?.image = iconForSession(agent: agent, split: showSplitIcon, flagged: flagged)
             cell.imageView?.setAccessibilityIdentifier("session-icon")
+            // the detected agent, so a UI test can assert the row switched to its logo (an NSImage is not
+            // itself accessibility-observable) — the `StatusIconView` idiom.
+            cell.imageView?.setAccessibilityValue(agent?.rawValue ?? "")
         }
         // text/icon colors track the terminal theme; a selected row uses the selection foreground.
         // this build-time tint is a first guess — row(forItem:) can miss (-1) while the row map is in
@@ -101,10 +105,21 @@ extension WorkspaceSidebar.Coordinator {
         cell.badge.count = count
     }
 
-    /// The leading icon for a session row: the split-rectangle when split, the plain terminal
-    /// otherwise, each swapped to its filled variant when `flagged`. The filled variant is
-    /// tree-mode only (the caller passes `flagged: false` in the flat flagged view).
-    private func iconForSession(split: Bool, flagged: Bool) -> NSImage? {
+    /// The leading icon for a session row: a running coding agent's LOGO wins outright; otherwise the
+    /// split-rectangle when split, the plain terminal when not, each swapped to its filled variant when
+    /// `flagged` (tree-mode only — the caller passes `flagged: false` in the flat flagged view).
+    ///
+    /// The agent takes precedence over BOTH the split and the flagged variants, so while an agent runs its
+    /// row reports the agent and not those two — deliberate: which agent is working is the thing you scan the
+    /// sidebar for, and the split/flag state is still on the row's context menu, the title bar's split glyph,
+    /// and the flagged view. It also keeps the icon set at four symbols + two logos instead of an 8-way
+    /// matrix of filled/split logo variants that don't exist as artwork.
+    private func iconForSession(agent: AgentKind?, split: Bool, flagged: Bool) -> NSImage? {
+        switch agent {
+        case .claude: return claudeIcon
+        case .codex: return codexIcon
+        case nil: break
+        }
         switch (split, flagged) {
         case (true, true): return flaggedSplitSessionIcon
         case (true, false): return splitSessionIcon

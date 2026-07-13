@@ -2,6 +2,8 @@
 paths:
   - "rook/Views/WorkspaceSidebar*.swift"
   - "rook/Views/SidebarRowViews.swift"
+  - "rook/Ghostty/AgentMonitor.swift"
+  - "rookCore/Sources/rookCore/AgentKind.swift"
   - "rook/Views/SidebarRenameController.swift"
   - "rookCore/Sources/rookCore/SidebarDrop.swift"
   - "rookCore/Sources/rookCore/SidebarMode.swift"
@@ -168,6 +170,41 @@ paths:
   `.rookAppearanceChanged` → the Coordinator's `reapplyStatusRows()` sweep (which re-applies the glyph,
   the tint, and the text color on every visible session row; it was `reapplyStatusGlyphs` before the wash).
   Settings ▸ Agent Status ▸ "Highlight blocked and completed rows"; `resetAgentStatus()` clears it back on.
+- **Agent logo (`Session.agentKind`) — the row icon while a coding agent runs.**
+  A session whose FOCUSED pane runs `claude` or `codex` swaps its leading icon to that agent's LOGO
+  (`AgentClaude`/`AgentCodex` in `rook/Assets.xcassets` — the simple-icons marks, CC0, vector + template so
+  `setColors` tints them exactly like the SF Symbols).
+  The agent WINS over both the split-rectangle and the flagged `.fill` variants (`iconForSession(agent:split:flagged:)`):
+  which agent is working is what you scan the sidebar for, and split/flag state is still readable from the
+  title-bar split glyph, the row's context menu, and the flagged view — the alternative was an 8-way matrix
+  of filled/split logo variants that don't exist as artwork.
+  `agentKind` is folded into `RowContent` AND into `updateNSView`'s dependency touch (both are load-bearing:
+  without the former no row reloads, without the latter the observation never fires).
+  The icon is not accessibility-observable, so the row's image view carries `setAccessibilityValue(agentKind)`
+  for the UI tests — the `StatusIconView` idiom.
+  **It is DETECTED, not reported** — `AgentKind.classify` (host-free) keys on the argv[0] basename of the
+  pane's foreground process, looking one argument past a launcher (`sh`/`node`/`npx`/`env`…) for the
+  `#!/bin/sh` + `exec claude` shim case; it needs no hooks and no shell integration, so it is true even for
+  an agent nobody wired up.
+  Distinct from `AgentStatus` (the glyph on the RIGHT of the row), which is the agent's SELF-REPORTED turn
+  state pushed by its hooks over `session.status` — a session can run `claude` while reporting no status at
+  all, and the two render independently.
+  The detection lives in `rook/Ghostty/AgentMonitor.swift`, whose 2 s sweep is **the app's only repeating
+  timer** — a deliberate exception to the demand-driven rule, because libghostty exposes no child-SPAWN
+  action to subscribe to (`GHOSTTY_ACTION_COMMAND_FINISHED` fires only when a command ENDS and carries no
+  pid).
+  It is made cheap rather than rare: a per-session pid cache means the steady state is one
+  `ghostty_surface_foreground_pid` read per open session per tick, and the `sysctl(KERN_PROCARGS2)` runs only
+  when a pane's foreground pid actually CHANGED (a shell forks a fresh pid per command, so an unchanged pid
+  cannot have changed its argv).
+  The `if session.agentKind != kind` write guard is MANDATORY, not a nicety: `@Observable` notifies on EVERY
+  set, equal or not, so an unguarded write would re-run `updateNSView` + the full reconcile diff every 2 s
+  forever.
+  Related: the agent's own OSC-title marker (Claude Code's `✳ ` and its braille spinner) is stripped at
+  ingest by `TerminalText.withoutAgentMarker` (`GhosttySurfaceView.applyTitle`), so the row NAME is the task
+  and the ICON is the agent.
+  Stripping at ingest (not at display) also collapses every spinner FRAME to the same title, so `applyTitle`'s
+  equality guard now swallows the per-frame re-emits that used to churn the sidebar at spinner rate.
 - **Per-workspace icon color (`Workspace.colorHex`).**
   A workspace can carry its own `#rrggbb` tint for its sidebar ICON (never the row text — one choke point,
   no layout risk), set from the row's context menu (Color… → the system `NSColorPanel`,

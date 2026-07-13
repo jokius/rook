@@ -25,4 +25,37 @@ public enum TerminalText {
         }
         return String(scalars)
     }
+
+    /// Strip the progress marker a coding agent prefixes to the OSC title it reports — Claude Code writes
+    /// `✳ Implement the parser` at rest and cycles a braille spinner (`⠋ …`, `⠙ …`, `⠹ …`) while it works.
+    /// The session's agent is shown by the sidebar's agent LOGO instead (`AgentKind`), so the marker is
+    /// noise in the name — and stripping it at ingest collapses every spinner frame to the SAME title, so
+    /// `applyTitle`'s equality guard swallows the per-frame re-emits that used to churn the sidebar.
+    ///
+    /// Conservative by construction: it strips a leading run of spinner/asterisk-dingbat scalars ONLY when
+    /// whitespace and a non-blank remainder follow. A title that merely BEGINS with one of these glyphs
+    /// (`✳️-marked branch`), an emoji title, a `user@host:~/dir` SSH title, and a bare marker with no text
+    /// all pass through untouched.
+    public static func withoutAgentMarker(_ value: String) -> String {
+        let scalars = value.unicodeScalars
+        // the FIRST scalar must be a marker proper: a lone variation selector leading a title is not one.
+        guard let first = scalars.first, isAgentMarker(first) else { return value }
+        let rest = scalars.drop { isAgentMarker($0) || isVariationSelector($0) }
+        guard let next = rest.first, next.properties.isWhitespace else { return value }
+        let body = String(String.UnicodeScalarView(rest)).trimmingCharacters(in: .whitespaces)
+        return body.isEmpty ? value : body
+    }
+
+    /// The marker scalars: the braille block (U+2800–U+28FF — every spinner frame a TUI cycles) and the
+    /// asterisk dingbats (U+2731–U+273D, which include Claude Code's `✳` U+2733). Deliberately NOT ASCII
+    /// `*` — a title legitimately starts with one (a glob, a footnote) — and not emoji.
+    private static func isAgentMarker(_ scalar: Unicode.Scalar) -> Bool {
+        (0x2800...0x28FF).contains(scalar.value) || (0x2731...0x273D).contains(scalar.value)
+    }
+
+    /// A text/emoji presentation selector (U+FE0E/U+FE0F), which may trail a marker (`✳️`) and would
+    /// otherwise leave the separator check looking at the selector instead of the space.
+    private static func isVariationSelector(_ scalar: Unicode.Scalar) -> Bool {
+        scalar.value == 0xFE0E || scalar.value == 0xFE0F
+    }
 }

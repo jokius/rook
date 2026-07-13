@@ -414,7 +414,11 @@ Open the file with **File ▸ Edit ghostty.conf…** or the ⌃⇧P palette ("Ed
 
 ## Agent status
 
-A coding agent running in a session can flag its status on that session's sidebar row, so you can tell at a glance which of many concurrent agents needs you. The status shows as a small tinted SF Symbol just left of the notification badge: `active` is a blue ellipsis, `blocked` an amber exclamation, `completed` a green check, and `idle` is nothing. The glyph shows on every non-idle session, the selected one included. A one-time `completed` flash auto-clears once you visit the session.
+**Rook detects which agent a session is running, on its own.** When a session's focused pane runs `claude` or `codex`, its sidebar row swaps the terminal glyph for that agent's logo, so a flock of sessions reads at a glance — who is a Claude, who is a Codex, who is just a shell. Nothing sets it and nothing needs wiring up: Rook reads the pane's foreground process (it owns the terminal, so it simply asks), which also means it is right for an agent whose hooks you never installed. The logo takes the place of the split and flagged icon variants while the agent runs. Over the control channel, `rookctl tree --json` reports it as each session's `agent` field (`claude`/`codex`, omitted otherwise) — the classified form of the raw `foreground` argv on the same node.
+
+Rook also strips the progress marker a coding agent writes into the terminal title (Claude Code's `✳` and its spinner), so the row shows the task and the icon shows the agent, instead of both fighting for the same line.
+
+That is what the session RUNS. What follows is what an agent REPORTS about its turn — the two are independent, and a session can have either without the other. A coding agent running in a session can flag its status on that session's sidebar row, so you can tell at a glance which of many concurrent agents needs you. The status shows as a small tinted SF Symbol just left of the notification badge: `active` is a blue ellipsis, `blocked` an amber exclamation, `completed` a green check, and `idle` is nothing. The glyph shows on every non-idle session, the selected one included. A one-time `completed` flash auto-clears once you visit the session.
 
 A session that needs you — `blocked` or `completed` — also **washes its whole row** in that status's color (the row background and the session name), so a full sidebar reads at a glance instead of asking you to hunt for a small glyph. `active` deliberately keeps the glyph alone: an agent at work is the steady state, and washing it would leave half the sidebar colored. The selected row keeps its normal selection color (its status is on screen anyway) and still shows the glyph. Turn the wash off with **Highlight blocked and completed rows** in Settings ▸ Agent Status; the colors are the same ones the glyphs use, and `session status --color` overrides both for a single call.
 
@@ -465,6 +469,8 @@ Rook embeds **libghostty**, the terminal engine from [Ghostty](https://github.co
 The way Rook drives libghostty's C API from a SwiftUI/AppKit app, under the Swift 6 strict-concurrency toolchain, was learned from [macterm](https://github.com/thdxg/macterm) (`thdxg/macterm`, MIT). The libghostty bridge files (`GhosttyApp`, `GhosttyCallbacks`, `GhosttyResources`, `GhosttySurfaceView`, `WindowAppearance`) are adapted from it and each carries an attribution comment.
 
 SwiftUI guidance during development came from the [SwiftUI Agent Skill](https://github.com/AvdLee/SwiftUI-Agent-Skill) by Antoine van der Lee (MIT). Special thanks to [@ksenks](https://github.com/ksenks) for recommending it.
+
+The sidebar's agent logos are the Claude and OpenAI marks from [simple-icons](https://github.com/simple-icons/simple-icons) (CC0-1.0). The icons are public domain; the marks themselves remain the trademarks of Anthropic and OpenAI and are used here only to identify the agent running in a session.
 
 ## License
 

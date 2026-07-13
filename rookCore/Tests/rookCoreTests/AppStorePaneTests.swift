@@ -452,6 +452,23 @@ struct AppStorePaneTests {
         #expect(node.splitFocused == false)
     }
 
+    @Test func controlTreeReportsAgentKind() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        // nothing detected: the field is omitted (nil).
+        var node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.agent == nil)
+        // AgentMonitor detected an agent in the focused pane — the tree reports its raw value.
+        session.agentKind = .claude
+        node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.agent == "claude")
+        // and it clears back when the agent exits.
+        session.agentKind = nil
+        node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.agent == nil)
+    }
+
     @Test func controlTreeReportsStatusModifiers() throws {
         let store = makeStore()
         let ws = store.addWorkspace(name: "work")

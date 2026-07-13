@@ -1681,7 +1681,17 @@
               Agent status
             </h2>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 22px">
-              A coding agent running in a session can flag its status on that session's sidebar row, so you can tell at a glance
+              <strong style="color: #e8e3d9">Rook detects which agent a session is running, on its own.</strong> When a session's
+              focused pane runs <code>claude</code> or <code>codex</code>, its sidebar row swaps the terminal glyph for that
+              agent's logo, so a flock of sessions reads at a glance. Nothing sets it and nothing needs wiring up: Rook reads the
+              pane's foreground process, so it is right even for an agent whose hooks you never installed. Rook also strips the
+              progress marker an agent writes into the terminal title (Claude Code's <code>✳</code> and its spinner), so the row
+              shows the task and the icon shows the agent. Over the control channel it rides each session node as
+              <code>agent</code> (<code>claude</code>/<code>codex</code>, omitted otherwise).
+            </p>
+            <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 22px">
+              That is what the session <em>runs</em>; what follows is what an agent <em>reports</em> about its turn — the two are
+              independent. A coding agent running in a session can flag its status on that session's sidebar row, so you can tell at a glance
               which of many concurrent agents needs you. The glyph shows just left of the notification badge on every non-idle
               session; a one-time
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">completed</span> flash auto-clears
@@ -2010,7 +2020,10 @@
             <a href="https://github.com/thdxg/macterm" style="color: #949ba4" class="hv11">macterm</a> (MIT), and SwiftUI guidance
             came from the
             <a href="https://github.com/AvdLee/SwiftUI-Agent-Skill" style="color: #949ba4" class="hv11">SwiftUI Agent Skill</a>
-            (MIT). The model, sidebar, persistence, control channel, and multi-window code are original to rook.
+            (MIT). The sidebar's agent logos are the Claude and OpenAI marks from
+            <a href="https://github.com/simple-icons/simple-icons" style="color: #949ba4" class="hv11">simple-icons</a> (CC0) — the
+            marks remain the trademarks of Anthropic and OpenAI, used only to identify the agent running in a session. The model,
+            sidebar, persistence, control channel, and multi-window code are original to rook.
           </div>
         </main>
       </div>

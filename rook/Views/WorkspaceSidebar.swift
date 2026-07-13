@@ -111,7 +111,12 @@ struct WorkspaceSidebar: NSViewRepresentable {
         // register it. agentIndicator feeds the status-icon reconcile (it renders on every session). the
         // badge-visibility toggle (GhosttyApp.notificationBadgeEnabled) is NOT observable, so it drives a
         // re-reconcile via the .rookAppearanceChanged notification (appearanceChanged), like toolbarMode.
-        _ = store.workspaces.map { ($0.id, $0.name, $0.unseenCount, $0.colorHex, $0.icon, $0.sessions.map { ($0.id, $0.displayName, $0.hasSplit, $0.unseenCount, $0.agentIndicator, $0.flagged) }) }
+        _ = store.workspaces.map { workspace in
+            (workspace.id, workspace.name, workspace.unseenCount, workspace.colorHex, workspace.icon,
+             workspace.sessions.map {
+                 ($0.id, $0.displayName, $0.hasSplit, $0.unseenCount, $0.agentIndicator, $0.flagged, $0.agentKind)
+             })
+        }
         _ = store.selectedSessionID
         _ = store.sidebarSelectionIDs
         // sidebarMode flips the whole data source between the tree and the flat flagged list; reading it
@@ -373,6 +378,9 @@ struct WorkspaceSidebar: NSViewRepresentable {
             /// The workspace's custom icon, or nil for the default glyph. Folded in so a `workspace.icon`
             /// change re-renders just that row; always nil for session rows.
             let icon: WorkspaceIcon?
+            /// The coding agent running in the session's focused pane (`AgentMonitor` detects it), or nil.
+            /// Folded in so an agent starting/exiting re-renders just that row; always nil for workspace rows.
+            let agent: AgentKind?
         }
 
         /// The session's own agent-status indicator (or `.idle` for an unknown id / workspace row). Shown
@@ -458,7 +466,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
         private func rowContent(forWorkspace workspace: Workspace) -> RowContent {
             RowContent(label: workspace.name, hasSplit: false, unseen: effectiveUnseen(workspace.unseenCount),
                        indicator: AgentIndicator(), flagged: false, colorHex: workspace.colorHex,
-                       icon: workspace.icon)
+                       icon: workspace.icon, agent: nil)
         }
 
         /// The visible content of a session row. The single builder shared by `reloadChangedContentRows`
@@ -469,7 +477,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
             RowContent(label: rowLabel(for: session, workspaceName: workspaceName), hasSplit: session.hasSplit,
                        unseen: effectiveUnseen(session.unseenCount),
                        indicator: effectiveIndicator(forSession: session.id), flagged: session.flagged,
-                       colorHex: nil, icon: nil)
+                       colorHex: nil, icon: nil, agent: session.agentKind)
         }
 
         /// Rebuilds `roots` from the store, reusing cached node instances by id so
@@ -781,11 +789,29 @@ struct WorkspaceSidebar: NSViewRepresentable {
         lazy var flaggedSessionIcon = Self.rowIcon("terminal.fill")
         lazy var flaggedSplitSessionIcon = Self.rowIcon("rectangle.split.2x1.fill")
 
+        /// The agent logos, which REPLACE the base glyph while that agent runs in the session's focused pane
+        /// (`AgentMonitor` → `Session.agentKind`) — bundled vector assets rather than SF Symbols, which have
+        /// no Claude/OpenAI mark. Template images, so `setColors` tints them exactly like the symbols.
+        lazy var claudeIcon = Self.assetIcon("AgentClaude")
+        lazy var codexIcon = Self.assetIcon("AgentCodex")
+
         private static func rowIcon(_ symbolName: String) -> NSImage? {
             let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
             let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
                 .withSymbolConfiguration(config)
             image?.isTemplate = true
+            return image
+        }
+
+        /// A bundled vector asset sized to sit with the 13pt SF Symbols in the same column. The catalog marks
+        /// it template + vector-preserving, but `isTemplate` is re-asserted (a catalog image loaded before the
+        /// intent is honored would tint as a flat black square) and the size is set explicitly — the artwork
+        /// is a 24-unit-square logo, and the row's image view scales proportionally, so its intrinsic size is
+        /// what decides how large it lands.
+        private static func assetIcon(_ name: String) -> NSImage? {
+            guard let image = NSImage(named: name) else { return nil }
+            image.isTemplate = true
+            image.size = NSSize(width: 13, height: 13)
             return image
         }
 

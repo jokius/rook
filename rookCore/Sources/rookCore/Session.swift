@@ -43,6 +43,12 @@ public final class Session: Identifiable {
     /// capture it, so it never survives a relaunch.
     public var agentIndicator = AgentIndicator()
 
+    /// The coding agent currently running in this session's focused pane, or nil for none — OBSERVED from
+    /// the pane's foreground process by the app-side `AgentMonitor`, not reported by the agent. Observed,
+    /// so the sidebar row swaps the terminal glyph for the agent's logo. Ephemeral like `unseenCount`:
+    /// `SessionSnapshot` doesn't capture it (the next launch re-detects it within a poll tick).
+    public var agentKind: AgentKind?
+
     /// The most-recent time the agent status was set to a non-idle value — stamped by
     /// `AppStore.setAgentIndicator` on EVERY non-idle set (`Date()` for any non-idle status, nil on idle),
     /// not only on an idle→non-idle transition. Sort key only — the attention list orders same-status

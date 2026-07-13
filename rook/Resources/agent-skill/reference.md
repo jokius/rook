@@ -63,7 +63,11 @@ as `status`, so it is never reported without a `status`), `statusBlink` (`true` 
 set to blink — the `--blink` value; omitted when idle or not blinking) and `statusColor` (the `#rrggbb`
 glyph-tint override — the `--color` value; omitted when idle or using the default color),
 `foreground`/`splitForeground` (the live argv of each pane's foreground
-process — what it is running — omitted when the pane sits at its shell prompt), `background` (the
+process — what it is running — omitted when the pane sits at its shell prompt), `agent` (the coding agent
+detected in the session's FOCUSED pane — `claude` | `codex`, omitted when it runs anything else; the
+classified form of `foreground`, observed from the process itself rather than reported by the agent, and
+what the sidebar row's agent logo renders. Distinct from `status`, which is the agent's self-reported turn
+state: a session can run `claude` with no `status` at all), `background` (the
 background spec set via `session background` — a `{kind, text?, imagePath?, colorHex?, opacity?, fit?,
 position?, repeats?}` object; `kind` is `image`/`text`/`color` — omitted when none is set), `unseen`
 (the unseen-notification badge count — raised by `notify`/OSC 9/777, cleared by `session seen` — omitted

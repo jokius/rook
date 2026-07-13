@@ -201,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_: Notification) {
         controlServer?.stop()
         customCommandRunner?.stop()
+        AgentMonitor.shared.stop()
         // clear the OS-level Dock badge — it outlives the process, and unseenCount is ephemeral, so a quit
         // with unseen > 0 would leave a stale count pinned on the Dock icon (the willClose refresh() poke
         // can't: isTerminating below makes closeWindow no-op, so the total recomputes unchanged).

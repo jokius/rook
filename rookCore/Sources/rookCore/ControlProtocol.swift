@@ -344,6 +344,14 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public let foreground: [String]?
     /// The split (right) pane's live foreground command (full argv), the split analogue of `foreground`.
     public let splitForeground: [String]?
+    /// The coding agent running in the session's FOCUSED pane (`claude`/`codex`, the `AgentKind` raw value),
+    /// or nil when the pane runs anything else (omitted from the JSON). OBSERVED from the pane's foreground
+    /// process — the classified form of `foreground`/`splitForeground` (which stay the raw argv for anything
+    /// this doesn't recognize) — so it needs no hooks and is true even for an agent nobody wired up. It is
+    /// what the sidebar row's agent logo renders. Distinct from `status`, which is the agent's SELF-REPORTED
+    /// turn state (`session.status`, driven by its hooks): a session can run `claude` (agent) while idle (no
+    /// status), or report `blocked` from a pane whose foreground process has since exited.
+    public let agent: String?
     /// The session's agent status (`active`/`completed`/`blocked`) as the `AgentStatus` raw value, or nil
     /// when the session is idle (omitted from the JSON). The read side of `session.status`.
     public let status: String?
@@ -385,7 +393,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 splitRatio: Double? = nil, splitFocused: Bool? = nil,
                 overlay: Bool = false, overlaySizePercent: Int? = nil, scratch: Bool = false, flagged: Bool = false,
                 fileTreeVisible: Bool? = nil, fileTreeRoot: String? = nil,
-                foreground: [String]? = nil, splitForeground: [String]? = nil, status: String? = nil,
+                foreground: [String]? = nil, splitForeground: [String]? = nil, agent: String? = nil,
+                status: String? = nil,
                 statusPane: String? = nil, statusBlink: Bool? = nil, statusColor: String? = nil,
                 background: BackgroundWatermark? = nil, unseen: Int? = nil,
                 fontSize: Double? = nil, splitFontSize: Double? = nil, scratchFontSize: Double? = nil,
@@ -406,6 +415,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.fileTreeRoot = fileTreeRoot
         self.foreground = foreground
         self.splitForeground = splitForeground
+        self.agent = agent
         self.status = status
         self.statusPane = statusPane
         self.statusBlink = statusBlink

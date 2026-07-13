@@ -1122,6 +1122,20 @@ paths:
   capture the restore-running-command feature uses (`ghostty_surface_foreground_pid` → `sysctl(KERN_PROCARGS2)`
   → host-free `CommandRestore`), populated in the tree builder per session so a script can read "what
   is each pane running".
+  It ALSO surfaces `agent` on each node — the coding agent (`claude`/`codex`) detected in the session's
+  FOCUSED pane, omitted when it runs anything else.
+  This one is a READ-ONLY DERIVED field with NO write command, and that is a deliberate keep-in-sync
+  EXEMPTION from the four-point audit (which governs WRITE actions): nothing SETS it — the app-side
+  `AgentMonitor` observes it from the pane's foreground process (`ghostty_surface_foreground_pid` → `sysctl`
+  → the host-free `AgentKind.classify`), so there is no state a script could write back.
+  It is the CLASSIFIED form of the `foreground` argv already on the same node (which stays raw for anything
+  the classifier doesn't recognize, so a mis-detection is always diagnosable from `foreground`), and the
+  precedent is `foreground`/`title` — derived reads that likewise carry no command.
+  It is also distinct from `status`: `agent` is what the pane RUNS (observed), `status` is what the agent
+  REPORTS about its turn (`session.status`, driven by its hooks) — a session can carry one without the other.
+  Populated in `AppStore.controlTree` from the ephemeral `Session.agentKind`, which the sidebar's agent logo
+  renders (see [[sidebar]]); round-tripped by `treeSessionNodeRoundTripsWithAgent`/`…OmitsAgentWhenNil` and
+  `AppStorePaneTests.controlTreeReportsAgentKind`.
   It ALSO surfaces `background` on each node — the `BackgroundWatermark` spec set via `session.background`
   (omitted when none), the read side of set/clear so a script can query the current watermark.
   It ALSO surfaces `overlaySizePercent` on each node — an OPEN overlay's size (`session.overlayActive ? session.overlaySizePercent : nil`
