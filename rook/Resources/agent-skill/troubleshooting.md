@@ -100,6 +100,19 @@ then restart the affected panes/processes (a respawn is enough; existing process
 inherited copy). Prevent it: start daemons and session managers with the variables scrubbed
 (`env -u ROOK_SESSION_ID … <cmd>`, full list in SKILL.md), or from a shell outside rook.
 
+### "Clicking a path in the terminal does nothing / opens Finder instead of the preview"
+
+⌘-clicking a link routes by what the path IS, and a click that lands on nothing is silently ignored on
+purpose (so ordinary prose does not bounce Finder). Check, in order: the file must EXIST — a bare path
+is resolved relative to the clicked pane's own working directory (reported by the shell over OSC 7), so
+a path printed relative to a DIFFERENT directory resolves to nothing; only `.md`/`.markdown`/`.mdx`
+open in the preview panel, everything else is revealed in Finder by design (a terminal renders untrusted
+output, so rook never LAUNCHES a file); a directory is revealed, never previewed; and a path under an
+automount root (`/net`, `/Network`, `/home`) is ignored outright. A `src/foo.ts:42` style target has its
+`:line` suffix stripped and is then revealed like any other non-Markdown file — the line number is
+dropped, nothing jumps to it. To put a specific file on screen regardless, drive it directly:
+`rookctl session markdown open <path> --target "$ROOK_SESSION_ID"`.
+
 ### "Claude Code's question/permission prompt is unresponsive after switching apps"
 
 Known upstream Claude Code bug, NOT rook. Do not file a Rook issue for it. While Claude Code shows

@@ -272,6 +272,13 @@ extension rookApp {
                 }
                 .keyboardShortcut(shortcut(for: .toggleFileTree))
                 .disabled(library.activeStore?.activeSession == nil)
+                // the Markdown preview panel is OPENED by clicking a Markdown link (or `session.markdown`),
+                // never from a bare menu invocation — there is no file to show without one. So this is a
+                // close-only item, disabled while no panel is open, rather than a Show/Hide toggle.
+                Button { actions.closeMarkdown() } label: {
+                    Label("Close Markdown Preview", systemImage: "doc.text")
+                }
+                .disabled(library.activeStore?.activeSession?.markdownPath == nil)
                 // search the focused terminal's scrollback. data-driven shortcut (⌘F default) like the
                 // toggles above — no hardcoded literal; the bar's open/close toggle lives in onSearchStart.
                 Button { actions.toggleSearch() } label: { Label("Find…", systemImage: "magnifyingglass") }

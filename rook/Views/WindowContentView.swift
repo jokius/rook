@@ -212,11 +212,24 @@ struct WindowContentView: View {
                 // insert/remove must opt OUT of that ambient animation, else it interpolates the detail column's
                 // width (and reflows every ghostty surface) per frame for the transaction's duration.
                 if let session = store.activeSession, session.fileTreeVisible {
-                    fileTreeDivider(totalWidth: geo.size.width)
+                    // when the preview panel is also open it sits to the RIGHT of the tree, so the tree's
+                    // divider is no longer dragging against the window edge: hand it a totalWidth shortened
+                    // by the preview's column, or `totalWidth - cursor.x` would overshoot by exactly that.
+                    fileTreeDivider(totalWidth: geo.size.width - markdownColumnWidth)
                         .zIndex(1)
                         .transaction { $0.animation = nil }
                     fileTreeColumn(for: session)
                         .frame(width: CGFloat(store.fileTreeWidth))
+                        .transaction { $0.animation = nil }
+                }
+                // the per-session Markdown preview panel, rightmost. Same eager-deck rule as the file tree:
+                // its insert/remove must opt OUT of the ambient animation (see above).
+                if let session = store.activeSession, let path = session.markdownPath {
+                    markdownDivider(totalWidth: geo.size.width)
+                        .zIndex(1)
+                        .transaction { $0.animation = nil }
+                    markdownColumn(for: session, path: path)
+                        .frame(width: CGFloat(store.markdownWidth))
                         .transaction { $0.animation = nil }
                 }
             }

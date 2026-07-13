@@ -263,6 +263,7 @@ struct rookApp: App {
         }
         Self.wireStatusClear(view, store: store, sessionID: sessionID, pane: .left)
         view.onUserInput = { store.noteUserActivity() }
+        view.onPreviewMarkdown = { store.openMarkdown($0, forSession: sessionID) }
         view.onFontSizeChange = { store.setFontSize(sessionID, $0) }
         Self.wireSearchCallbacks(view, store: store, sessionID: sessionID, library: library)
         return view
@@ -392,6 +393,7 @@ struct rookApp: App {
         }
         Self.wireStatusClear(view, store: store, sessionID: sessionID, pane: .right)
         view.onUserInput = { store.noteUserActivity() }
+        view.onPreviewMarkdown = { store.openMarkdown($0, forSession: sessionID) }
         Self.wireSearchCallbacks(view, store: store, sessionID: sessionID, library: library)
         return view
     }
@@ -430,6 +432,7 @@ struct rookApp: App {
         // idle fire can't change the underlying selection (vanishing the overlay) while you type in it.
         // destroySurface nils this, breaking the store -> surface -> closure retain cycle.
         view.onUserInput = { store.noteUserActivity() }
+        view.onPreviewMarkdown = { store.openMarkdown($0, forSession: sessionID) }
         return view
     }
 
@@ -461,6 +464,7 @@ struct rookApp: App {
         // idle fire can't change the underlying selection (hiding the per-session scratch) while you type
         // in it. destroySurface nils this, breaking the store -> surface -> closure retain cycle.
         view.onUserInput = { store.noteUserActivity() }
+        view.onPreviewMarkdown = { store.openMarkdown($0, forSession: sessionID) }
         // the scratch supports in-terminal search (⌘F), so wire the four onSearch* callbacks and mark it
         // searchable — pinned to the same session, like the main/split panes. Unlike the overlay/quick
         // terminal, the scratch behaves like a real pane (kept alive across hides), so a bar over it is safe.

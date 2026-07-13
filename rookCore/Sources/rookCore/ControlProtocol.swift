@@ -28,6 +28,7 @@ public enum Command: String, Codable, Sendable {
     case sessionSplit = "session.split"
     case sessionScratch = "session.scratch"
     case sessionFileTree = "session.filetree"
+    case sessionMarkdown = "session.markdown"
     case sessionFocus = "session.focus"
     case sessionResize = "session.resize"
     case surfaceZoom = "surface.zoom"
@@ -103,10 +104,12 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// Mode for `session.split` / `quick` / `surface.zoom` (`on|off|toggle`,
     /// `show|hide|toggle` for quick/surface zoom),
     /// `session.flag` (`on|off|toggle|clear`), `sidebar.mode` (`tree|flagged|toggle`),
-    /// `workspace.focus` (`on|off|toggle`), and `session.background` (`image|text|color|clear`).
+    /// `workspace.focus` (`on|off|toggle`), `session.markdown` (`open|close|toggle`),
+    /// and `session.background` (`image|text|color|clear`).
     public var mode: String?
     /// The image file path for `session.background` mode `image` (PNG or JPEG); also the target directory
-    /// for `session.filetree` mode `reroot` (re-roots the panel at an arbitrary path instead of the cwd).
+    /// for `session.filetree` mode `reroot` (re-roots the panel at an arbitrary path instead of the cwd);
+    /// also the file `session.markdown` renders (`open`/`toggle`), absolute or relative to the session cwd.
     public var path: String?
     /// The color (`#rrggbb`) for `session.background`: the text tint for mode `text` (nil = the terminal
     /// foreground), or the solid background color for mode `color` (required). Mode `color` takes no
@@ -338,6 +341,10 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// from the JSON). The read side of `session.filetree reroot` — so a script can record where each panel
     /// points and restore it (gated on visibility, like `fileTreeVisible`).
     public let fileTreeRoot: String?
+    /// The absolute file the session's Markdown preview panel is rendering, or nil when the panel is closed
+    /// (omitted from the JSON). The read side of `session.markdown` — one field, no separate visible flag:
+    /// a path IS the open panel, so a script records it and restores with `session.markdown open <path>`.
+    public let markdownPath: String?
     /// The LIVE foreground process command (full argv) in the main pane, or nil when the pane is at its
     /// shell prompt (omitted from the JSON). The same capture the restore-running-command feature uses,
     /// surfaced for introspection ("what is each pane running").
@@ -392,7 +399,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public init(id: String, name: String, cwd: String, title: String? = nil, active: Bool, split: Bool,
                 splitRatio: Double? = nil, splitFocused: Bool? = nil,
                 overlay: Bool = false, overlaySizePercent: Int? = nil, scratch: Bool = false, flagged: Bool = false,
-                fileTreeVisible: Bool? = nil, fileTreeRoot: String? = nil,
+                fileTreeVisible: Bool? = nil, fileTreeRoot: String? = nil, markdownPath: String? = nil,
                 foreground: [String]? = nil, splitForeground: [String]? = nil, agent: String? = nil,
                 status: String? = nil,
                 statusPane: String? = nil, statusBlink: Bool? = nil, statusColor: String? = nil,
@@ -413,6 +420,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.flagged = flagged
         self.fileTreeVisible = fileTreeVisible
         self.fileTreeRoot = fileTreeRoot
+        self.markdownPath = markdownPath
         self.foreground = foreground
         self.splitForeground = splitForeground
         self.agent = agent

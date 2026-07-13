@@ -239,6 +239,11 @@ struct ControlProtocolTests {
             ControlRequest(cmd: .sessionFileTree, target: "9f3c", args: ControlArgs(mode: "on")),
             ControlRequest(cmd: .sessionFileTree, target: "active", args: ControlArgs(mode: "off")),
             ControlRequest(cmd: .sessionFileTree, target: "active", args: ControlArgs(mode: "refresh")),
+            ControlRequest(cmd: .sessionMarkdown, target: "active",
+                           args: ControlArgs(mode: "open", path: "/proj/PLAN.md")),
+            ControlRequest(cmd: .sessionMarkdown, target: "9f3c", args: ControlArgs(mode: "close")),
+            ControlRequest(cmd: .sessionMarkdown, target: "active",
+                           args: ControlArgs(mode: "toggle", path: "docs/notes.md")),
             ControlRequest(cmd: .quick, args: ControlArgs(mode: "show")),
             ControlRequest(cmd: .sidebar, args: ControlArgs(mode: "hide")),
             ControlRequest(cmd: .sessionFlag, target: "active", args: ControlArgs(mode: "toggle")),
@@ -394,6 +399,25 @@ struct ControlProtocolTests {
         #expect(!json.contains("fileTreeRoot"), "a nil fileTreeRoot must be omitted; got \(json)")
         let decoded = try JSONDecoder().decode(ControlSessionNode.self, from: Data(json.utf8))
         #expect(decoded.fileTreeRoot == nil)
+    }
+
+    @Test func treeSessionNodeRoundTripsWithMarkdownPath() throws {
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false,
+                                         markdownPath: "/proj/PLAN.md")
+        let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(
+            workspaces: [ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [session])])))
+        let decoded = try roundTrip(response)
+        #expect(decoded == response)
+        #expect(decoded.result?.tree?.workspaces.first?.sessions.first?.markdownPath == "/proj/PLAN.md")
+    }
+
+    @Test func treeSessionNodeOmitsMarkdownPathWhenNil() throws {
+        // a closed preview panel omits the key entirely — the path IS the open flag, so nil means closed.
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false)
+        let json = String(data: try JSONEncoder().encode(session), encoding: .utf8) ?? ""
+        #expect(!json.contains("markdownPath"), "a nil markdownPath must be omitted; got \(json)")
+        let decoded = try JSONDecoder().decode(ControlSessionNode.self, from: Data(json.utf8))
+        #expect(decoded.markdownPath == nil)
     }
 
     @Test func treeSessionNodeRoundTripsWithTitle() throws {

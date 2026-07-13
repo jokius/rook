@@ -18,7 +18,7 @@ extension AppStore {
                                      icon: workspace.icon)
         }
         return Snapshot(selectedSessionID: selectedSessionID, workspaces: workspaceSnapshots,
-                        sidebarWidth: sidebarWidth, fileTreeWidth: fileTreeWidth,
+                        sidebarWidth: sidebarWidth, fileTreeWidth: fileTreeWidth, markdownWidth: markdownWidth,
                         sidebarVisible: sidebarVisible, sidebarMode: sidebarMode,
                         focusedWorkspaceID: focusedWorkspaceID, sessionRecency: sessionRecency.items)
     }
@@ -53,6 +53,7 @@ extension AppStore {
         // out-of-range frame width; the drag path clamps to the same bounds.
         sidebarWidth = min(AppStore.sidebarWidthMax, max(AppStore.sidebarWidthMin, snapshot.sidebarWidth ?? AppStore.sidebarWidthDefault))
         fileTreeWidth = min(AppStore.fileTreeWidthMax, max(AppStore.fileTreeWidthMin, snapshot.fileTreeWidth ?? AppStore.fileTreeWidthDefault))
+        markdownWidth = min(AppStore.markdownWidthMax, max(AppStore.markdownWidthMin, snapshot.markdownWidth ?? AppStore.markdownWidthDefault))
         sidebarVisible = snapshot.sidebarVisible ?? true
         sidebarMode = snapshot.sidebarMode ?? .tree
         // a stale focus id (its workspace not in the restored tree) is harmless — `visibleWorkspaces`

@@ -456,13 +456,20 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         }
     }
 
-    /// Acts on a clicked terminal link (`GHOSTTY_ACTION_OPEN_URL`). The scheme/host decision lives in the
-    /// host-free `LinkPolicy` (unit-tested); this is just the AppKit glue for the three dispositions: OPEN a
-    /// web/mail URL, REVEAL a `file://` link in Finder (never opened — reveal selects it, executing nothing),
-    /// or IGNORE anything else.
+    /// Acts on a clicked terminal link (`GHOSTTY_ACTION_OPEN_URL`). The scheme/host/path decision lives in the
+    /// host-free `LinkPolicy` (unit-tested); this is just the AppKit glue for the four dispositions: OPEN a
+    /// web/mail URL, PREVIEW a Markdown file in rook's own panel, REVEAL any other local file in Finder (never
+    /// opened — reveal selects it, executing nothing), or IGNORE anything else.
+    ///
+    /// The cwd is THIS pane's: libghostty hands over a BARE relative path (`plan.md`, `src/foo.ts:42`) whenever
+    /// it could not resolve one itself, and a split's two shells sit in different directories — resolving the
+    /// right pane's click against the left pane's cwd would open the wrong file (or, worse, silently the right
+    /// one from a sibling checkout).
     func openLink(_ raw: String) {
-        switch LinkPolicy.disposition(for: raw) {
+        let cwd = isSplitPane ? (session?.splitCwd ?? session?.effectiveCwd) : session?.effectiveCwd
+        switch LinkPolicy.disposition(for: raw, cwd: cwd) {
         case let .open(url): NSWorkspace.shared.open(url)
+        case let .preview(url): onPreviewMarkdown?(url.path)
         case let .reveal(url): NSWorkspace.shared.activateFileViewerSelecting([url])
         case .ignore: return
         }

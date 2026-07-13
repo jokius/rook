@@ -236,6 +236,22 @@ rookctl session filetree reroot /some/dir # re-root the tree to an arbitrary dir
 rookctl session filetree toggle          # on|off|toggle|refresh|reroot <path>
 ```
 
+## Show a plan (or any Markdown) in the preview panel
+
+Put a rendered document in front of the user without them leaving the terminal: the panel opens to the
+right of the session and re-renders itself whenever you rewrite the file, so a plan you keep updating
+stays current on screen. Target YOUR session, not `active`.
+
+```bash
+rookctl session markdown open ./PLAN.md --target "$ROOK_SESSION_ID"   # relative resolves against the session cwd
+rookctl session markdown open ~/notes/review.md --target "$ROOK_SESSION_ID"
+rookctl tree --json | jq -r '..|.markdownPath? // empty'              # which file is on screen
+rookctl session markdown close --target "$ROOK_SESSION_ID"
+```
+
+A missing file (or a directory) errors with `no such file: <path>`. The user can also just ⌘-click a
+Markdown path you print in the terminal — same panel.
+
 ## Drive the quick terminal
 
 The quick terminal is the window's throwaway overlay (not in the session tree). Show it, type into it,

@@ -19,7 +19,8 @@ struct Session: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Session commands.",
         subcommands: [New.self, Close.self, Select.self, Go.self, Rename.self, Reveal.self, Move.self, TypeText.self,
-                      Split.self, Scratch.self, FileTree.self, Focus.self, Resize.self, Copy.self, Paste.self,
+                      Split.self, Scratch.self, FileTree.self, Markdown.self, Focus.self, Resize.self,
+                      Copy.self, Paste.self,
                       SelectAll.self, Text.self, Status.self, FlagCommand.self,
                       Seen.self, Search.self, Background.self, Overlay.self]
     )
@@ -243,6 +244,31 @@ struct Session: ParsableCommand {
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .sessionFileTree, target: target.target,
                            args: options.withWindow(ControlArgs(mode: mode, path: mode == "reroot" ? path : nil)))
+        }
+    }
+
+    struct Markdown: RequestCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Open, close, or toggle a session's Markdown preview panel (open <path>|close|toggle [<path>]).")
+        @Argument(help: "Mode: open (default, needs <path>), close, or toggle (open <path>, or close the panel when it already shows it).") var mode: String = "open"
+        @Argument(help: "The file to render. Absolute, or relative to the session's cwd. Required for open.") var path: String?
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        // open needs a file; close takes none. A bare `toggle` is the menu form (close an open panel), so its
+        // path is optional. Rejected at parse time — a clean usage error, unit-testable without a socket.
+        func validate() throws {
+            if mode == "open", path?.isEmpty ?? true {
+                throw ValidationError("session markdown open requires a <path>")
+            }
+            if mode == "close", path != nil {
+                throw ValidationError("a <path> is not valid with the close mode")
+            }
+        }
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .sessionMarkdown, target: target.target,
+                           args: options.withWindow(ControlArgs(mode: mode, path: path)))
         }
     }
 

@@ -704,6 +704,25 @@
                 <div
                   style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 14px; color: #7ece8f; margin-bottom: 8px"
                 >
+                  Markdown preview <span style="color: #6b727a">⌘-click a .md file</span>
+                </div>
+                <p style="font-size: 15px; line-height: 1.6; color: #949ba4; margin: 0">
+                  ⌘-click a Markdown path in the terminal — a <code style="color: #e6e1d7">plan.md</code> an agent just wrote, a
+                  <code style="color: #e6e1d7">README.md</code> a build printed — and it opens rendered in a panel to the right of
+                  the session. rook renders it itself (headings, lists, code blocks, quotes, links, GFM tables; no images, no syntax
+                  highlighting, no checkboxes), so nothing is launched, and the panel watches the file: an agent rewriting the plan
+                  re-renders it live. Per session, its width remembered per window, the open file restored across launches. Links
+                  inside the document follow the same rules — a <code style="color: #e6e1d7">[plan](./plan.md)</code> cross-link
+                  re-targets the panel. Close it from the header ✕ or View ▸ Close Markdown Preview; a script opens it with
+                  <code style="color: #e6e1d7">rookctl session markdown open &lt;path&gt;</code>.
+                </p>
+              </div>
+              <div
+                style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 20px 22px"
+              >
+                <div
+                  style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 14px; color: #7ece8f; margin-bottom: 8px"
+                >
                   Terminal zoom <span style="color: #6b727a">⇧⌘↩</span>
                 </div>
                 <p style="font-size: 15px; line-height: 1.6; color: #949ba4; margin: 0">
@@ -1034,7 +1053,7 @@
               "
             >
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 0">
-                Looking for the full list? All 62 commands, with every argument, return value, and error, live on the
+                Looking for the full list? All 63 commands, with every argument, return value, and error, live on the
                 <a href="/commands" style="color: #7ece8f; font-weight: 500">Command reference →</a>
               </p>
             </div>
@@ -1186,7 +1205,7 @@
             >
               rookctl session split toggle<br />rookctl session resize --split-ratio 0.7
               <span style="color: #6b727a">&nbsp;# or --grow-left/--grow-right D</span><br />rookctl session scratch toggle
-              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;# on|off|toggle</span><br />rookctl session filetree toggle<span style="color: #6b727a">&nbsp;&nbsp;# on|off|toggle|refresh|reroot &lt;path&gt;</span><br />rookctl session flag on
+              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;# on|off|toggle</span><br />rookctl session filetree toggle<span style="color: #6b727a">&nbsp;&nbsp;# on|off|toggle|refresh|reroot &lt;path&gt;</span><br />rookctl session markdown open ./plan.md<span style="color: #6b727a">&nbsp;&nbsp;# render it in the preview panel (open|close|toggle)</span><br />rookctl session flag on
               <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# on|off|toggle|clear</span><br />rookctl session seen --target 9f3c
               <span style="color: #6b727a">&nbsp;# clear the unseen badge, focus-free</span><br />rookctl
               sidebar mode flagged <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# tree|flagged|toggle</span><br />rookctl quick
@@ -1641,21 +1660,36 @@
               <em>Don't ask again this session</em>.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
-              A ⌘-click on a
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">file://</span> link — the kind
+              A ⌘-click on a file — a
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">file://</span> link of the kind
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ls --hyperlink</span>,
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">eza</span>, and many compilers emit —
-              <strong style="color: #e6e1d7">reveals</strong> the file in Finder instead of opening it. A terminal renders untrusted
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">eza</span>, and many compilers emit, or a
+              plain path printed in the output
+              (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">plan.md</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">./docs/x.md</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">~/notes.md</span>, even
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">src/foo.ts:42</span>, whose
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">:line</span> suffix is dropped) —
+              <strong style="color: #e6e1d7">reveals</strong> it in Finder instead of opening it. A terminal renders untrusted
               program output, so a link could point at a
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.app</span> or
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.command</span>; revealing selects the file
-              without running it, which is the security boundary — actually opening it stays a separate, explicit action. Web
+              without running it, which is the security boundary — actually opening it stays a separate, explicit action. A bare path
+              is resolved against the clicked pane's own working directory and only acts when it hits a real file, so ordinary prose
+              doesn't bounce Finder. A local Markdown file
+              (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.md</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.markdown</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.mdx</span>) is the one exception, and it
+              does not weaken the boundary: rook renders it itself in the
+              <a href="#terminals" style="color: #7ece8f">Markdown preview</a> panel, so nothing is handed to the system to launch.
+              Web
               (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">http</span>/<span
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
                 >https</span
-              >) and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">mailto</span> links still open as
-              before. A <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">file://</span> link that names
-              another host is ignored rather than revealed, so a stray link can't trigger a Finder network mount.
+              >) and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">mailto</span> links still open in
+              the browser as before. A
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">file://</span> link that names another
+              host is ignored rather than revealed, so a stray link can't trigger a Finder network mount.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               Open the file with <strong style="color: #e6e1d7">File ▸ Edit ghostty.conf…</strong> (a 95% editor overlay, same as

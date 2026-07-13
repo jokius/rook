@@ -6,7 +6,7 @@
     <title>Command reference — rook | rookctl control API</title>
     <meta
       name="description"
-      content="Complete rookctl reference: all 62 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, themes, and keymaps, with arguments and return values."
+      content="Complete rookctl reference: all 63 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, themes, and keymaps, with arguments and return values."
     />
     <meta
       name="keywords"
@@ -18,7 +18,7 @@
     <meta property="og:title" content="Command reference — rook" />
     <meta
       property="og:description"
-      content="All 62 rookctl control commands with arguments, return values, and errors."
+      content="All 63 rookctl control commands with arguments, return values, and errors."
     />
     <meta property="og:url" content="https://rook.app/commands" />
     <meta property="og:image" content="https://rook.app/assets/rook-og.png" />
@@ -30,7 +30,7 @@
     <meta name="twitter:title" content="Command reference — rook" />
     <meta
       name="twitter:description"
-      content="All 62 rookctl control commands with arguments, return values, and errors."
+      content="All 63 rookctl control commands with arguments, return values, and errors."
     />
     <meta name="twitter:image" content="https://rook.app/assets/rook-og.png" />
     <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
@@ -192,7 +192,7 @@
             Command reference
           </h1>
           <p style="font-size: 19px; line-height: 1.6; color: #bfbab0; margin: 0 0 8px">
-            All 62 commands of the rook control API, with arguments and return values. Every one is reachable from the
+            All 63 commands of the rook control API, with arguments and return values. Every one is reachable from the
             <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl</span> CLI and from the local
             control socket.
           </p>
@@ -394,8 +394,10 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">agent</span> (the coding agent detected in the focused
                 pane — <span style="font-family: &quot;JetBrains Mono&quot;, monospace">claude</span> /
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">codex</span>, omitted otherwise),
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">background</span>, and
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">unseen</span>.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">background</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">unseen</span>, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">markdownPath</span> (the Markdown file the
+                session's preview panel is rendering, omitted when it is closed).
               </p>
               <p style="font-size: 14px; line-height: 1.65; color: #949ba4; margin: 8px 0 0">
                 <strong style="color: #bfbab0">Workspace node:</strong>
@@ -878,6 +880,30 @@
                 arbitrary directory instead (a missing/non-directory path errors). Idempotent for on/off/toggle; an unknown mode errors. Read back via the session
                 node's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">fileTreeVisible</span> and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">fileTreeRoot</span>.
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl session markdown [open|close|toggle] &lt;path&gt; [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.markdown</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Render a Markdown file in the session's preview panel — the column to the right of the terminal (and of the file
+                tree, when that is open too).
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">open</span> is the default and requires a path: a
+                relative one resolves against the session's cwd and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">~</span> expands; a missing file or a directory errors
+                with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">no such file</span>.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">close</span> takes no path;
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">toggle</span> closes the panel when it already shows
+                that file and opens it otherwise. Read back via the session node's
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">markdownPath</span>.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                The panel watches the file, so rewriting it re-renders live — the point of handing a plan to the user while an agent
+                keeps editing it. The open file is persisted per session; the ⌘-click on a Markdown path in the terminal is the GUI
+                half of the same panel.
               </p>
             </div>
 

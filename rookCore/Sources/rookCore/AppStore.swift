@@ -66,6 +66,11 @@ public final class AppStore {
     /// the file-tree divider drag (clamped to `fileTreeWidthMin...fileTreeWidthMax`); restored on relaunch.
     public var fileTreeWidth: Double = AppStore.fileTreeWidthDefault
 
+    /// This window's Markdown preview panel width in points. Per-window UI state (like `fileTreeWidth`), so
+    /// every session's preview opens at the width the window was last dragged to. Persisted in `Snapshot`,
+    /// clamped to `markdownWidthMin...markdownWidthMax` on restore.
+    public var markdownWidth: Double = AppStore.markdownWidthDefault
+
     /// The sidebar width default and drag/restore bounds, shared by the view's divider drag and the
     /// `restore()` clamp so the two can't drift (and a hand-edited snapshot can't drive an out-of-range frame).
     public static let sidebarWidthDefault: Double = 220
@@ -214,6 +219,7 @@ public final class AppStore {
                                           scratch: session.scratchActive, flagged: session.flagged,
                                           fileTreeVisible: session.fileTreeVisible ? true : nil,
                                           fileTreeRoot: session.fileTreeVisible ? session.fileTreeRoot : nil,
+                                          markdownPath: session.markdownPath,
                                           foreground: foreground(session),
                                           splitForeground: splitForeground(session),
                                           agent: session.agentKind?.rawValue, status: status,
@@ -850,7 +856,8 @@ public final class AppStore {
                         splitForegroundCommand: session.splitForegroundCommand,
                         initialCommand: session.initialCommand,
                         backgroundWatermark: session.backgroundWatermark,
-                        fileTreeVisible: session.fileTreeVisible ? true : nil)
+                        fileTreeVisible: session.fileTreeVisible ? true : nil,
+                        markdownPath: session.markdownPath)
     }
 
     func workspaceSnapshot(_ workspace: Workspace) -> WorkspaceSnapshot {
@@ -873,6 +880,7 @@ public final class AppStore {
         session.wasRestored = true
         session.backgroundWatermark = snapshot.backgroundWatermark
         session.fileTreeVisible = snapshot.fileTreeVisible ?? false
+        session.markdownPath = snapshot.markdownPath
         // A restored-visible panel has no "first show" edge to seed its root, and the view falls back to the
         // LIVE effectiveCwd whenever fileTreeRoot is nil — which would make the tree chase every cd (and lose
         // expansion/scroll on each). So pin the root to the restored cwd here; a hidden panel stays nil and

@@ -119,6 +119,11 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     /// owning window's `AppStore.noteUserActivity()`.
     var onUserInput: (() -> Void)?
 
+    /// Called on the main actor with an absolute path when a clicked link resolves to a Markdown file
+    /// (`LinkPolicy` → `.preview`), so the app can open the session's preview panel on it. Set by every
+    /// surface factory — a link is just as clickable in a split pane, an overlay, or the scratch terminal.
+    var onPreviewMarkdown: ((String) -> Void)?
+
     /// Called on the main actor with the surface's current font size (points) when it
     /// changes (cmd +/-), so the app can persist it. Set by the factory on the primary
     /// surface only. libghostty has no font-size getter or change event, so this is driven

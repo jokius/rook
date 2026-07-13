@@ -404,3 +404,21 @@ paths:
   The dialog is AppKit and not unit-tested (only `ClipboardPromptPolicy` is); the gating was verified with
   an isolated dev instance driving OSC 52 read/write by hand.
 
+- **libghostty detects BARE paths itself and sends them through `GHOSTTY_ACTION_OPEN_URL` — its regex is
+  NOT configurable on the pinned revision.**
+  A ⌘-click does not only fire on an OSC 8 hyperlink: libghostty's own link regex also matches plain text
+  it takes for a path (`plan.md`, `./docs/x.md`, `~/notes.md`, and `src/foo.ts:42` — `:` is one of its path
+  characters), and hands the RAW match to `open_url_cb` exactly like a `file://` link.
+  Do NOT try to narrow or extend that matching from the rook side: `RepeatableLink.parseCLI` returns
+  `error.NotImplemented` at the pinned rev, so a custom `link` regex in `ghostty.conf` cannot be parsed at
+  all — the set of clickable text is libghostty's to decide, and ours only to CLASSIFY.
+  Two consequences the classifier (`rookCore/LinkPolicy.swift`) exists to absorb: libghostty resolves a
+  relative match against the OSC 7 pwd ONLY when the resulting file EXISTS, so anything it could not
+  resolve (notably `src/foo.ts:42`, whose `:line` suffix stops it resolving) arrives as unresolved TEXT —
+  rook strips the `:line[:col]` suffix, expands `~`, and resolves against the clicked pane's cwd itself;
+  and because the regex fires on ordinary prose, a bare path only ACTS when a filesystem probe confirms it
+  is real (a `file://` link, being deliberate, still reveals a path that is gone).
+  The disposition is `.open` (web/mail) / `.preview` (a local `.md`/`.markdown`/`.mdx`, rendered by rook's
+  own `MarkdownDocument` — LaunchServices never sees it, so the never-launch-a-file boundary holds) /
+  `.reveal` (any other local file) / `.ignore`.
+

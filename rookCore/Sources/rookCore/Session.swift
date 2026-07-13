@@ -81,6 +81,18 @@ public final class Session: Identifiable {
     /// the panel opened, since there is no live FS watch yet). Observed so the panel reacts; in-memory only.
     public var fileTreeRefreshToken: Int = 0
 
+    /// The Markdown file this session's preview panel is rendering, or nil when the panel is closed — the
+    /// path IS the visibility, since a preview panel with no file is meaningless (unlike the file tree, whose
+    /// root outlives a hide). Set by a `.preview` link click (`LinkPolicy`), the View menu, or
+    /// `session.markdown`. Observed, so the detail column shows/hides the panel when it flips. Persisted via
+    /// `SessionSnapshot.markdownPath` — an absolute path, so it restores as-is with no re-derivation.
+    public var markdownPath: String?
+
+    /// Bumped to force the preview panel to re-read its file from disk even when the PATH is unchanged: a
+    /// manual refresh, and the re-open of an already-open file (clicking the same link twice should show what
+    /// is on disk NOW, not the render from before the agent rewrote it). Observed; in-memory only.
+    public var markdownRefreshToken: Int = 0
+
     /// The app-side surface (a `GhosttySurfaceView`). Lazily created on first
     /// display and owned here so it survives sidebar/detail view churn.
     @ObservationIgnored public var surface: (any TerminalSurface)?

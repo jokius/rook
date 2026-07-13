@@ -55,7 +55,9 @@ to restore the exact size), `scratch` (scratch shown), `fileTreeVisible` (whethe
 is shown — the read side of `session filetree`), `fileTreeRoot` (the directory the file-tree panel is
 currently rooted at — set by `session filetree reroot <path>` or `refresh` (which roots at the cwd);
 omitted when the panel is hidden, so gate on `fileTreeVisible` first — the read side of `session
-filetree reroot`), `flagged` (in the
+filetree reroot`), `markdownPath` (the Markdown file the session's preview panel is rendering, as an
+absolute path — omitted when the panel is closed, so the field's presence IS the panel's visibility;
+the read side of `session markdown`, record it to restore the preview later), `flagged` (in the
 flagged working-set), `status` (the agent-status — `active`|`completed`|`blocked` — omitted when
 idle), `statusPane` (which pane set that status — `left` (main) | `right` (split) | `scratch` — the
 `--pane` value from `session status`, omitted when unset or idle; gated on the same non-idle condition
@@ -250,6 +252,22 @@ All six are read-only projections of GUI state.
   shell). A scratch is expendable, so passing `--command` while one is already open respawns it. Not
   persisted. Unknown mode errors. The tree's `scratch` flag tracks visibility.
 - `session filetree [on|off|toggle|refresh|reroot <path>] [--target] [--window W]` — show/hide the file-tree panel (`refresh` re-roots it to the session's current cwd and re-reads it, visibility unchanged; `reroot <path>` re-roots it to an arbitrary directory instead of the cwd — a missing/non-directory path errors). Read the current root back from the tree node's `fileTreeRoot`.
+- `session markdown [open|close|toggle] [<path>] [--target] [--window W]` — render a Markdown file in
+  the session's preview panel, a scrolling column to the right of the terminal (right of the file tree
+  when that is open too). `open` is the default mode and REQUIRES a path (omitting it errors); a
+  relative path resolves against the session's current cwd and `~` expands, and a path that does not
+  exist — or is a directory — errors with `no such file: <path>` (the extension is NOT enforced over the
+  socket: any text file may be handed to the panel, which renders it as Markdown; only the GUI ⌘-click
+  is restricted to `.md`/`.markdown`/`.mdx`). `close` needs no path. `toggle` with a path closes the
+  panel when it is already showing that same file and opens it otherwise; a bare `toggle` with no path
+  just closes an open panel (there is nothing to show without a file). Re-opening the file that is
+  already shown re-reads it from disk. Rendering is rook's own (headings, nested and
+  ordered lists, code blocks, block quotes, rules, inline links, GFM tables — no images, no syntax
+  highlighting, no checkboxes), so nothing is launched through the system. The panel watches the file's
+  directory, so an agent rewriting the file re-renders it live; the open file is persisted per session
+  (it comes back after a restart) and the column width per window. Read the open file back from the
+  tree node's `markdownPath`. The GUI half is a ⌘-click on a Markdown path in the terminal, plus
+  View ▸ Close Markdown Preview.
 - `session focus [left|right|other] [--target] [--window W]` — move keyboard focus between the two
   split panes (`other` toggles, the default). Errors when the session has no split. Works whether the
   split is shown side-by-side or hidden (maximized) — when hidden, focusing a pane swaps which one shows.
@@ -611,6 +629,7 @@ user-edited file read at launch — there is no control command for it.
 `invalid fit` / `invalid position` / `invalid opacity` / `invalid color` / `text too long` /
 `unsupported image (PNG or JPEG only)` / `no such image file` / `image path must not contain control characters` / `invalid background mode` (session background),
 `invalid sidebar mode` (sidebar), `invalid focus mode` (workspace focus),
+`no such file: <path>` / `session.markdown open requires a path` / `invalid markdown mode` (session markdown),
 `invalid color (expected #rrggbb)` (workspace color — the CLI rejects it locally too),
 `unknown SF Symbol: <name>` / `no such image file: <path>` / `unsupported icon image (svg, png, or jpeg)` (workspace icon),
 `no open window` (quick/sidebar), `quick terminal not open` / `quick terminal not realized` (quick type) /

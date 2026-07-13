@@ -1568,8 +1568,10 @@ struct ControlDispatcherTests {
 
 }
 
+// internal (not file-private) so a per-command test file — `ControlDispatcherMarkdownTests` — can reuse it
+// without growing this file past the 2000-line test budget.
 @MainActor
-private final class MockControlActions: ControlActions {
+final class MockControlActions: ControlActions {
     enum Call: Equatable {
         case tree(window: String?)
         case sessionNew(ControlSessionCreateOptions)
@@ -1595,6 +1597,7 @@ private final class MockControlActions: ControlActions {
         case sessionSplit(target: String?, window: String?, String?)
         case sessionScratch(target: String?, window: String?, String?, command: String?)
         case sessionFileTree(target: String?, window: String?, String?, path: String?)
+        case sessionMarkdown(target: String?, window: String?, ControlToggleMode, path: String?)
         case sessionFocus(target: String?, window: String?, String?)
         case sessionResize(target: String?, window: String?, ControlSplitResize)
         case surfaceZoom(target: String?, window: String?, ControlToggleMode)

@@ -34,6 +34,11 @@ public protocol ControlActions {
     func splitSession(_ target: String?, window: String?, mode: String?) -> ControlResponse
     func scratchSession(_ target: String?, window: String?, mode: String?, command: String?) -> ControlResponse
     func fileTreeSession(_ target: String?, window: String?, mode: String?, path: String?) -> ControlResponse
+    /// Opens/closes/toggles the session's Markdown preview panel. The dispatcher has parsed the mode and
+    /// enforced "open needs a path"; the app still owns target resolution and the filesystem check (the
+    /// path must exist and not be a directory), plus resolving a relative path against the session's cwd.
+    func markdownSession(_ target: String?, window: String?, mode: ControlToggleMode,
+                         path: String?) -> ControlResponse
     func focusSessionPane(_ target: String?, window: String?, pane: String?) -> ControlResponse
     func resizeSplit(_ target: String?, window: String?, resize: ControlSplitResize) -> ControlResponse
     func setSurfaceZoom(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse
@@ -145,7 +150,8 @@ public struct ControlDispatcher {
         case .sessionNew, .sessionSelect, .sessionGo, .sessionClose, .sessionRename, .sessionReveal,
                 .sessionMove, .sessionFlag, .sessionSeen, .sessionStatus:
             return dispatchSessionCommand(request)
-        case .sessionSplit, .sessionScratch, .sessionFileTree, .sessionFocus, .sessionResize, .surfaceZoom,
+        case .sessionSplit, .sessionScratch, .sessionFileTree, .sessionMarkdown, .sessionFocus, .sessionResize,
+                .surfaceZoom,
                 .sessionType,
                 .sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch, .sessionOverlayOpen,
                 .sessionOverlayClose, .sessionOverlayResize, .sessionOverlayResult, .sessionBackground,
@@ -380,6 +386,17 @@ public struct ControlDispatcher {
         case .sessionFileTree:
             return actions.fileTreeSession(request.target, window: request.args?.window, mode: request.args?.mode,
                                            path: request.args?.path)
+        case .sessionMarkdown:
+            // `open` needs a file to show; `close` needs none; `toggle` closes an open panel when given no
+            // path (the menu/keybind form). The FS check is app-side — the dispatcher stays host-free.
+            guard let mode = ControlToggleMode.parse(request.args?.mode, on: "open", off: "close") else {
+                return ControlResponse(ok: false, error: "invalid markdown mode: \(request.args?.mode ?? "toggle")")
+            }
+            let path = request.args?.path?.trimmedOrNil
+            if mode == .on, path == nil {
+                return ControlResponse(ok: false, error: "session.markdown open requires a path")
+            }
+            return actions.markdownSession(request.target, window: request.args?.window, mode: mode, path: path)
         case .sessionFocus:
             return actions.focusSessionPane(request.target, window: request.args?.window, pane: request.args?.pane)
         case .sessionResize:

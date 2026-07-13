@@ -5,7 +5,8 @@ description: >
   control socket. Use when running inside a rook session and asked to control the terminal:
   create, rename, close, select, or reorder sessions and workspaces; split panes; toggle the
   per-session scratch terminal; open or close overlay terminals and read their exit status; display
-  an image inline via a bundled helper script; type
+  an image inline via a bundled helper script; render a Markdown file (a plan, a README) in the
+  session's built-in preview panel; type
   into a session, copy its selection, or search its scrollback; post desktop notifications; manage windows (new, list,
   select, close, resize, move); change font size; or reload and edit the keymap and the rook-scoped
   ghostty config. Also covers the
@@ -14,7 +15,7 @@ description: >
   feature request / question as a GitHub Discussion.
 when_to_use: >
   Trigger on: rook, rookctl, rook control socket, session.new, session.close, session.type,
-  session.split, session.scratch, session.filetree, session.focus, session.resize, surface.zoom, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status,
+  session.split, session.scratch, session.filetree, session.markdown, markdown preview, session.focus, session.resize, surface.zoom, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status,
   session.flag, session.seen, session.reveal, session.background, session.overlay, workspace.new, workspace.select, workspace.move, workspace.focus, window.new, window.list,
   window.select, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, flagged, notify, font.inc, keymap.reload, config.reload,
   theme.set, theme.list, select theme, edit keymap, show an image, display an image inline, show-image,
@@ -116,7 +117,7 @@ you work. For any session-scoped command meant to act on *this* session — `ove
 `type`, `text`, `background`, `status`, `copy`, … — pass `--target "$ROOK_SESSION_ID"`. Omit it and
 you open overlays / type into whatever the user has selected, not your own session.
 
-## Command summary (62 commands)
+## Command summary (63 commands)
 
 Run `rookctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
 **examples.md**.
@@ -143,7 +144,9 @@ when there's no split; the read side of `session focus`, record it to restore fo
 session's file-tree panel is shown — the read side of `session filetree`), `fileTreeRoot` (the
 directory the panel is currently rooted at — set by `session filetree reroot <path>` (or `refresh`,
 which roots at the cwd); omitted when the panel is hidden — the read side of `session filetree reroot`),
-and `surfaces` (`id`, `kind`, `active`, `visible`) for `surface zoom`. The tree top level carries `zoomedSurface`
+`markdownPath` (the Markdown file the session's preview panel is rendering — an absolute path, omitted
+when the panel is closed, so its presence IS the panel's visibility — the read side of `session
+markdown`), and `surfaces` (`id`, `kind`, `active`, `visible`) for `surface zoom`. The tree top level carries `zoomedSurface`
 (the control id of the currently zoomed surface, omitted when nothing is zoomed — the read side of
 `surface zoom`, so a script can check the zoom state and record-then-restore).
 
@@ -195,6 +198,13 @@ emoji keep their own colors).
   --command` (respawns the scratch if one is open). Target your own session with
   `--target "$ROOK_SESSION_ID"` (see Addressing).
 - `filetree [on|off|toggle|refresh|reroot <path>]` — show/hide the session's file-tree panel (`refresh` re-roots it to the session's current cwd and re-reads it; `reroot <path>` re-roots it to an arbitrary directory instead).
+- `markdown [open|close|toggle] [<path>]` — render a Markdown file in the session's preview panel (the
+  right-hand column). `open` (the default) needs a path — relative resolves against the session's cwd,
+  `~` expands; a missing file or a directory errors. `close` takes none; `toggle <path>` closes the panel
+  when it already shows that file, else opens it (a bare `toggle` just closes an open one). Read the open
+  file back from the tree node's `markdownPath`.
+  Use it to put a plan or a report in front of the user without them leaving the terminal — the panel
+  watches the file, so rewriting it re-renders live.
 - `focus [left|right|other]` — move focus between split panes.
 - `resize --split-ratio R | --grow-left D | --grow-right D` — move the split divider (no GUI/keymap
   equivalent — bind it via a `command "rookctl session resize …"` custom action). `--split-ratio` sets

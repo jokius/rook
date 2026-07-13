@@ -348,6 +348,35 @@ struct CommandsTests {
         #expect(throws: (any Error).self) { try Rookctl.parseAsRoot(["session", "filetree", "on", "/some/dir"]) }
     }
 
+    @Test func sessionMarkdownOpen() throws {
+        let expected = ControlRequest(cmd: .sessionMarkdown, target: "active",
+                                      args: ControlArgs(mode: "open", path: "/proj/PLAN.md"))
+        #expect(try request(["session", "markdown", "open", "/proj/PLAN.md"]) == expected)
+    }
+
+    @Test func sessionMarkdownClose() throws {
+        let expected = ControlRequest(cmd: .sessionMarkdown, target: "active", args: ControlArgs(mode: "close"))
+        #expect(try request(["session", "markdown", "close"]) == expected)
+    }
+
+    @Test func sessionMarkdownToggleWithPath() throws {
+        let expected = ControlRequest(cmd: .sessionMarkdown, target: "active",
+                                      args: ControlArgs(mode: "toggle", path: "docs/notes.md"))
+        #expect(try request(["session", "markdown", "toggle", "docs/notes.md"]) == expected)
+    }
+
+    @Test func sessionMarkdownOpenRequiresPath() {
+        #expect(throws: (any Error).self) { try Rookctl.parseAsRoot(["session", "markdown", "open"]) }
+        // `open` is the default mode, so a bare `session markdown` is the same rejection.
+        #expect(throws: (any Error).self) { try Rookctl.parseAsRoot(["session", "markdown"]) }
+    }
+
+    @Test func sessionMarkdownCloseRejectsPath() {
+        #expect(throws: (any Error).self) {
+            try Rookctl.parseAsRoot(["session", "markdown", "close", "/proj/PLAN.md"])
+        }
+    }
+
     @Test func sessionFocusDefaultsOther() throws {
         let expected = ControlRequest(cmd: .sessionFocus, target: "active", args: ControlArgs(pane: "other"))
         #expect(try request(["session", "focus"]) == expected)
