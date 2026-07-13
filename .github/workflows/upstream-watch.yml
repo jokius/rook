@@ -47,10 +47,15 @@ jobs:
         if: steps.cmp.outputs.count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
+          # We are a FORK, and `gh` resolves a fork's base repo to its PARENT — without this every
+          # command below would target umputun/agterm instead of us.
+          GH_REPO: ${{ github.repository }}
           COUNT: ${{ steps.cmp.outputs.count }}
           COMMITS: ${{ steps.cmp.outputs.commits }}
         run: |
-          gh label create upstream-watch --color 0366d6 --description "Upstream has commits we haven't taken" 2>/dev/null || true
+          # || true: the label already exists on every run after the first. Do NOT silence stderr —
+          # a real failure here surfaces later as a cryptic "could not add label: not found".
+          gh label create upstream-watch --color 0366d6 --description "Upstream has commits we haven't taken" || true
 
           body=$(printf 'Upstream (`umputun/agterm`) has **%s commit(s)** we have not taken.\n\nWe do not follow upstream — this is just a heads-up so we can decide if any of these is worth having.\n\n### Untaken upstream commits\n```\n%s\n```\n\n### Triage\n```sh\nscripts/upstream.sh              # list them\nscripts/upstream.sh <sha>        # inspect one\nscripts/upstream.sh diff <sha>   # full diff\nscripts/upstream.sh pick <sha>   # take it (cherry-pick + gate)\n```\n' "$COUNT" "$COMMITS")
 
