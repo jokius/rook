@@ -485,6 +485,8 @@ private struct AgentStatusSettingsView: View {
                     .accessibilityIdentifier("settings-status-blocked")
                 ColorPicker("Completed", selection: completedStatusColor, supportsOpacity: false)
                     .accessibilityIdentifier("settings-status-completed")
+                Toggle("Highlight blocked and completed rows", isOn: statusRowHighlightEnabled)
+                    .accessibilityIdentifier("settings-status-row-highlight")
             }
 
             Section("Sound") {
@@ -537,6 +539,13 @@ private struct AgentStatusSettingsView: View {
     private var completedStatusColor: Binding<Color> {
         Binding(get: { Color(nsColor: NSColor(rookHex: model.settings.completedStatusColorHex) ?? .systemGreen) },
                 set: { model.setCompletedStatusColorHex(NSColor($0).rookHexString) })
+    }
+
+    /// 1:1 with the toggle; nil (the default) reads as on, so settings.json stays minimal until the user
+    /// turns the row wash off. `active` rows are never washed either way — only the attention states.
+    private var statusRowHighlightEnabled: Binding<Bool> {
+        Binding(get: { model.settings.statusRowHighlightEnabled ?? true },
+                set: { model.setStatusRowHighlightEnabled($0 ? nil : false) })
     }
 
     // the system sound played when a session enters `blocked`; "None" maps to nil. Selecting a sound

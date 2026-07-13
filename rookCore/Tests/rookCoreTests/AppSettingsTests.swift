@@ -145,6 +145,25 @@ struct AppSettingsTests {
         #expect(decoded.ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
     }
 
+    @Test func statusRowHighlightRoundTripsDefaultsOnAndIsNotAConfigLine() throws {
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(AppSettings(statusRowHighlightEnabled: false)))
+        #expect(decoded.statusRowHighlightEnabled == false)
+        // absent in a legacy file decodes to nil, which the app reads as ON (the row wash is default-on).
+        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"theme":"Nord"}"#.utf8))
+        #expect(legacy.statusRowHighlightEnabled == nil)
+        // render-only, never a ghostty config key — only the always-on defaults (scroll + right-click) are emitted.
+        #expect(AppSettings(statusRowHighlightEnabled: false).ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
+    }
+
+    /// Only `blocked`/`completed` wash the row; `active` (the agent is at work) and `idle` never do — the
+    /// host-free predicate the sidebar's row highlight gates on.
+    @Test func onlyAttentionStatusesHighlightTheRow() {
+        #expect(AgentStatus.blocked.needsAttention)
+        #expect(AgentStatus.completed.needsAttention)
+        #expect(!AgentStatus.active.needsAttention)
+        #expect(!AgentStatus.idle.needsAttention)
+    }
+
     @Test func notificationsEnabledRoundTripsAndIsNotAConfigLine() throws {
         let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(AppSettings(notificationsEnabled: false)))
         #expect(decoded.notificationsEnabled == false)

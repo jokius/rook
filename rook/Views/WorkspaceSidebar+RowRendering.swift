@@ -41,6 +41,7 @@ extension WorkspaceSidebar.Coordinator {
         applyBadge(toCell: cell, count: 0)
         cell.statusIcon.apply(AgentIndicator())
         cell.iconTint = nil
+        cell.statusTint = nil
         switch node.kind {
         case .workspace:
             let workspace = store.workspaces.first(where: { $0.id == node.id })
@@ -69,8 +70,11 @@ extension WorkspaceSidebar.Coordinator {
             field.setAccessibilityLabel(nil)
             let session = store.session(withID: node.id)
             applyBadge(toCell: cell, count: effectiveUnseen(session?.unseenCount ?? 0))
-            // gate the agent-status glyph: hidden for the frontmost window's selected session.
-            cell.statusIcon.apply(effectiveIndicator(forSession: node.id))
+            let indicator = effectiveIndicator(forSession: node.id)
+            cell.statusIcon.apply(indicator)
+            // the row wash for a blocked/completed session (nil for active/idle, or when the Settings
+            // toggle is off): it colors the row background (drawn by SidebarRowView) and the name text.
+            cell.statusTint = GhosttyApp.shared.statusRowHighlight(for: indicator)
             // a session with a split shows the split-rectangle icon (matching the toolbar split
             // button) in BOTH modes so it stays distinguishable at a glance; `hasSplit` keeps it while
             // merely hidden. only the filled `flagged` variant is tree-mode only — in the flat flagged

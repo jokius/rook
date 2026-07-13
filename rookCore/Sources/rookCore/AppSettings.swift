@@ -219,6 +219,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// file, NOT a ghostty key — it never appears in `ghosttyConfigLines()`. A stale path (app deleted)
     /// falls back to the system default at open time.
     public var editorApp: String?
+    /// Whether a session row whose agent `needsAttention` (`blocked`/`completed`) is washed in that
+    /// status's color — the row background plus its name text, on top of the always-on status glyph. nil
+    /// means the default (on). `active` is deliberately never washed: an agent at work is the steady
+    /// state, so it would keep half the sidebar colored. Render-only, applied at the AppKit level when
+    /// the sidebar draws, NOT a ghostty key — it never appears in `ghosttyConfigLines()`.
+    public var statusRowHighlightEnabled: Bool?
 
     public init(fontFamily: String? = nil, fontSize: Double? = nil, theme: String? = nil,
                 darkTheme: String? = nil, followSystemAppearance: Bool? = nil,
@@ -234,7 +240,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 confirmCloseSession: Bool? = nil, closeGraceUndoEnabled: Bool? = nil,
                 autoFollowAttention: String? = nil,
                 autoFollowStayOnActive: Bool? = nil, sidebarFontSize: Double? = nil,
-                editorApp: String? = nil) {
+                editorApp: String? = nil, statusRowHighlightEnabled: Bool? = nil) {
         self.fontFamily = fontFamily
         self.fontSize = fontSize
         self.theme = theme
@@ -266,6 +272,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.autoFollowStayOnActive = autoFollowStayOnActive
         self.sidebarFontSize = sidebarFontSize
         self.editorApp = editorApp
+        self.statusRowHighlightEnabled = statusRowHighlightEnabled
     }
 
     /// The resolved titlebar row state: the explicit `toolbarMode` when set to a KNOWN raw value, else the

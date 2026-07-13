@@ -267,6 +267,9 @@ All six are read-only projections of GUI state.
   (Appearance ▸ Agent Status; off by default); an explicit `--sound` always overrides it.
   `--color` (`#rrggbb`) overrides the glyph tint for THIS call only — it rides the status, so the next
   `session status` without `--color` reverts to the Settings-configured color (a malformed hex errors).
+  `blocked` and `completed` ALSO wash the whole sidebar row in the status color (background + name), so a
+  session needing attention reads at a glance; `active` stays glyph-only, and the user can turn the wash off
+  (Settings ▸ Agent Status ▸ Highlight blocked and completed rows). `--color` tints the wash too.
   Use it to distinguish states beyond the fixed palette (e.g. a caller-specific blocked color).
   `--pane` (`left`|`right`|`scratch`, `left`=main, `right`=split; defaults to `left` when omitted) records
   which pane set the status. It has two effects: (1) keystroke-clear becomes pane-scoped — a status set

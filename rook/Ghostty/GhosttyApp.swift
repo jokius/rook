@@ -99,6 +99,10 @@ final class GhosttyApp {
     private(set) var activeStatusColor: NSColor = GhosttyApp.defaultActiveStatusColor
     private(set) var blockedStatusColor: NSColor = .systemOrange
     private(set) var completedStatusColor: NSColor = .systemGreen
+    /// Whether a `blocked`/`completed` session row is washed in its status color. NOT ghostty-resolved:
+    /// the sidebar Coordinator reads it through `statusRowHighlight(for:)`, `SettingsModel` writes it. The
+    /// re-render rides the `.rookAppearanceChanged` notification, like `notificationBadgeEnabled`.
+    private(set) var statusRowHighlightEnabled: Bool = true
     let callbacks = GhosttyCallbacks()
     private var resourcesDir: String?
 
@@ -233,6 +237,23 @@ final class GhosttyApp {
     /// `StatusIconView` and the SwiftUI `StatusGlyph` so the two can't drift.
     func statusColor(for status: AgentStatus, override hex: String?) -> NSColor {
         NSColor(rookHex: hex) ?? statusColor(for: status)
+    }
+
+    /// The color a session ROW is washed in for `indicator`, or nil for no wash — the single gate both
+    /// halves of the highlight (the row background in `SidebarRowView` and the name text in
+    /// `SidebarCellView.setColors`) read, so they can't disagree. Only the attention states
+    /// (`blocked`/`completed`) wash: an `active` agent is the steady state and would keep half the sidebar
+    /// colored, so it stays glyph-only. The per-call `session.status --color` override rides along, like
+    /// the glyph's.
+    func statusRowHighlight(for indicator: AgentIndicator) -> NSColor? {
+        guard statusRowHighlightEnabled, indicator.status.needsAttention else { return nil }
+        return statusColor(for: indicator.status, override: indicator.color)
+    }
+
+    /// Set whether a `blocked`/`completed` row is washed in its status color. Called by `SettingsModel` at
+    /// launch and on every change; the sidebar re-renders the rows on `.rookAppearanceChanged`.
+    func setStatusRowHighlightEnabled(_ enabled: Bool) {
+        statusRowHighlightEnabled = enabled
     }
 
     // MARK: - Config

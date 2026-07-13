@@ -76,6 +76,7 @@ final class SettingsModel {
         applySidebarBackgroundShift()
         applySidebarFontSize()
         applyAgentStatusColors()
+        applyStatusRowHighlight()
         applyRestoreRunningCommand()
         applyAttentionButtonEnabled()
         // create the commented starter keymap on first launch, then load + parse it.
@@ -243,6 +244,9 @@ final class SettingsModel {
         try? settingsStore.save(settings)
         reloadGhosttyConfig()
     }
+    // render-only sidebar flag, not a ghostty key: persistAndApply() no-ops the config but rides
+    // .rookAppearanceChanged, which re-applies the row wash (like the badge toggle).
+    func setStatusRowHighlightEnabled(_ value: Bool?) { settings.statusRowHighlightEnabled = value; persistAndApply() }
     func setActiveStatusColorHex(_ hex: String?) { settings.activeStatusColorHex = hex; persistAndApply() }
     func setBlockedStatusColorHex(_ hex: String?) { settings.blockedStatusColorHex = hex; persistAndApply() }
     func setCompletedStatusColorHex(_ hex: String?) { settings.completedStatusColorHex = hex; persistAndApply() }
@@ -376,11 +380,12 @@ final class SettingsModel {
     }
 
     /// Reset the whole Agent Status section to defaults (the "Reset to defaults" button): the three glyph
-    /// colors back to the system defaults AND the blocked sound back to none.
+    /// colors back to the system defaults, the row highlight back on, AND the blocked sound back to none.
     func resetAgentStatus() {
         settings.activeStatusColorHex = nil
         settings.blockedStatusColorHex = nil
         settings.completedStatusColorHex = nil
+        settings.statusRowHighlightEnabled = nil
         settings.blockedStatusSoundName = nil
         persistAndApply()
     }
@@ -639,6 +644,7 @@ final class SettingsModel {
         applySidebarBackgroundShift()
         applySidebarFontSize()
         applyAgentStatusColors()
+        applyStatusRowHighlight()
         applyRestoreRunningCommand()
         applyAttentionButtonEnabled()
         // refresh the app chrome (title bar + sidebar + quick terminal) with the new terminal color,
@@ -710,6 +716,10 @@ final class SettingsModel {
         GhosttyApp.shared.setAgentStatusColors(activeHex: settings.activeStatusColorHex,
                                                blockedHex: settings.blockedStatusColorHex,
                                                completedHex: settings.completedStatusColorHex)
+    }
+
+    private func applyStatusRowHighlight() {
+        GhosttyApp.shared.setStatusRowHighlightEnabled(settings.statusRowHighlightEnabled ?? true)
     }
 
     /// Write the ghostty config lines (font/size/theme + the translucency pins) to the file

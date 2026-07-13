@@ -144,6 +144,30 @@ paths:
   The filled variant is tree-mode only — the flat flagged view shows the unfilled base icon,
   so a split session still gets the split-rectangle to stay distinguishable;
   only the FILLED flag variant is suppressed there (every row is flagged).
+- **Status row highlight (`blocked`/`completed` wash the whole row).**
+  A session whose agent `needsAttention` (`blocked` or `completed` — NEVER `active`,
+  which is the steady state and would keep half the sidebar colored) washes its ROW in that status's color:
+  the row BACKGROUND plus the name TEXT, on top of the always-on status glyph.
+  `GhosttyApp.statusRowHighlight(for:)` is the single gate both halves read (the Settings toggle +
+  `needsAttention` + the per-call `session.status --color` override), so the background and the text can
+  never disagree.
+  **The two halves live in different views and are joined through the CELL.** The tint is stored on
+  `SidebarCellView.statusTint` (set in the row builder, reset on cell reuse like `iconTint`/the badge) and
+  the row background is drawn by `SidebarRowView.drawBackground`, which READS the tint back off its hosted
+  cell — because the row view has no item of its own and a status change only re-runs the CELL builder
+  (`reloadItem`), never `rowViewForItem`.
+  Setting `statusTint` invalidates the row's background (`didSet` → the row view's `needsDisplay`), and
+  `didAddSubview` repaints when a cell attaches.
+  The wash is drawn FIRST, UNDER the selection pill: a selected row keeps the theme's own selection color
+  (its status is on screen anyway, and the glyph still reports it), and `setColors` gives the status color
+  to the text only when UNSELECTED — on the inverted-selection themes (`selection-background == foreground`)
+  a status-colored label over the pill would vanish outright.
+  Gated by `AppSettings.statusRowHighlightEnabled` (nil = ON, mirrored into the non-observable
+  `GhosttyApp.statusRowHighlightEnabled` by `SettingsModel.applyStatusRowHighlight`), so — like the status
+  COLORS — a flip is GLOBAL, invisible to `reconcile`'s per-row `RowContent` diff, and rides
+  `.rookAppearanceChanged` → the Coordinator's `reapplyStatusRows()` sweep (which re-applies the glyph,
+  the tint, and the text color on every visible session row; it was `reapplyStatusGlyphs` before the wash).
+  Settings ▸ Agent Status ▸ "Highlight blocked and completed rows"; `resetAgentStatus()` clears it back on.
 - **Per-workspace icon color (`Workspace.colorHex`).**
   A workspace can carry its own `#rrggbb` tint for its sidebar ICON (never the row text — one choke point,
   no layout risk), set from the row's context menu (Color… → the system `NSColorPanel`,

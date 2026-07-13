@@ -278,9 +278,10 @@ struct WorkspaceSidebar: NSViewRepresentable {
             // a settings change may have flipped the badge-visibility toggle; reconcile so the gated
             // unseen count (0 when off, the real count when on) reloads the affected badge rows.
             reconcile()
-            // the agent-status colors are global (not per-row), so reconcile's content diff can't see a
-            // color change — re-apply every visible glyph so a Settings color edit takes effect live.
-            reapplyStatusGlyphs()
+            // the agent-status colors and the row-highlight toggle are global (not per-row), so reconcile's
+            // content diff can't see them — re-apply every visible session row so a Settings edit takes
+            // effect live.
+            reapplyStatusRows()
             updateEmptyState()
             // re-apply the sidebar content inset in case a settings change requires recomputing it (the
             // inset itself is mode-independent, so this is a cheap re-assert, not a per-mode recalculation).
@@ -300,15 +301,21 @@ struct WorkspaceSidebar: NSViewRepresentable {
             rebuildAndReload()
         }
 
-        /// Re-apply the status glyph on every visible session row so a global agent-status color change
-        /// (from Settings) re-renders the existing glyphs. Appearance changes are rare, so the full sweep
-        /// is cheap.
-        private func reapplyStatusGlyphs() {
+        /// Re-apply the agent status on every visible session row — the glyph AND the row highlight (the
+        /// wash color plus the name text) — so a global change from Settings (a status color, or the
+        /// row-highlight toggle) re-renders the existing rows. Both are GLOBAL, not per-row, so
+        /// `reconcile`'s content diff can't see them. Appearance changes are rare, so the full sweep is
+        /// cheap.
+        private func reapplyStatusRows() {
             guard let outline = outlineView else { return }
             for row in 0 ..< outline.numberOfRows {
                 guard let node = outline.item(atRow: row) as? SidebarNode, node.kind == .session,
                       let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView else { continue }
-                cell.statusIcon.apply(effectiveIndicator(forSession: node.id))
+                let indicator = effectiveIndicator(forSession: node.id)
+                cell.statusIcon.apply(indicator)
+                // setting the tint invalidates the row's background; setColors re-reads it for the text.
+                cell.statusTint = GhosttyApp.shared.statusRowHighlight(for: indicator)
+                cell.setColors(selected: outline.selectedRowIndexes.contains(row))
             }
         }
 

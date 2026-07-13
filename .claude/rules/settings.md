@@ -50,10 +50,18 @@ paths:
   color the sidebar agent-status glyph: `SettingsModel` passes the hex to `GhosttyApp.setAgentStatusColors`
   which resolves to `NSColor` (so `SettingsModel` stays AppKit-free, the `NSColor`↔hex helper is `NSColor+RookHex`),
   `StatusIconView` reads it when drawing, and a change rides `.rookAppearanceChanged` → the Coordinator's
-  `reapplyStatusGlyphs()` sweep (the colors are global, not per-row, so `reconcile`'s diff can't see
+  `reapplyStatusRows()` sweep (the colors are global, not per-row, so `reconcile`'s diff can't see
   them).
-  Settings → Agent Status drives them with a Reset-to-defaults button (clears all three
-  to nil), plus a **Blocked sound** picker bound to `AppSettings.blockedStatusSoundName` (nil/"None"
+  `statusRowHighlightEnabled` (nil = ON) rides that SAME sweep: it gates whether a `blocked`/`completed`
+  session also WASHES its whole sidebar row in the status color (background + name text; `active` never
+  washes), mirrored into the non-observable `GhosttyApp.statusRowHighlightEnabled` by `applyStatusRowHighlight`
+  — the `notificationBadgeEnabled` pattern — and read through the single `GhosttyApp.statusRowHighlight(for:)`
+  gate (see the Sidebar rule for the cell/row-view split that draws it).
+  NOT a ghostty key.
+  Settings → Agent Status drives them with a Reset-to-defaults button (clears the three colors,
+  the row-highlight toggle, and the sound back to their defaults), a **Highlight blocked and completed rows**
+  toggle (default-ON binding: get `?? true` / set `$0 ? nil : false`, like the badge toggle),
+  plus a **Blocked sound** picker bound to `AppSettings.blockedStatusSoundName` (nil/"None"
   = no sound, the default; else a system sound name).
   `SettingsModel.setBlockedStatusSoundName` only SAVES (not a ghostty key,
   nothing renders it continuously); `ControlServer.setSessionStatus` reads `settingsModel.settings.blockedStatusSoundName`

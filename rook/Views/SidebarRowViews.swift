@@ -21,11 +21,29 @@ final class SidebarCellView: NSTableCellView {
     /// the very next re-assert. Reset on cell reuse, like the badge and status glyph.
     var iconTint: NSColor?
 
+    /// The agent-status wash color for a `blocked`/`completed` session row (nil = no wash), resolved by
+    /// `GhosttyApp.statusRowHighlight(for:)`. It colors BOTH halves of the highlight: the name text here,
+    /// and the row background — which `SidebarRowView.drawBackground` reads back off its hosted cell,
+    /// since the row view has no item of its own and a status change only re-runs the CELL builder.
+    /// Reset on cell reuse, like the badge, the status glyph, and `iconTint`.
+    var statusTint: NSColor? {
+        didSet {
+            guard statusTint != oldValue else { return }
+            // the wash is drawn by the row view, so a new tint has to invalidate ITS background (a cell
+            // built before attaching has no row view yet — `didAddSubview` redraws it on attach).
+            (superview as? NSTableRowView)?.needsDisplay = true
+        }
+    }
+
     /// Color the row text/icon from the terminal theme: a selected row pairs with the selection
     /// foreground (over the selection-background pill the row draws), or white over the soft wash when
     /// the theme exposes no selection color; an unselected row uses the theme foreground, icons dimmed.
     /// A row with an `iconTint` keeps its OWN icon color in both states (at full alpha — a deliberate
     /// signal, not chrome), while the text still tracks the theme.
+    /// An UNSELECTED row with a `statusTint` takes the status color for its TEXT instead of the theme
+    /// foreground; a SELECTED row does not — the selection pill is drawn OVER the status wash, so the text
+    /// must pair with the pill, and on the inverted-selection themes (`selection-background == foreground`)
+    /// a status-colored label over the pill can vanish outright.
     /// Driven from the real selection state (not `backgroundStyle`, which AppKit only flips while the
     /// table is first responder): the hosting `SidebarRowView` re-asserts it from its live `isSelected`
     /// on attach and on every selection flip, and the coordinator re-runs it on theme changes.
@@ -34,7 +52,7 @@ final class SidebarCellView: NSTableCellView {
         let color = selected
             ? (app.terminalSelectionForegroundColor ?? .white)
             : (app.terminalForegroundColor ?? .labelColor)
-        textField?.textColor = color
+        textField?.textColor = selected ? color : (statusTint ?? color)
         imageView?.contentTintColor = iconTint ?? color.withAlphaComponent(selected ? 0.85 : 0.6)
     }
 }
@@ -185,6 +203,11 @@ final class SidebarRowView: NSTableRowView {
     /// dimmer for a background one.
     private static let keyAlpha: CGFloat = 0.13
     private static let inactiveAlpha: CGFloat = 0.07
+    /// Agent-status wash opacity: strong enough to read across the sidebar at a glance, light enough to
+    /// keep the row text legible on both a light and a dark theme. Dimmer for a background window, like
+    /// the selection pill.
+    private static let statusAlpha: CGFloat = 0.22
+    private static let statusInactiveAlpha: CGFloat = 0.12
 
     override var isEmphasized: Bool {
         get { window?.isKeyWindow ?? false }
@@ -209,14 +232,30 @@ final class SidebarRowView: NSTableRowView {
         // a cell materialized into an already-selected row (reload/expand row-map flux can make the
         // cell builder's own selection lookup miss) picks up the row's live state on attach.
         (subview as? SidebarCellView)?.setColors(selected: isSelected)
+        // the cell carries the status wash the row draws; a cell attaching (or being reused with a
+        // different status) needs the background repainted from its tint.
+        needsDisplay = true
     }
 
     private func retintCellViews() {
         for case let cell as SidebarCellView in subviews { cell.setColors(selected: isSelected) }
     }
 
+    /// The agent-status wash color of the hosted cell, or nil when the row has no status highlight. The
+    /// cell owns the tint (only the cell builder re-runs on a status change), so the row reads it back.
+    private var statusTint: NSColor? {
+        for case let cell as SidebarCellView in subviews where cell.statusTint != nil { return cell.statusTint }
+        return nil
+    }
+
     override func drawBackground(in dirtyRect: NSRect) {
         super.drawBackground(in: dirtyRect)
+        // the status wash goes FIRST, under the selection pill: a selected row reads as selected (its pill
+        // is the theme's own color and must not be tinted), while the glyph still says which status it is.
+        if let status = statusTint {
+            status.withAlphaComponent(isEmphasized ? Self.statusAlpha : Self.statusInactiveAlpha).setFill()
+            rowPill().fill()
+        }
         guard isSelected else { return }
         if let selection = GhosttyApp.shared.terminalSelectionBackgroundColor {
             // the terminal's own selection color; dim it for a background (non-key) window.
@@ -225,7 +264,13 @@ final class SidebarRowView: NSTableRowView {
             // no theme selection color: a soft white wash, brighter for the key window.
             NSColor(white: 1, alpha: isEmphasized ? Self.keyAlpha : Self.inactiveAlpha).setFill()
         }
-        NSBezierPath(roundedRect: bounds.insetBy(dx: 8, dy: 1.5), xRadius: 7, yRadius: 7).fill()
+        rowPill().fill()
+    }
+
+    /// The rounded rect both washes fill, so the status highlight and the selection pill are the same
+    /// shape and can't misalign by a pixel.
+    private func rowPill() -> NSBezierPath {
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 8, dy: 1.5), xRadius: 7, yRadius: 7)
     }
 }
 
