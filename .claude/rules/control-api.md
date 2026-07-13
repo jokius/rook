@@ -110,13 +110,35 @@ paths:
   back to active when work resumes — Claude Code has no "permission answered" event,
   and the gated tool's own PreToolUse fires BEFORE `blocked` is set, so the approved tool's PostToolUse
   is the first hook afterwards), and merges SIX Codex lifecycle hooks into `~/.codex/config.toml` with a
-  `.bak` (SessionStart→`idle`, UserPromptSubmit/PreToolUse/PostToolUse→`active --blink`,
-  PermissionRequest→`blocked`, Stop→`completed --auto-reset` — `blocked` does NOT blink, matching the
-  Claude set where only `active` blinks).
-  Codex's `PermissionRequest` fires the moment it asks for approval, so `blocked` shows when it matters,
-  and `Stop` always sets `completed` — replacing a retired `codex-notify.sh` that keyword-matched the
-  turn's final message and misfired both ways (issue #193; the merge also strips the old
-  `notify = [...codex-notify.sh...]` line).
+  `.bak`.
+  **The Codex hooks do NOT map events to statuses — they call a SECOND installed script,
+  `rook-codex-status.sh` (`AgentHooksInstall.codexWrapperName`), with an ACTION**
+  (SessionStart→`session-start`, UserPromptSubmit→`user-prompt-submit`, PreToolUse→`pre-tool-use`,
+  PostToolUse→`post-tool-use`, PermissionRequest→`permission-request`, Stop→`stop`).
+  That adapter — not rook's runtime — owns the agent-specific behavior and calls the GENERIC
+  `rook-agent-status.sh` wrapper with the same `idle`/`active --blink`/`blocked`/`completed --auto-reset`
+  states any caller uses.
+  The reason is Codex's **Auto Review**: `PermissionRequest` fires BEFORE Auto Review decides whether a
+  human is needed, so mapping it straight to `blocked` false-flagged every auto-approved tool.
+  Instead `permission-request`/`user-prompt-submit` fork ONE watcher per pane that polls
+  `rookctl session text` (0.5 s, `ROOK_CODEX_WATCH_INTERVAL`/`_MAX_CHECKS` knobs) and reports `blocked`
+  only once a real approval/question dialog is VISIBLE in the footer — restoring `active --blink` when it
+  clears, so a denied request (which fires no follow-up tool event) does not linger blocked.
+  A token file guards the watcher: a superseding lifecycle event rewrites it, and the watcher re-checks
+  it right before writing so a late `blocked` from a stale pane read can't clobber a newer status.
+  This replaced a retired `codex-notify.sh` that keyword-matched the turn's final message and misfired
+  both ways (issue #193; the merge also strips the old `notify = [...codex-notify.sh...]` line).
+  Both wrappers get the bundled `rookctl` path baked in by `AgentHooksInstaller.bakeRookctlPath` (it
+  loops over `wrapperName` + `codexWrapperName`).
+  **`mergeCodexConfig` UPGRADES an existing managed block in place** (`refreshManagedCodexBlock`) rather
+  than short-circuiting on the marker: without it, a user who installed the old block would never receive
+  a hook fix.
+  The refresh preserves Codex's trailing `[hooks.state…]` trust records byte-for-byte (Codex appends
+  them INSIDE our end marker) and leaves a FOREIGN marker block (one carrying neither of our scripts)
+  untouched; an unchanged block still reports `.unchanged`.
+  The script itself is covered host-free by `CodexStatusHookTests`, which runs the real
+  `rook/Resources/agent-status/rook-codex-status.sh` against a mock `rookctl`/wrapper and drives it
+  through a sequence of fake screens.
   The Codex merge PARSES the config with `TOMLDecoder` (a pure-Swift, spec-compliant parser — the one
   dependency `rookCore` links besides swift-argument-parser) to decide the outcome
   (`AgentHooksInstall.CodexMergeOutcome`): marker present → `.unchanged`; the file already defines its own
