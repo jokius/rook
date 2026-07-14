@@ -226,7 +226,10 @@ public final class AppStore {
                                           markdownPath: session.markdownPath,
                                           foreground: foreground(session),
                                           splitForeground: splitForeground(session),
-                                          agent: session.agentKind?.rawValue, status: status,
+                                          agent: session.agentKind?.rawValue,
+                                          agentSession: session.agentSession,
+                                          splitAgentSession: session.splitAgentSession,
+                                          status: status,
                                           statusPane: statusPane,
                                           statusBlink: idle ? nil : (session.agentIndicator.blink ? true : nil),
                                           statusColor: idle ? nil : session.agentIndicator.color,
@@ -878,6 +881,8 @@ public final class AppStore {
                         flagged: session.flagged,
                         foregroundCommand: session.foregroundCommand,
                         splitForegroundCommand: session.splitForegroundCommand,
+                        agentSession: session.agentSession,
+                        splitAgentSession: session.splitAgentSession,
                         initialCommand: session.initialCommand,
                         backgroundWatermark: session.backgroundWatermark,
                         fileTreeVisible: session.fileTreeVisible ? true : nil,
@@ -900,6 +905,8 @@ public final class AppStore {
         session.flagged = snapshot.flagged ?? false
         session.foregroundCommand = snapshot.foregroundCommand
         session.splitForegroundCommand = snapshot.splitForegroundCommand
+        session.agentSession = snapshot.agentSession
+        session.splitAgentSession = snapshot.splitAgentSession
         session.initialCommand = snapshot.initialCommand
         session.wasRestored = true
         session.backgroundWatermark = snapshot.backgroundWatermark

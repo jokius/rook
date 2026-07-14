@@ -108,10 +108,12 @@ extension AppStore {
         session.currentCwd = session.splitCwd ?? session.initialSplitCwd ?? session.currentCwd
         session.oscTitle = session.splitTitle
         session.foregroundCommand = session.splitForegroundCommand
+        session.agentSession = session.splitAgentSession
         session.splitCwd = nil
         session.splitTitle = nil
         session.initialSplitCwd = nil
         session.splitForegroundCommand = nil
+        session.splitAgentSession = nil
         // reset search only if the torn-down primary owned the bar (or the weak ref already dangled), so a
         // search owned by the SURVIVING pane stays valid across promotion — matching closeScratch's
         // identity guard rather than clearing unconditionally and dropping a still-valid search.

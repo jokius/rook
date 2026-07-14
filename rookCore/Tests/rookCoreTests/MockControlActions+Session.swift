@@ -64,6 +64,12 @@ extension MockControlActions {
         return ControlResponse(ok: true)
     }
 
+    func setAgentSession(_ target: String?, window: String?,
+                         update: ControlAgentSessionUpdate) -> ControlResponse {
+        calls.append(.sessionAgent(target: target, window: window, update))
+        return ControlResponse(ok: true)
+    }
+
     func splitSession(_ target: String?, window: String?, mode: String?) -> ControlResponse {
         calls.append(.sessionSplit(target: target, window: window, mode))
         return ControlResponse(ok: true)

@@ -232,7 +232,7 @@ struct rookApp: App {
         // The gate + precedence (fresh-always-runs, restored-honors-toggle, a captured foreground preempts
         // `initialCommand` even when denylist-suppressed) is the host-free `CommandRestore.restorePlan`.
         let hadForeground = session.foregroundCommand != nil
-        let restoreInput = Self.restoreInitialInput(session.foregroundCommand)
+        let restoreInput = Self.restoreInitialInput(session.foregroundCommand, agent: session.agentSession)
         session.foregroundCommand = nil
         let plan = CommandRestore.restorePlan(wasRestored: session.wasRestored,
                                               restoreEnabled: GhosttyApp.shared.restoreRunningCommand,
@@ -299,10 +299,19 @@ struct rookApp: App {
     /// command line + newline, or nil when the restore-running-command flag is off or the command's
     /// basename is in the user's `restore-denylist.conf` (→ plain shell). Host-free decisions live in
     /// `CommandRestore`; the denylist is parsed at launch into `GhosttyApp.shared.restoreDenylist`.
+    ///
+    /// When the captured command is a coding agent AND `resumeAgentSessions` is on, the line becomes the
+    /// RESUME of the conversation that agent's hook reported (`AgentResume`) instead of the bare re-run —
+    /// re-running `claude` verbatim would come back on a blank conversation, which is the whole point of
+    /// the feature. Any other command (and an agent with no reported conversation) takes the plain path.
     @MainActor
-    private static func restoreInitialInput(_ argv: [String]?) -> String? {
+    private static func restoreInitialInput(_ argv: [String]?, agent: AgentSessionRef?) -> String? {
         guard GhosttyApp.shared.restoreRunningCommand, let argv,
               CommandRestore.shouldRestore(argv: argv, denylist: GhosttyApp.shared.restoreDenylist) else { return nil }
+        if GhosttyApp.shared.resumeAgentSessions,
+           let resume = AgentResume.resumeLine(argv: argv, ref: agent) {
+            return resume + "\n"
+        }
         return CommandRestore.shellQuotedLine(argv) + "\n"
     }
 
@@ -395,7 +404,8 @@ struct rookApp: App {
         // the parent session's window/workspace/session ids in the env.
         // restore-running-command: re-run the split pane's captured foreground command via initial_input
         // (consumed run-once). Splits never carry an `initialCommand`, so no mutual-exclusion guard.
-        let restoreInput = Self.restoreInitialInput(session.splitForegroundCommand)
+        let restoreInput = Self.restoreInitialInput(session.splitForegroundCommand,
+                                                    agent: session.splitAgentSession)
         session.splitForegroundCommand = nil
         let view = GhosttySurfaceView(workingDirectory: session.initialSplitCwd ?? session.effectiveCwd,
                                       fontSize: session.fontSize.map(Float.init), initialInput: restoreInput, env: env)

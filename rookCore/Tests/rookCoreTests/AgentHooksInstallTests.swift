@@ -112,13 +112,45 @@ struct AgentHooksInstallTests {
         // a whitespace-only file has no content to lose, so it starts fresh like an empty file
         let result = try AgentHooksInstall.mergeClaudeSettings(existing: "   \n\t\n", scriptDir: scriptDir)
         #expect(result.changed)
-        #expect(events(result.json).count == 4)
+        #expect(events(result.json).count == 5)
     }
 
     @Test func mergeHandlesEmptyExisting() throws {
         let result = try AgentHooksInstall.mergeClaudeSettings(existing: "", scriptDir: scriptDir)
         #expect(result.changed)
-        #expect(events(result.json).count == 4)
+        #expect(events(result.json).count == 5)
+    }
+
+    /// SessionStart is the conversation hook, not a status one: it must call the OTHER script, since its
+    /// payload is where the agent's conversation id (the thing a resume needs) lives.
+    @Test func claudeSessionStartHookReportsTheConversation() throws {
+        let result = try AgentHooksInstall.mergeClaudeSettings(existing: "", scriptDir: scriptDir)
+        let json = try #require(try JSONSerialization.jsonObject(with: Data(result.json.utf8)) as? [String: Any])
+        let hooks = try #require(json["hooks"] as? [String: Any])
+        let entries = try #require(hooks["SessionStart"] as? [[String: Any]])
+        let commands = try #require(entries.first?["hooks"] as? [[String: Any]])
+        let command = try #require(commands.first?["command"] as? String)
+        #expect(command.contains(AgentHooksInstall.sessionWrapperName))
+        #expect(command.hasSuffix("claude --from-hook"))
+    }
+
+    /// The idempotency probe is per SCRIPT, not per directory — a directory-wide probe would see the
+    /// status hooks already installed and never add SessionStart (or re-add it on every run).
+    @Test func reinstallDoesNotDuplicateTheSessionHook() throws {
+        let first = try AgentHooksInstall.mergeClaudeSettings(existing: "", scriptDir: scriptDir)
+        let second = try AgentHooksInstall.mergeClaudeSettings(existing: first.json, scriptDir: scriptDir)
+        #expect(!second.changed)
+        let json = try #require(try JSONSerialization.jsonObject(with: Data(first.json.utf8)) as? [String: Any])
+        let hooks = try #require(json["hooks"] as? [String: Any])
+        #expect((hooks["SessionStart"] as? [[String: Any]])?.count == 1)
+    }
+
+    /// Codex fires every hook registered for an event, so SessionStart carries BOTH the status adapter and
+    /// the conversation reporter.
+    @Test func codexSessionStartCarriesStatusAndConversationHooks() {
+        let block = AgentHooksInstall.codexHooksBlock(scriptDir: scriptDir)
+        #expect(block.contains(AgentHooksInstall.codexWrapperName + "' session-start"))
+        #expect(block.contains(AgentHooksInstall.sessionWrapperName + "' codex --from-hook"))
     }
 
     @Test func codexHooksBlockContainsAllSixEvents() {

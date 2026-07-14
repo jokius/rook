@@ -69,7 +69,14 @@ process — what it is running — omitted when the pane sits at its shell promp
 detected in the session's FOCUSED pane — `claude` | `codex`, omitted when it runs anything else; the
 classified form of `foreground`, observed from the process itself rather than reported by the agent, and
 what the sidebar row's agent logo renders. Distinct from `status`, which is the agent's self-reported turn
-state: a session can run `claude` with no `status` at all), `background` (the
+state: a session can run `claude` with no `status` at all),
+`agentSession`/`splitAgentSession` (the agent CONVERSATION the main / split pane is on — a
+`{kind, id, configDir?}` object where `kind` is `claude`/`codex`, `id` is the agent's conversation id, and
+`configDir` is the agent's config root at launch (`CLAUDE_CONFIG_DIR`/`CODEX_HOME`, omitted when it ran on
+its default) — as that agent's own hook reported it via `session agent`; omitted when no hook ever reported
+one. It is the read side of the write-only `session agent`, so a script can see (and, with `--clear`,
+reset) what a restart would resume. Distinct from `agent`, which is merely WHICH agent the pane runs,
+observed from the process), `background` (the
 background spec set via `session background` — a `{kind, text?, imagePath?, colorHex?, opacity?, fit?,
 position?, repeats?}` object; `kind` is `image`/`text`/`color` — omitted when none is set), `unseen`
 (the unseen-notification badge count — raised by `notify`/OSC 9/777, cleared by `session seen` — omitted
@@ -318,6 +325,37 @@ All ten are read-only projections of GUI state.
   the user lands on it. The value is read back on `tree` as the session node's `statusPane`. An invalid
   value errors (`--pane must be left, right, or scratch`).
   An unknown state errors. Setting non-idle is for agents/hooks; `idle` clears it (also available in the GUI).
+- `session agent <claude|codex> [--id ID] [--from-hook] [--clear] [--config-dir DIR] [--pane left|right] [--target] [--window W]` —
+  remember which agent CONVERSATION the pane is on, so a restart RESUMES it instead of coming back on a
+  blank agent. It is the write side of the tree's `agentSession`/`splitAgentSession`, and it only takes
+  effect when the user turns on Settings ▸ General ▸ Resume agent conversations (which itself rides on
+  Restore running commands on restart — that re-run is what types the resume line into the restored shell).
+  Exactly one of `--id <conversation-id>`, `--from-hook`, or `--clear` (forget the pane's conversation) is
+  required.
+  `--from-hook` reads the agent hook's JSON payload from stdin and takes `session_id` out of it, so the
+  installed hook stays a thin pipe with no `jq` dependency; a payload carrying no id ERRORS rather than
+  clearing a good conversation.
+  `--config-dir` defaults to the agent's own environment (`CLAUDE_CONFIG_DIR` for Claude Code, `CODEX_HOME`
+  for Codex) — load-bearing when the user keeps separate work/personal profiles, since a conversation lives
+  under exactly one config root and resuming under another simply finds nothing.
+  `--pane` defaults to `$ROOK_PANE` (`left` = main, `right` = split), so a split-pane agent reports its own
+  pane with no argument; `--pane scratch` errors (the scratch terminal is not restored).
+  **Only the pane's OWN agent may report.** The server compares the reporting hook's nearest agent ANCESTOR
+  process with the pane's live foreground process, and drops a mismatch — so a nested `claude -p` that an
+  agent spawns (whose hooks inherit the same `ROOK_SESSION_ID`/`ROOK_PANE`) cannot overwrite the pane's
+  conversation with its own throwaway one. Such a call still returns ok (a hook must never fail the agent's
+  turn) with `result.text = "ignored: not the pane's agent"`, but writes nothing.
+  On restore the pane's shell is handed
+  `env CLAUDE_CONFIG_DIR='<dir>' claude --resume <id> <original flags>` (Codex:
+  `env CODEX_HOME='<dir>' codex resume <id>`) — the `env` prefix runs the binary from PATH, bypassing any
+  shell function/alias wrapping the agent's name, which would otherwise re-pick a profile and lose the
+  conversation. Flags the pane was originally started with survive (`claude --model opus` →
+  `claude --resume <id> --model opus`); any old `-c`/`--continue`/`-r`/`--resume`/`--fork-session` is
+  stripped so it cannot fight the resume. With NO reported id (the hook isn't installed) the pane falls
+  back to `claude --continue` / `codex resume --last` — the last conversation in that directory, so two
+  panes in the same directory both land on the same one.
+  Unknown agent errors. Like the whole restore feature it needs a clean quit, and an agent behind
+  tmux/ssh is not restored.
 - `session flag [on|off|toggle|clear] [--target] [--window W]` — flag/unflag a session for the flagged
   working-set view (a durable, persisted membership). `on`/`off`/`toggle` act on `--target` (default
   `active`) and are idempotent; `clear` ignores the target and unflags every session in the window.

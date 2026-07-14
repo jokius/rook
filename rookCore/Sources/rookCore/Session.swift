@@ -166,6 +166,19 @@ public final class Session: Identifiable {
     /// The split (right) pane's foreground command (full argv), the split analogue of `foregroundCommand`.
     @ObservationIgnored public var splitForegroundCommand: [String]?
 
+    /// The agent conversation the main pane is running, reported by that agent's `SessionStart` hook over
+    /// `session.agent`. Persisted via `SessionSnapshot.agentSession`; read on restore (with
+    /// `resumeAgentSessions` on) so the pane comes back on the SAME conversation rather than a blank one.
+    /// `@ObservationIgnored` — nothing renders it.
+    ///
+    /// Unlike `foregroundCommand` this is NOT consumed run-once: resuming keeps the agent's id, so the
+    /// resumed agent's own hook simply reports the same ref again. It is only ever ACTED on when that pane
+    /// also captured an agent as its foreground command, so a stale ref for a pane that has since moved on
+    /// to something else is inert.
+    @ObservationIgnored public var agentSession: AgentSessionRef?
+    /// The split (right) pane's agent conversation, the split analogue of `agentSession`.
+    @ObservationIgnored public var splitAgentSession: AgentSessionRef?
+
     /// Whether an ephemeral overlay terminal is shown on top of this session (full single-pane
     /// size, hiding the single/split content underneath). Observed, so the detail pane shows/hides
     /// the overlay. Driven only by the control channel; NOT persisted (absent from `snapshot()`), so

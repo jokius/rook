@@ -6,7 +6,7 @@
     <title>Command reference — rook | rookctl control API</title>
     <meta
       name="description"
-      content="Complete rookctl reference: all 64 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, themes, and keymaps, with arguments and return values."
+      content="Complete rookctl reference: all 65 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, themes, and keymaps, with arguments and return values."
     />
     <meta
       name="keywords"
@@ -18,7 +18,7 @@
     <meta property="og:title" content="Command reference — rook" />
     <meta
       property="og:description"
-      content="All 64 rookctl control commands with arguments, return values, and errors."
+      content="All 65 rookctl control commands with arguments, return values, and errors."
     />
     <meta property="og:url" content="https://rook.app/commands" />
     <meta property="og:image" content="https://rook.app/assets/rook-og.png" />
@@ -30,7 +30,7 @@
     <meta name="twitter:title" content="Command reference — rook" />
     <meta
       name="twitter:description"
-      content="All 64 rookctl control commands with arguments, return values, and errors."
+      content="All 65 rookctl control commands with arguments, return values, and errors."
     />
     <meta name="twitter:image" content="https://rook.app/assets/rook-og.png" />
     <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
@@ -192,7 +192,7 @@
             Command reference
           </h1>
           <p style="font-size: 19px; line-height: 1.6; color: #bfbab0; margin: 0 0 8px">
-            All 64 commands of the rook control API, with arguments and return values. Every one is reachable from the
+            All 65 commands of the rook control API, with arguments and return values. Every one is reachable from the
             <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl</span> CLI and from the local
             control socket.
           </p>
@@ -394,6 +394,14 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">agent</span> (the coding agent detected in the focused
                 pane — <span style="font-family: &quot;JetBrains Mono&quot;, monospace">claude</span> /
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">codex</span>, omitted otherwise),
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">agentSession</span> /
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">splitAgentSession</span> (the agent
+                <em>conversation</em> each pane is on —
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{kind, id, configDir?}</span>, as reported by that
+                agent's own hook via <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session agent</span>; omitted
+                when none was reported. Distinct from
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">agent</span>, which is merely which agent the pane
+                runs),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">background</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">unseen</span>, and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">markdownPath</span> (the Markdown file the
@@ -978,6 +986,48 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusPane</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusBlink</span>, and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusColor</span>.
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl session agent &lt;claude|codex&gt; [--id ID] [--from-hook] [--clear] [--config-dir DIR]
+                [--pane left|right] [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.agent</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Remember which agent <em>conversation</em> the pane is on, so a restart can resume it instead of opening a blank
+                one (Settings ▸ General ▸ Resume agent conversations). Called by the agent's own
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">SessionStart</span> hook — nothing else knows the
+                conversation id. Exactly one of
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--id</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--from-hook</span>, or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--clear</span> (forget the conversation) is
+                required; an unknown agent errors.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--from-hook</span> reads the hook's JSON payload
+                from stdin and takes <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session_id</span> out of it
+                (no <span style="font-family: &quot;JetBrains Mono&quot;, monospace">jq</span> needed; a payload with no id errors
+                rather than clearing).
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--config-dir</span> defaults to the agent's own
+                environment (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">CLAUDE_CONFIG_DIR</span> /
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">CODEX_HOME</span>) so the resume runs against the
+                profile the conversation lives in, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--pane</span> to
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">$ROOK_PANE</span>
+                (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">left</span> = main,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">right</span> = split;
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">scratch</span> errors — the scratch terminal is not
+                restored).
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                The report is accepted only from the pane's <em>own</em> agent: the reporting hook's nearest agent ancestor must be
+                the pane's foreground process, so a nested
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">claude -p</span> an agent spawns cannot overwrite
+                the pane's conversation with its own throwaway one (that call returns ok and writes nothing). Read back as the
+                session node's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">agentSession</span> /
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">splitAgentSession</span>.
               </p>
             </div>
 

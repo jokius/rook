@@ -161,6 +161,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// session's persisted `initialCommand`. nil means the default (off). An app-level behavior flag, NOT a
     /// ghostty key — it never appears in `ghosttyConfigLines()`.
     public var restoreRunningCommand: Bool?
+    /// Whether a restored pane whose captured foreground command is a coding agent (`claude`/`codex`)
+    /// RESUMES the conversation it was on (`claude --resume <id>`, from the id the agent's own hook
+    /// reported over `session.agent`) instead of re-running the bare agent, which would open a blank one.
+    /// nil means the default (off). Rides on `restoreRunningCommand`: with the re-run itself off there is
+    /// nothing to type into the pane. An app-level behavior flag, NOT a ghostty key — it never appears in
+    /// `ghosttyConfigLines()`.
+    public var resumeAgentSessions: Bool?
     /// Whether rook also loads the user's GLOBAL ghostty config (`~/.config/ghostty/config`) on top of
     /// its bundled defaults. nil means the default (off): rook is self-contained, so a config written
     /// for the standalone Ghostty.app does NOT silently change rook. Opt in to share one config across
@@ -234,6 +241,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 completedStatusColorHex: String? = nil, configDirectory: String? = nil,
                 mouseScrollMultiplier: Double? = nil, inactivePaneMuteStrength: Int? = nil,
                 sidebarBackgroundShift: Int? = nil, restoreRunningCommand: Bool? = nil,
+                resumeAgentSessions: Bool? = nil,
                 inheritGlobalGhosttyConfig: Bool? = nil, attentionButtonEnabled: Bool? = nil,
                 blockedStatusSoundName: String? = nil, rightClickPaste: Bool? = nil,
                 newSessionDirectory: String? = nil, newSessionCustomDirectory: String? = nil,
@@ -260,6 +268,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.inactivePaneMuteStrength = inactivePaneMuteStrength
         self.sidebarBackgroundShift = sidebarBackgroundShift
         self.restoreRunningCommand = restoreRunningCommand
+        self.resumeAgentSessions = resumeAgentSessions
         self.inheritGlobalGhosttyConfig = inheritGlobalGhosttyConfig
         self.attentionButtonEnabled = attentionButtonEnabled
         self.blockedStatusSoundName = blockedStatusSoundName

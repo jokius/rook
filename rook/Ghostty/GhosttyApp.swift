@@ -62,6 +62,11 @@ final class GhosttyApp {
     /// captured command as `initial_input`; `SettingsModel` writes it. Not ghostty-resolved, and it only
     /// affects the next restore, so no live re-render notification.
     private(set) var restoreRunningCommand: Bool = false
+    /// Whether a restored pane whose captured command is a coding agent RESUMES the conversation that
+    /// agent's hook reported (`AppSettings.resumeAgentSessions`) instead of re-running the bare agent onto
+    /// a blank one. Read by the surface factories alongside `restoreRunningCommand` (which it rides on —
+    /// with the re-run off there is nothing to type); `SettingsModel` writes it.
+    private(set) var resumeAgentSessions: Bool = false
     /// Whether the window title bar shows the attention bell icon. NOT ghostty-resolved: the title bar
     /// reads it (via `WindowContentView`'s mirrored chrome state), `SettingsModel` writes it. The
     /// re-render rides the `.rookAppearanceChanged` notification, like `toolbarMode`. Defaults off.
@@ -171,6 +176,12 @@ final class GhosttyApp {
     /// launch and on every change; read by the surface factories at restore time.
     func setRestoreRunningCommand(_ enabled: Bool) {
         restoreRunningCommand = enabled
+    }
+
+    /// Set whether a restored agent pane resumes its reported conversation. Called by `SettingsModel` at
+    /// launch and on every change; read by the surface factories at restore time.
+    func setResumeAgentSessions(_ enabled: Bool) {
+        resumeAgentSessions = enabled
     }
 
     /// Set whether the title bar shows the attention bell icon. Called by `SettingsModel` at launch and on

@@ -67,6 +67,7 @@ paths:
   JSON when nil.
   Existing pairs to mirror: `session.background`/`background`, `notify`+`session.seen`/`unseen`,
   `session.status`/`status`+`statusPane` (+`statusBlink`/`statusColor` for `--blink`/`--color`),
+  `session.agent`/`agentSession`+`splitAgentSession`,
   `session.flag`/`flagged`, `session.filetree`/`fileTreeVisible`+`fileTreeRoot`,
   `session.markdown`/`markdownPath` (the open file IS the panel's visibility, so one field covers both),
   `session.focus`/`splitFocused`, `session.resize`/`splitRatio`,
@@ -99,7 +100,8 @@ paths:
 - **Agent-status hooks install.**
   A second Help entry, **Help ▸ Install Agent Status Hooks…** (`AgentHooksInstaller.run()`),
   wires coding agents to `session.status`.
-  The hooks scripts bundle at `rook/Resources/agent-status/` (`rook-agent-status.sh` wrapper + `shell/integration.sh`
+  The hooks scripts bundle at `rook/Resources/agent-status/` (`rook-agent-status.sh` wrapper +
+  `rook-agent-session.sh` (the conversation reporter, below) + `shell/integration.sh`
   + `shell/integration.fish`, a `project.yml` Contents/Resources folder mirroring `Resources/ghostty`).
   The installer copies them to `~/.config/rook/agent-status/`, bakes the bundled `rookctl`'s absolute
   path (`Bundle.main.url(forAuxiliaryExecutable:)`) into the wrapper so the hooks fire even without the
@@ -156,6 +158,18 @@ paths:
   Like the CLI installer, the host-free JSON/TOML-merge / shell-rc-marker / backup-path logic is `rookCore.AgentHooksInstall`
   (unit-tested); `AgentHooksInstaller` (app-side) owns the AppKit FS glue,
   manually verified.
+  **The package ALSO installs a THIRD script, `rook-agent-session.sh`, on BOTH agents' `SessionStart`
+  event** — the conversation reporter behind `session.agent` / the resume-agent-conversations feature.
+  It is a thin pipe: the hook's stdin JSON goes straight into `rookctl session agent <kind> --from-hook`,
+  which parses `session_id` itself (`AgentHookPayload`), so the script needs no `jq` and stays no-op-safe
+  outside a rook session.
+  It rides the SAME install mechanics as the status wrappers (copied to `~/.config/rook/agent-status/`,
+  the bundled `rookctl` path baked in by `bakeRookctlPath`, merged into `~/.claude/settings.json` /
+  `~/.codex/config.toml` idempotently), and it is a SEPARATE hook entry from the Codex adapter's existing
+  `SessionStart`→`session-start` status action — the two fire on the same event and do different things.
+  Because it is new, EXISTING users must RE-RUN Help ▸ Install Agent Status Hooks… to get it (the merge
+  is idempotent and upgrades the managed block); without it there is no conversation id and a restored
+  agent pane falls back to `--continue` / `resume --last`.
 - **Agent skill install (Claude Code + Codex).**
   A third Help entry, **Help ▸ Install Agent Skill…** (`SkillInstaller.run()`),
   copies a bundled, personal-scope Agent Skill to `~/.claude/skills/rook/` AND `~/.codex/skills/rook/`
@@ -166,7 +180,7 @@ paths:
   The skill is a REFERENCE/knowledge skill (both user-invocable via `/rook` and model-triggered,
   `allowed-tools: Bash(rookctl *)`; the agent-neutral `description` carries the trigger nouns since
   Codex may ignore the extra `when_to_use` field — unknown frontmatter is harmless),
-  authored at `rook/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 63-command
+  authored at `rook/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 65-command
   summary + the image-display helper + a troubleshooting/reporting pointer;
   `reference.md` full per-command detail + keymap format; `examples.md` rookctl recipes;
   `troubleshooting.md` diagnosing the common problems (keymap editor, custom actions,
@@ -244,10 +258,10 @@ paths:
   rules, then remaining targets resolve inside that same store so one command never mutates multiple windows.
   The top-level `target` also carries the first explicit batch target so a new CLI talking to a still-running
   pre-batch server degrades to a named session instead of accidentally acting on `active`.
-- **Command catalog (64 commands):**
+- **Command catalog (65 commands):**
   - `tree`
   - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.color`/`workspace.icon`
-  - `session.new`/`session.close`/`session.select`/`session.rename`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.flag`/`session.seen`/`session.background`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
+  - `session.new`/`session.close`/`session.select`/`session.rename`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.agent`/`session.flag`/`session.seen`/`session.background`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
   - `surface.zoom`
   - `dashboard`
   - `quick`/`quick.type`/`quick.text`
@@ -272,7 +286,7 @@ paths:
   Setting echoes the resulting effective side in `result.text`; the BARE form (no name) reads the side
   the last config feed applied (`SettingsModel.lastAppliedIsDark`), which the test polls to prove the
   flip actually drove the reload.
-  `AppearanceFlipUITests` is its only consumer; the public command count stays 63.
+  `AppearanceFlipUITests` is its only consumer; the public command count stays 65.
 
   `workspace.delete` honors keep-at-least-one and returns an error instead of the GUI confirm alert (nothing
   blocks on a modal).
@@ -957,6 +971,57 @@ paths:
   and leaves a non-`autoReset` one untouched.
   The glyph is NOT gated by selection — it shows on every non-idle session,
   the selected one included (see below).
+  `session.agent` (target = session) remembers which agent CONVERSATION a pane is on, so a restart can
+  RESUME it instead of coming back on a blank agent.
+  It is control-NATIVE (no GUI/menu equivalent — only the agent knows its conversation id) and is meant to
+  be called by the agent's own `SessionStart` hook, the same footing as `session.status`.
+  `args.agent` is the `AgentKind` raw value (`claude`|`codex`, anything else is an
+  `invalid agent (expected claude or codex)` error), `args.agentID` the conversation id (nil CLEARS the
+  pane's ref — the `--clear` idiom), `args.configDir` the agent's config root at launch
+  (`CLAUDE_CONFIG_DIR`/`CODEX_HOME`; the CLI defaults it from its own environment), and `args.pane` the
+  shared `StatusPane` addressing vocabulary restricted to `left`|`right` — `scratch` is a
+  `session.agent supports --pane left or right` error, since the scratch terminal is not restored.
+  The host-free half (kind + pane validation, the ref, the response shape) is
+  `ControlDispatcher.dispatchSessionAgent`; the app-side `ControlActions.setAgentSession`
+  (`ControlServer+SessionActions.swift`) owns target resolution + the ownership check and drives the single
+  `AppStore.setAgentSession(_:forSession:pane:)` mutation point (which normalizes a `.right` pane to the
+  main pane on a session with NO split, exactly like `setAgentIndicator` does — a promoted split survivor
+  keeps its baked `ROOK_PANE=right`).
+  **Ownership check (`args.agentPid`).** A hook cannot prove WHICH agent fired it from its environment: a
+  nested `claude -p` that the pane's own agent spawns inherits the same `ROOK_SESSION_ID`/`ROOK_PANE`, so
+  without a check its throwaway conversation would clobber the pane's.
+  The process TREE can tell them apart — the CLI reports its nearest agent ANCESTOR's pid
+  (`rookctlKit/AgentProcess.nearestAgentPid`, a `sysctl(KERN_PROC_PID)` parent walk), and only the pane's
+  own agent is that pane's FOREGROUND process.
+  A mismatch is DROPPED: reported `ok` (a hook must never fail the agent's turn) with
+  `result.text = "ignored: not the pane's agent"`, but nothing is written; a nil `agentPid` (a human
+  running `rookctl` by hand) SKIPS the check rather than rejecting.
+  Unlike the ephemeral `AgentIndicator`, the ref is PERSISTED (`Session.agentSession`/`splitAgentSession`
+  → `SessionSnapshot`) — surviving the restart is the entire point — so a changed value saves.
+  RESTORE side: `rookApp.restoreInitialInput` renders the host-free `AgentResume.resumeLine(argv:ref:)`
+  into the restored shell's `initial_input` INSTEAD of the plain `CommandRestore.shellQuotedLine`, gated on
+  `AppSettings.resumeAgentSessions` (which itself rides `restoreRunningCommand` — see the Settings rule).
+  The line is `env CLAUDE_CONFIG_DIR='<dir>' claude --resume <id> <surviving flags>` (codex:
+  `env CODEX_HOME='<dir>' codex resume <id>`); the `env` prefix is deliberate (it execs the binary from
+  PATH, bypassing a shell function/alias wrapping the agent's name, which would re-pick a profile and lose
+  the conversation), and `AgentResume.strippedArgs` drops any `-c`/`--continue`/`-r`/`--resume` (+ its id),
+  `--fork-session`, and a leading codex `resume`/`fork` subcommand so nothing fights the resume.
+  With no reported id (the hook isn't installed) it falls back to `claude --continue` / `codex resume
+  --last`.
+  READ-BACK: `ControlSessionNode.agentSession`/`splitAgentSession` — the `AgentSessionRef`
+  (`{kind, id, configDir?}`) of the main / split pane, omitted when nil.
+  DISTINCT from the sibling `agent` field, which is merely WHICH agent the pane RUNS (derived from the
+  foreground process, no write command): `agent` is observed, `agentSession` is REPORTED.
+  Four-point keep-in-sync audit for `session.agent`: (1) `case sessionAgent = "session.agent"` +
+  `ControlArgs.agent`/`agentID`/`configDir`/`agentPid` (reusing `pane`) + `AgentSessionRef` +
+  `ControlSessionNode.agentSession`/`splitAgentSession` + `ControlAgentSessionUpdate` + the host-free
+  `AgentResume`/`AgentHookPayload` in `rookCore`, (2) the `.sessionAgent` dispatcher arm →
+  `ControlActions.setAgentSession` (app-side ownership check + `AppStore+Agent`) + the two fields populated
+  in the tree builder, (3) the `session agent <claude|codex> [--id|--from-hook|--clear] [--config-dir]
+  [--pane]` subcommand (`validate()`-guarded; `--from-hook` parses stdin with `AgentHookPayload`, so the
+  installed hook script needs no `jq`) in `rookctlKit`, (4) round-trip + omit-when-nil in
+  `ControlProtocolTests` + `AgentResumeTests` (the resume line, the stripped flags, the payload parse) +
+  dispatcher validation in `ControlDispatcherTests` + CLI mapping in `CommandsTests` + the e2e.
   `keymap.reload` re-reads `keymap.conf` and returns the parse-diagnostic count in `result.count` (0
   reads as a clean reload; `rookctl keymap reload` prints `ok` then, else `N diagnostic(s)`).
   It is the SAME `SettingsModel.reloadKeymap()` path the GUI's File ▸ Reload Keymap menu/palette item
@@ -1340,4 +1405,4 @@ paths:
   (image/text/color set/clear + tree read-back).
   **Agent-skill mirror (HARD keep-in-sync, 4th surface):** all commands are documented in the bundled
   `rook/Resources/agent-skill/` (SKILL.md summary, reference.md detail,
-  examples.md recipes) and the command count there is bumped to 63 to match.
+  examples.md recipes) and the command count there is bumped to 65 to match.

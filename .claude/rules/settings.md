@@ -309,6 +309,25 @@ paths:
   touch settings), but the feature DOES have a control surface: `restore.clear` clears the saved commands
   and live `foreground`/`splitForeground` ride `tree`/`ControlSessionNode` (see the Control API catalog's
   `restore.clear` four-point audit) — the agent-skill was updated accordingly.
+- **`resumeAgentSessions` (a restored agent pane resumes its CONVERSATION, opt-in, General tab).**
+  `AppSettings.resumeAgentSessions: Bool?` (nil = off, the default-off precedent like `restoreRunningCommand`)
+  makes a restored `claude`/`codex` pane come back on the conversation its own hook reported
+  (`session.agent` → `Session.agentSession`/`splitAgentSession`) instead of a blank one.
+  NOT a ghostty key (`writeGhosttyConfig` no-ops, no surface reload); mirrored into the app target from
+  the SAME `SettingsModel.applyRestoreRunningCommand()` that mirrors `restoreRunningCommand`
+  (`GhosttyApp.shared.setResumeAgentSessions(settings.resumeAgentSessions ?? false)` right beside it), so
+  the two flags can't drift out of step.
+  It RIDES `restoreRunningCommand` rather than standing alone: the foreground re-run is the mechanism that
+  types anything into the restored shell, so with the re-run off there is nothing to rewrite.
+  The Toggle is therefore `.disabled(model.settings.restoreRunningCommand != true)` in `SettingsView`
+  (accessibility id `settings-resume-agent-sessions`), and the restore path checks BOTH flags
+  (`rookApp.restoreInitialInput` gates on `restoreRunningCommand` first, then swaps the plain
+  `CommandRestore.shellQuotedLine` for the host-free `AgentResume.resumeLine(argv:ref:)` when this flag is
+  on and the captured argv IS an agent).
+  The denylist still applies (a denylisted agent restores as a plain shell, resume or not).
+  The SETTINGS TOGGLE is GUI-only and keep-in-sync EXEMPT (like `restoreRunningCommand`'s), but the
+  feature's control surface is the `session.agent` write + the `agentSession`/`splitAgentSession` tree
+  read-back — see the Control API catalog's four-point audit.
 - **`newSessionDirectory`/`newSessionCustomDirectory` (where a new ⌘T session opens, General tab).**
   `AppSettings.newSessionDirectory: String?` (nil = the `home` default) holds a `NewSessionDirectory`
   raw value (`home`/`currentSession`/`custom`); `newSessionCustomDirectory: String?` is the fixed dir for

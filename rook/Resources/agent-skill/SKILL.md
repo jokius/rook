@@ -15,7 +15,7 @@ description: >
   feature request / question as a GitHub Discussion.
 when_to_use: >
   Trigger on: rook, rookctl, rook control socket, session.new, session.close, session.type,
-  session.split, session.scratch, session.filetree, session.markdown, markdown preview, session.focus, session.resize, surface.zoom, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status,
+  session.split, session.scratch, session.filetree, session.markdown, markdown preview, session.focus, session.resize, surface.zoom, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status, session.agent, resume agent conversation,
   session.flag, session.seen, session.reveal, session.background, session.overlay, workspace.new, workspace.select, workspace.move, workspace.focus, window.new, window.list,
   window.select, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, flagged, notify, font.inc, keymap.reload, config.reload,
   theme.set, theme.list, select theme, edit keymap, show an image, display an image inline, show-image,
@@ -120,7 +120,7 @@ you work. For any session-scoped command meant to act on *this* session — `ove
 `type`, `text`, `background`, `status`, `copy`, … — pass `--target "$ROOK_SESSION_ID"`. Omit it and
 you open overlays / type into whatever the user has selected, not your own session.
 
-## Command summary (64 commands)
+## Command summary (65 commands)
 
 Run `rookctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
 **examples.md**.
@@ -129,7 +129,10 @@ Run `rookctl <area> <cmd> --help` for exact flags. Full detail in **reference.md
 `foreground`/`splitForeground` (the live argv of each pane's foreground process, omitted when the pane
 is at its shell prompt) — i.e. what each pane is currently running — `agent` (the coding agent detected in
 the focused pane: `claude`|`codex`, omitted otherwise — observed from the process, not reported by the
-agent, and distinct from `status`, which the agent's own hooks set), `status` (the agent-status set
+agent, and distinct from `status`, which the agent's own hooks set), `agentSession`/`splitAgentSession`
+(the agent CONVERSATION each pane is on — `{kind, id, configDir?}` — as that agent's own hook reported it
+via `session agent`, omitted when none was reported; the read side of that write-only command, and
+distinct from `agent`, which is merely WHICH agent runs there), `status` (the agent-status set
 via `session status`: `active`|`completed`|`blocked`, omitted when idle), `statusPane` (which pane set
 that status: `left` (main) | `right` (split) | `scratch`, from `session status --pane`, omitted when
 unset or idle), `statusBlink`/`statusColor` (the status glyph's `--blink` flag and `--color` `#rrggbb`
@@ -219,6 +222,14 @@ image and an emoji keep their own colors).
   the absolute left-pane fraction (0..1, clamped to 0.05..0.95); `--grow-left`/`--grow-right` nudge it by
   a fraction. Prints the applied (clamped) fraction.
 - `status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--pane left|right|scratch]` — set the sidebar agent glyph (`--sound default` or a system sound name plays a one-shot sound; `--color` tints the glyph for this call only, reverting on the next status set without it; `--pane` records which pane set it — `left`=main, `right`=split, `scratch` — so foreground typing in another pane won't clear it and any user-initiated GUI selection (auto-follow, attention-nav ⌃⌥↑/↓, plain session nav, the command palettes, a sidebar row click) reveals the blocking pane, read back as the tree `statusPane` field; the socket `session go next-attention` only steps the selection, it does not itself reveal the pane).
+- `agent <claude|codex> [--id ID] [--from-hook] [--clear] [--config-dir DIR] [--pane left|right]` —
+  remember which agent CONVERSATION the pane is on, so a restart can RESUME it instead of opening a blank
+  agent (needs Settings ▸ General ▸ Resume agent conversations). Normally called by the agent's own
+  `SessionStart` hook, which is the only party that knows the conversation id: `--from-hook` reads the
+  hook's JSON payload from stdin and takes `session_id` out of it. `--config-dir` defaults to
+  `$CLAUDE_CONFIG_DIR`/`$CODEX_HOME` and `--pane` to `$ROOK_PANE` (`scratch` is rejected). `--clear`
+  forgets it. A report is accepted only from the pane's OWN agent (a nested `claude -p` you spawn cannot
+  overwrite it). Reads back on the tree node as `agentSession`/`splitAgentSession`.
 - `flag [on|off|toggle|clear]` — flag a session for the flagged working-set view (`clear` unflags all).
 - `seen [--target] [--window W]` — clear the session's unseen-notification badge WITHOUT changing the
   selection or focus (the focus-free counterpart to `notify`, which raises the badge). Idempotent — a

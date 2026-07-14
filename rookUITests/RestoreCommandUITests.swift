@@ -135,7 +135,122 @@ final class RestoreCommandUITests: XCTestCase {
                        "with the flag off, a restored --command session must not re-run its command")
     }
 
+    // MARK: - Agent conversations (session.agent + resumeAgentSessions)
+
+    /// The whole point of the feature: a restored agent pane must come back on the SAME conversation. The
+    /// pane's foreground is a `tee` renamed to `claude` via `exec -a` (the classifier keys on argv[0], and
+    /// the sandboxed app can't be handed a real executable to run), and the conversation is reported over
+    /// the socket exactly as the agent's SessionStart hook would.
+    func testRestoreResumesAgentConversation() throws {
+        let conversation = UUID().uuidString
+        seedRestoreFlags(restore: true, resumeAgents: true)
+        app.launchForUITest()
+        runFakeAgent()
+
+        let reported = try sendCommand(#"""
+        {"cmd":"session.agent","args":{"agent":"claude","agentID":"\#(conversation)","configDir":"/tmp/cfg"}}
+        """#)
+        XCTAssertEqual(reported["ok"] as? Bool, true, "the hook's report should be accepted: \(reported)")
+
+        gracefulQuit()
+        // the conversation must be PERSISTED (with its config root) alongside the captured foreground
+        let refs = persistedAgentSessions()
+        XCTAssertEqual(refs.first?["id"] as? String, conversation, "the conversation should persist, got \(refs)")
+        XCTAssertEqual(refs.first?["kind"] as? String, "claude")
+        XCTAssertEqual(refs.first?["configDir"] as? String, "/tmp/cfg")
+
+        app.launchForUITest()
+        let screen = try restoredPaneText()
+        XCTAssertTrue(screen.contains("--resume") && screen.contains(conversation),
+                      "the restored pane should resume THAT conversation, got: \(screen)")
+        XCTAssertTrue(screen.contains("CLAUDE_CONFIG_DIR=/tmp/cfg") || screen.contains("CLAUDE_CONFIG_DIR='/tmp/cfg'"),
+                      "the resume should run against the profile the conversation lives in, got: \(screen)")
+    }
+
+    /// With the resume toggle off, the pane still re-runs its agent (the restore flag is on) — but bare,
+    /// onto a fresh conversation. This is the pre-feature behavior, and it must not regress.
+    func testRestoreWithoutResumeFlagRunsBareAgent() throws {
+        seedRestoreFlags(restore: true, resumeAgents: false)
+        app.launchForUITest()
+        runFakeAgent()
+        _ = try sendCommand(#"""
+        {"cmd":"session.agent","args":{"agent":"claude","agentID":"\#(UUID().uuidString)"}}
+        """#)
+
+        gracefulQuit()
+        app.launchForUITest()
+        let screen = try restoredPaneText()
+        XCTAssertFalse(screen.contains("--resume"),
+                       "with the resume toggle off the agent must come back bare, got: \(screen)")
+    }
+
+    /// A NESTED agent (a `claude -p` the pane's own agent spawned) inherits the same ROOK_SESSION_ID and
+    /// would otherwise overwrite the pane's conversation with its own throwaway one. The report carries the
+    /// reporting agent's pid; one that isn't the pane's foreground process is dropped.
+    func testAgentReportFromANonForegroundAgentIsIgnored() throws {
+        seedRestoreFlags(restore: true, resumeAgents: true)
+        app.launchForUITest()
+        runFakeAgent()
+
+        // pid 1 (launchd) is never the pane's foreground process — stands in for the nested agent
+        let response = try sendCommand(#"""
+        {"cmd":"session.agent","args":{"agent":"claude","agentID":"\#(UUID().uuidString)","agentPid":1}}
+        """#)
+        XCTAssertEqual(response["ok"] as? Bool, true, "a hook must never fail the agent's turn")
+        gracefulQuit()
+        XCTAssertTrue(persistedAgentSessions().isEmpty,
+                      "a report from a non-foreground agent must not be remembered, got \(persistedAgentSessions())")
+    }
+
     // MARK: - Helpers
+
+    /// Seed both restore flags into the isolated `settings.json`, and point HOME at the isolated state dir
+    /// so the restored login shell can't find the REAL `claude` on the user's PATH — the resume line then
+    /// stays legible in the scrollback instead of a live agent TUI repainting over it.
+    private func seedRestoreFlags(restore: Bool, resumeAgents: Bool) {
+        let json = #"{"restoreRunningCommand":\#(restore),"resumeAgentSessions":\#(resumeAgents)}"#
+        try? Data(json.utf8).write(to: stateDir.appendingPathComponent("settings.json"))
+        app.launchEnvironment["HOME"] = stateDir.path
+    }
+
+    /// Run a fake agent as the pane's foreground: `exec -a claude tee <marker>` renames `tee`'s argv[0] to
+    /// `claude`, which is exactly what `AgentKind.classify` keys on — and `tee` blocks on the terminal, so
+    /// it is still the foreground process at quit. (zsh's `exec -a`; the login shell here is the user's.)
+    private func runFakeAgent() {
+        XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 30), "seeded session row")
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        app.typeText("exec -a claude tee \(marker.path)\n")
+        XCTAssertTrue(poll { FileManager.default.fileExists(atPath: self.marker.path) },
+                      "the fake agent should create its marker on start (terminal must be focused)")
+    }
+
+    /// Every persisted `agentSession` across the window snapshots written at quit.
+    private func persistedAgentSessions() -> [[String: Any]] {
+        let windowsDir = stateDir.appendingPathComponent("windows")
+        guard let files = try? FileManager.default.contentsOfDirectory(at: windowsDir, includingPropertiesForKeys: nil)
+        else { return [] }
+        var result: [[String: Any]] = []
+        for file in files where file.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: file),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let workspaces = obj["workspaces"] as? [[String: Any]] else { continue }
+            for ws in workspaces {
+                for s in (ws["sessions"] as? [[String: Any]]) ?? [] {
+                    if let ref = s["agentSession"] as? [String: Any] { result.append(ref) }
+                }
+            }
+        }
+        return result
+    }
+
+    /// The restored pane's visible buffer — the line rook typed into the shell on restore.
+    private func restoredPaneText() throws -> String {
+        XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 30), "session restored")
+        RunLoop.current.run(until: Date().addingTimeInterval(2)) // let initial_input reach the shell
+        let response = try sendCommand(#"{"cmd":"session.text","args":{"lines":20}}"#)
+        let result = response["result"] as? [String: Any]
+        return (result?["text"] as? String) ?? ""
+    }
 
     /// Every persisted `foregroundCommand` across the window snapshots written at quit (the capture oracle).
     private func capturedForegroundCommands() -> [[String]] {

@@ -15,6 +15,11 @@ public enum AgentHooksInstall {
     /// event and terminal-output knowledge stays in this hook resource, outside rook's runtime.
     public static let codexWrapperName = "rook-codex-status.sh"
 
+    /// The conversation-reporting wrapper, installed beside the status ones and hooked to each agent's
+    /// `SessionStart`. It reports the agent's conversation id (which lives ONLY in the hook payload) so a
+    /// restart can resume that conversation instead of opening a blank one.
+    public static let sessionWrapperName = "rook-agent-session.sh"
+
     /// The shell integration script sourced from the user's rc files, relative to the script directory.
     public static let integrationRelativePath = "shell/integration.sh"
 
@@ -34,22 +39,37 @@ public enum AgentHooksInstall {
     /// the first hook to fire afterwards). `Notification` additionally carries the `permission_prompt`
     /// matcher (the others are unmatched). Only the `Stop`→`completed` hook passes `--auto-reset` (it
     /// clears on visit); `active` and `blocked` stay keep-state.
-    static let claudeHooks: [(event: String, matcher: String?, state: String)] = [
-        ("UserPromptSubmit", nil, "active --blink"),
-        ("PostToolUse", nil, "active --blink"),
-        ("Stop", nil, "completed --auto-reset"),
-        ("Notification", "permission_prompt", "blocked"),
+    ///
+    /// `SessionStart` is the odd one out: it drives the CONVERSATION wrapper, not the status one — it is
+    /// the event whose payload carries the agent's conversation id, which is what a restart needs to resume
+    /// that conversation rather than open a blank one.
+    struct ClaudeHook {
+        let event: String
+        let matcher: String?
+        let script: String
+        let args: String
+    }
+
+    static let claudeHooks: [ClaudeHook] = [
+        ClaudeHook(event: "UserPromptSubmit", matcher: nil, script: wrapperName, args: "active --blink"),
+        ClaudeHook(event: "PostToolUse", matcher: nil, script: wrapperName, args: "active --blink"),
+        ClaudeHook(event: "Stop", matcher: nil, script: wrapperName, args: "completed --auto-reset"),
+        ClaudeHook(event: "Notification", matcher: "permission_prompt", script: wrapperName, args: "blocked"),
+        ClaudeHook(event: "SessionStart", matcher: nil, script: sessionWrapperName, args: "claude --from-hook"),
     ]
 
     /// Codex lifecycle events paired with actions understood by the installed Codex hook. The adapter,
     /// rather than rook's runtime, owns the event-to-status behavior and Auto Review workaround.
-    static let codexHooks: [(event: String, action: String)] = [
-        ("SessionStart", "session-start"),
-        ("UserPromptSubmit", "user-prompt-submit"),
-        ("PreToolUse", "pre-tool-use"),
-        ("PostToolUse", "post-tool-use"),
-        ("PermissionRequest", "permission-request"),
-        ("Stop", "stop"),
+    /// `SessionStart` carries a SECOND hook (the conversation wrapper, alongside the status adapter): its
+    /// payload is where Codex's conversation id lives, and Codex runs every hook registered for an event.
+    static let codexHooks: [(event: String, script: String, args: String)] = [
+        ("SessionStart", codexWrapperName, "session-start"),
+        ("SessionStart", sessionWrapperName, "codex --from-hook"),
+        ("UserPromptSubmit", codexWrapperName, "user-prompt-submit"),
+        ("PreToolUse", codexWrapperName, "pre-tool-use"),
+        ("PostToolUse", codexWrapperName, "post-tool-use"),
+        ("PermissionRequest", codexWrapperName, "permission-request"),
+        ("Stop", codexWrapperName, "stop"),
     ]
 
     /// Thrown by `mergeClaudeSettings` when the existing `settings.json` is non-empty but not a valid
@@ -66,17 +86,17 @@ public enum AgentHooksInstall {
     /// file that is not valid JSON throws `MergeError.malformedExistingSettings` so the caller can leave
     /// the user's hand-maintained file untouched rather than overwrite it.
     public static func mergeClaudeSettings(existing: String?, scriptDir: String) throws -> (json: String, changed: Bool) {
-        let command = wrapperCommand(scriptDir: scriptDir)
         var root = try parsedObject(existing)
 
         var hooks = root["hooks"] as? [String: Any] ?? [:]
         var didChange = false
         for hook in claudeHooks {
             var entries = hooks[hook.event] as? [[String: Any]] ?? []
-            if entries.contains(where: { entryUsesWrapper($0, scriptDir: scriptDir) }) {
+            if entries.contains(where: { entryUsesWrapper($0, scriptDir: scriptDir, script: hook.script) }) {
                 continue // already installed for this event
             }
-            entries.append(hookEntry(command: command, state: hook.state, matcher: hook.matcher))
+            entries.append(hookEntry(scriptDir: scriptDir, script: hook.script, args: hook.args,
+                                     matcher: hook.matcher))
             hooks[hook.event] = entries
             didChange = true
         }
@@ -273,13 +293,13 @@ public enum AgentHooksInstall {
     /// absolute path is baked into each command — shell-quoted (so a path with spaces is one token)
     /// inside a TOML basic string — so the hook fires without the CLI on PATH.
     public static func codexHooksBlock(scriptDir: String) -> String {
-        let wrapper = shellQuote(codexWrapperPath(scriptDir: scriptDir))
-        return codexHooks.map { hook in
-            """
+        codexHooks.map { hook in
+            let script = shellQuote(scriptPath(scriptDir: scriptDir, script: hook.script))
+            return """
             [[hooks.\(hook.event)]]
             [[hooks.\(hook.event).hooks]]
             type = "command"
-            command = \(tomlBasicString(wrapper + " " + hook.action))
+            command = \(tomlBasicString(script + " " + hook.args))
             """
         }.joined(separator: "\n\n")
     }
@@ -302,15 +322,18 @@ public enum AgentHooksInstall {
         }
     }
 
-    // build the command string a Claude hook runs: the quoted wrapper path plus the state argument.
-    private static func wrapperCommand(scriptDir: String) -> String {
-        shellQuote(wrapperPath(scriptDir: scriptDir)) + " "
+    /// The absolute installed path of one of our hook scripts.
+    public static func scriptPath(scriptDir: String, script: String) -> String {
+        scriptDir + "/" + script
     }
 
-    // a single Claude hook entry: { (matcher?), hooks: [{ type: command, command }] }.
-    private static func hookEntry(command: String, state: String, matcher: String?) -> [String: Any] {
+    // a single Claude hook entry: { (matcher?), hooks: [{ type: command, command }] }. The command is the
+    // quoted script path plus that hook's arguments.
+    private static func hookEntry(scriptDir: String, script: String, args: String,
+                                  matcher: String?) -> [String: Any] {
+        let command = shellQuote(scriptPath(scriptDir: scriptDir, script: script)) + " " + args
         var entry: [String: Any] = [
-            "hooks": [["type": "command", "command": command + state]],
+            "hooks": [["type": "command", "command": command]],
         ]
         if let matcher {
             entry["matcher"] = matcher
@@ -318,9 +341,11 @@ public enum AgentHooksInstall {
         return entry
     }
 
-    // does a hook entry already invoke our wrapper (idempotency probe, by wrapper path)?
-    private static func entryUsesWrapper(_ entry: [String: Any], scriptDir: String) -> Bool {
-        let probe = wrapperPath(scriptDir: scriptDir)
+    // does a hook entry already invoke THIS script (idempotency probe, by script path)? It is probed per
+    // script, not per directory: `SessionStart` runs a different script than the status events, so a
+    // directory-wide probe would either re-add it on every install or skip it forever.
+    private static func entryUsesWrapper(_ entry: [String: Any], scriptDir: String, script: String) -> Bool {
+        let probe = scriptPath(scriptDir: scriptDir, script: script)
         guard let commands = entry["hooks"] as? [[String: Any]] else { return false }
         return commands.contains { ($0["command"] as? String)?.contains(probe) == true }
     }

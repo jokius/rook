@@ -22,6 +22,7 @@ public enum Command: String, Codable, Sendable {
     case workspaceIcon = "workspace.icon"
     case sessionType = "session.type"
     case sessionStatus = "session.status"
+    case sessionAgent = "session.agent"
     case sessionFlag = "session.flag"
     case sessionSeen = "session.seen"
     case sessionBackground = "session.background"
@@ -196,6 +197,19 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var display: Int?
     /// Agent state for `session.status` (`idle|active|completed|blocked`).
     public var status: String?
+    /// Which coding agent `session.agent` reports (`claude`|`codex`, the `AgentKind` raw value).
+    public var agent: String?
+    /// The agent's conversation id for `session.agent`, as its own hook reported it; nil CLEARS the pane's
+    /// remembered conversation (the pane restores as a plain agent again).
+    public var agentID: String?
+    /// The agent's config root at launch (`CLAUDE_CONFIG_DIR`/`CODEX_HOME`) for `session.agent`, so the
+    /// resume runs against the profile the conversation actually lives in; nil = the agent's default.
+    public var configDir: String?
+    /// The pid of the agent process that reported `session.agent` — its hook's nearest agent ancestor.
+    /// The server accepts the report only when this matches the target pane's foreground pid, which is what
+    /// keeps a NESTED agent (a `claude -p` the pane's own agent spawned) from overwriting the pane's
+    /// conversation with its own throwaway one. nil skips the check (a caller setting the id by hand).
+    public var agentPid: Int?
     /// Whether the `session.status` indicator pulses for attention.
     public var blink: Bool?
     /// Whether the `session.status` indicator resets to idle once the session is visited (selected).
@@ -235,6 +249,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 title: String? = nil, body: String? = nil,
                 width: Int? = nil, height: Int? = nil, x: Int? = nil, y: Int? = nil, display: Int? = nil,
                 status: String? = nil, blink: Bool? = nil, autoReset: Bool? = nil, sound: String? = nil,
+                agent: String? = nil, agentID: String? = nil, configDir: String? = nil, agentPid: Int? = nil,
                 ratio: Double? = nil, ratioDelta: Double? = nil,
                 path: String? = nil, color: String? = nil, opacity: Double? = nil, fit: String? = nil,
                 position: String? = nil, repeats: Bool? = nil, all: Bool? = nil, lines: Int? = nil,
@@ -271,6 +286,10 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.blink = blink
         self.autoReset = autoReset
         self.sound = sound
+        self.agent = agent
+        self.agentID = agentID
+        self.configDir = configDir
+        self.agentPid = agentPid
         self.ratio = ratio
         self.ratioDelta = ratioDelta
         self.path = path
@@ -379,6 +398,14 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// turn state (`session.status`, driven by its hooks): a session can run `claude` (agent) while idle (no
     /// status), or report `blocked` from a pane whose foreground process has since exited.
     public let agent: String?
+    /// The agent CONVERSATION the main pane is on (agent, id, config root), as that agent's own hook
+    /// reported it over `session.agent` — the read side of that write-only command, so a script can see
+    /// which conversation a pane would resume (and restore a ref it recorded). nil/omitted when no hook
+    /// ever reported one. Distinct from `agent`, which is merely WHICH agent the pane runs (observed from
+    /// the process table and carrying no id).
+    public let agentSession: AgentSessionRef?
+    /// The split (right) pane's agent conversation, the split analogue of `agentSession`.
+    public let splitAgentSession: AgentSessionRef?
     /// The session's agent status (`active`/`completed`/`blocked`) as the `AgentStatus` raw value, or nil
     /// when the session is idle (omitted from the JSON). The read side of `session.status`.
     public let status: String?
@@ -421,6 +448,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 overlay: Bool = false, overlaySizePercent: Int? = nil, scratch: Bool = false, flagged: Bool = false,
                 fileTreeVisible: Bool? = nil, fileTreeRoot: String? = nil, markdownPath: String? = nil,
                 foreground: [String]? = nil, splitForeground: [String]? = nil, agent: String? = nil,
+                agentSession: AgentSessionRef? = nil, splitAgentSession: AgentSessionRef? = nil,
                 status: String? = nil,
                 statusPane: String? = nil, statusBlink: Bool? = nil, statusColor: String? = nil,
                 background: BackgroundWatermark? = nil, unseen: Int? = nil,
@@ -444,6 +472,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.foreground = foreground
         self.splitForeground = splitForeground
         self.agent = agent
+        self.agentSession = agentSession
+        self.splitAgentSession = splitAgentSession
         self.status = status
         self.statusPane = statusPane
         self.statusBlink = statusBlink

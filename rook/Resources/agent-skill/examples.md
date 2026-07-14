@@ -448,6 +448,30 @@ rookctl tree --json | jq -r '.result.tree.workspaces[].sessions[] | select(.stat
 `--pane left` (or omitting it) is the main pane. Feed a keymap command's `$AGT_PANE` straight through
 (`session status blocked --pane "$AGT_PANE"`) to tag the exact pane a shortcut fired from.
 
+## Inspect or reset the conversation a pane would resume
+
+With Settings ▸ General ▸ Resume agent conversations on, a restored agent pane comes back on the
+conversation its `SessionStart` hook reported (`session agent`), not a blank one. Read what is remembered,
+and clear it when a pane should come back fresh:
+
+```bash
+# which conversation would each pane resume?
+rookctl tree --json | jq -r '.result.tree.workspaces[].sessions[]
+  | select(.agentSession) | "\(.name): \(.agentSession.kind) \(.agentSession.id) [\(.agentSession.configDir // "default profile")]"'
+
+# the split pane's conversation is a separate field
+rookctl tree --json | jq -r '.result.tree.workspaces[].sessions[] | select(.splitAgentSession) | .splitAgentSession.id'
+
+# forget this pane's conversation (it restores as a plain agent again)
+rookctl session agent claude --clear --target "$ROOK_SESSION_ID"
+
+# report one by hand (normally the agent's own SessionStart hook does this, with --from-hook)
+rookctl session agent claude --id "$CONVERSATION_ID" --target "$ROOK_SESSION_ID"
+```
+
+A report is accepted only from the pane's own agent, so a nested `claude -p` you spawn cannot overwrite the
+pane's conversation — that call returns ok and writes nothing.
+
 ## Zoom a terminal surface by control id
 
 ```bash

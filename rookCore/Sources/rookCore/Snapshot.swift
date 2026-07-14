@@ -175,6 +175,13 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
     public var foregroundCommand: [String]?
     /// The split (right) pane's foreground command (full argv), the split analogue of `foregroundCommand`.
     public var splitForegroundCommand: [String]?
+    /// The agent conversation the main pane was running (agent, conversation id, config root), reported by
+    /// the agent's own hook. With `AppSettings.resumeAgentSessions` on, a restored pane whose captured
+    /// `foregroundCommand` is that same agent resumes THIS conversation instead of starting a blank one.
+    /// Optional for forward-compat like the fields above.
+    public var agentSession: AgentSessionRef?
+    /// The split (right) pane's agent conversation, the split analogue of `agentSession`.
+    public var splitAgentSession: AgentSessionRef?
     /// The command the session was created with (`session.new --command`), which exec-replaces the login
     /// shell and so is invisible to libghostty's foreground pid — persisted here so a command session
     /// (e.g. an `ssh …` shortcut) re-runs its command on restore instead of coming back a plain shell. A
@@ -189,6 +196,7 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
     public init(id: UUID, customName: String?, cwd: String, isSplit: Bool? = nil, fontSize: Double? = nil,
                 splitCwd: String? = nil, splitRatio: Double? = nil, flagged: Bool? = nil,
                 foregroundCommand: [String]? = nil, splitForegroundCommand: [String]? = nil,
+                agentSession: AgentSessionRef? = nil, splitAgentSession: AgentSessionRef? = nil,
                 initialCommand: String? = nil, backgroundWatermark: BackgroundWatermark? = nil,
                 fileTreeVisible: Bool? = nil, markdownPath: String? = nil) {
         self.id = id
@@ -201,6 +209,8 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         self.flagged = flagged
         self.foregroundCommand = foregroundCommand
         self.splitForegroundCommand = splitForegroundCommand
+        self.agentSession = agentSession
+        self.splitAgentSession = splitAgentSession
         self.initialCommand = initialCommand
         self.backgroundWatermark = backgroundWatermark
         self.fileTreeVisible = fileTreeVisible
@@ -209,16 +219,19 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, customName, cwd, isSplit, fontSize, splitCwd, splitRatio, flagged
-        case foregroundCommand, splitForegroundCommand, initialCommand, backgroundWatermark, fileTreeVisible
+        case foregroundCommand, splitForegroundCommand, agentSession, splitAgentSession
+        case initialCommand, backgroundWatermark, fileTreeVisible
         case markdownPath
     }
 
-    /// Custom decode so `backgroundWatermark` is LOSSY: a present-but-invalid spec (an unknown
-    /// `kind`/`fit`/`position` — e.g. a DOWNGRADE after a newer release added a value the older build
-    /// can't decode, or a hand-edit typo) drops to nil instead of throwing `DataCorrupted`. Without this,
-    /// `Optional` tolerates only a MISSING key, so one bad watermark would fail the entire `SessionSnapshot`
-    /// and `PersistenceStore.load` would start fresh — wiping every workspace and session. Every other
-    /// field keeps `decodeIfPresent` (missing-key tolerant, the forward-compat the field docs describe).
+    /// Custom decode so `backgroundWatermark` and the two `agentSession` refs are LOSSY: a
+    /// present-but-invalid value (an unknown watermark `kind`/`fit`/`position`, or an unknown agent `kind`
+    /// — e.g. a DOWNGRADE after a newer release added a value the older build can't decode, or a hand-edit
+    /// typo) drops to nil instead of throwing `DataCorrupted`. Without this, `Optional` tolerates only a
+    /// MISSING key, so one bad value would fail the entire `SessionSnapshot` and `PersistenceStore.load`
+    /// would start fresh — wiping every workspace and session. A dropped agent ref costs only the resume
+    /// (the pane still restores and re-runs its agent). Every other field keeps `decodeIfPresent`
+    /// (missing-key tolerant, the forward-compat the field docs describe).
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -231,6 +244,8 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         flagged = try c.decodeIfPresent(Bool.self, forKey: .flagged)
         foregroundCommand = try c.decodeIfPresent([String].self, forKey: .foregroundCommand)
         splitForegroundCommand = try c.decodeIfPresent([String].self, forKey: .splitForegroundCommand)
+        agentSession = (try? c.decodeIfPresent(AgentSessionRef.self, forKey: .agentSession)) ?? nil
+        splitAgentSession = (try? c.decodeIfPresent(AgentSessionRef.self, forKey: .splitAgentSession)) ?? nil
         initialCommand = try c.decodeIfPresent(String.self, forKey: .initialCommand)
         backgroundWatermark = (try? c.decodeIfPresent(BackgroundWatermark.self, forKey: .backgroundWatermark)) ?? nil
         fileTreeVisible = try c.decodeIfPresent(Bool.self, forKey: .fileTreeVisible)

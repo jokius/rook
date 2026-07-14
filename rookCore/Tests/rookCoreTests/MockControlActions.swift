@@ -32,6 +32,7 @@ final class MockControlActions: ControlActions {
         case sessionFlag(target: String?, window: String?, String?)
         case markSessionSeen(target: String?, window: String?)
         case sessionStatus(target: String?, window: String?, ControlSessionStatusUpdate)
+        case sessionAgent(target: String?, window: String?, ControlAgentSessionUpdate)
         case sessionSplit(target: String?, window: String?, String?)
         case sessionScratch(target: String?, window: String?, String?, command: String?)
         case sessionFileTree(target: String?, window: String?, String?, path: String?)

@@ -21,7 +21,7 @@ struct Session: ParsableCommand {
         subcommands: [New.self, Close.self, Select.self, Go.self, Rename.self, Reveal.self, Move.self, TypeText.self,
                       Split.self, Scratch.self, FileTree.self, Markdown.self, Focus.self, Resize.self,
                       Copy.self, Paste.self,
-                      SelectAll.self, Text.self, Status.self, FlagCommand.self,
+                      SelectAll.self, Text.self, Status.self, Agent.self, FlagCommand.self,
                       Seen.self, Search.self, Background.self, Overlay.self]
     )
 
@@ -409,6 +409,69 @@ struct Session: ParsableCommand {
 
     // named `FlagCommand` (not `Flag`) so it doesn't shadow ArgumentParser's `@Flag` wrapper within
     // the `Session` namespace; `commandName` keeps the user-facing verb `flag`.
+    struct Agent: RequestCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "agent",
+            abstract: "Remember which agent conversation a pane is on, so a restart can resume it.",
+            discussion: """
+                Called by the agent's own SessionStart hook — it is the only party that knows the \
+                conversation id. With --from-hook the hook's stdin JSON is read straight from this \
+                command (no jq needed). The config root defaults to the agent's own environment \
+                (CLAUDE_CONFIG_DIR / CODEX_HOME) and the pane to $ROOK_PANE, so a hook needs to pass \
+                neither. Resuming is opt-in: Settings > General > "Resume agent conversations".
+                """)
+        @Argument(help: "Which agent: claude or codex.") var agent: String
+        @Option(name: .long, help: "The conversation id to remember.") var id: String?
+        @Flag(name: .long, help: "Read the id from the agent hook's JSON payload on stdin.")
+        var fromHook = false
+        @Flag(name: .long, help: "Forget the pane's conversation (it restores as a plain agent again).")
+        var clear = false
+        @Option(name: .long, help: "The agent's config root (defaults to CLAUDE_CONFIG_DIR / CODEX_HOME).")
+        var configDir: String?
+        @Option(name: .long, help: "Which pane the agent runs in: left (main) or right (split). Defaults to $ROOK_PANE.")
+        var pane: String?
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func validate() throws {
+            guard AgentKind(rawValue: agent) != nil else {
+                throw ValidationError("agent must be claude or codex")
+            }
+            if clear, id != nil || fromHook {
+                throw ValidationError("--clear takes no id")
+            }
+            if !clear, id == nil, !fromHook {
+                throw ValidationError("pass --id, --from-hook, or --clear")
+            }
+            try validatePaneArgument(pane)
+        }
+
+        func makeRequest() throws -> ControlRequest {
+            let kind = AgentKind(rawValue: agent)
+            let env = ProcessInfo.processInfo.environment
+            let resolvedID = clear ? nil : (fromHook ? Self.idFromStdin() : id)
+            // a --from-hook call whose payload carried no id must NOT read as a clear (that would forget a
+            // good ref on one malformed payload), so fail loudly instead
+            if !clear, resolvedID == nil {
+                throw ValidationError("no session_id in the hook payload on stdin")
+            }
+            let dir = configDir ?? kind.flatMap { env[AgentResume.configVar(for: $0)] }
+            return ControlRequest(cmd: .sessionAgent, target: target.target,
+                                  args: options.withWindow(ControlArgs(pane: pane ?? env["ROOK_PANE"],
+                                                                       agent: agent,
+                                                                       agentID: resolvedID,
+                                                                       configDir: clear ? nil : dir,
+                                                                       agentPid: AgentProcess.nearestAgentPid())))
+        }
+
+        /// The hook payload arrives on stdin; parse it here so the installed hook script stays a thin
+        /// wrapper with no `jq` dependency.
+        private static func idFromStdin() -> String? {
+            let data = FileHandle.standardInput.readDataToEndOfFile()
+            return AgentHookPayload.parse(data)?.sessionID
+        }
+    }
+
     struct FlagCommand: RequestCommand {
         static let configuration = CommandConfiguration(commandName: "flag", abstract: "Flag a session for the flagged working-set view (on|off|toggle|clear).")
         @Argument(help: "Mode: on, off, toggle (default), or clear (unflag all; ignores --target).") var mode: String = "toggle"

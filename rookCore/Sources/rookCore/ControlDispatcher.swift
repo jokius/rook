@@ -31,6 +31,11 @@ public protocol ControlActions {
     func setSessionFlag(_ target: String?, window: String?, mode: String?) -> ControlResponse
     func markSessionSeen(_ target: String?, window: String?) -> ControlResponse
     func setSessionStatus(_ target: String?, window: String?, update: ControlSessionStatusUpdate) -> ControlResponse
+    /// Records (or clears, with a nil `update.ref`) the agent conversation a pane is on, so a restart can
+    /// resume it. The dispatcher has validated the agent kind and the pane; the app still owns target
+    /// resolution and the ownership check — `update.agentPid` must be the target pane's foreground process,
+    /// or the report came from a nested agent and is dropped.
+    func setAgentSession(_ target: String?, window: String?, update: ControlAgentSessionUpdate) -> ControlResponse
     func splitSession(_ target: String?, window: String?, mode: String?) -> ControlResponse
     func scratchSession(_ target: String?, window: String?, mode: String?, command: String?) -> ControlResponse
     func fileTreeSession(_ target: String?, window: String?, mode: String?, path: String?) -> ControlResponse
@@ -150,7 +155,7 @@ public struct ControlDispatcher {
         case .tree:
             return actions.controlTree(window: request.args?.window)
         case .sessionNew, .sessionSelect, .sessionGo, .sessionClose, .sessionRename, .sessionReveal,
-                .sessionMove, .sessionFlag, .sessionSeen, .sessionStatus:
+                .sessionMove, .sessionFlag, .sessionSeen, .sessionStatus, .sessionAgent:
             return dispatchSessionCommand(request)
         case .sessionSplit, .sessionScratch, .sessionFileTree, .sessionMarkdown, .sessionFocus, .sessionResize,
                 .surfaceZoom,
@@ -292,9 +297,38 @@ public struct ControlDispatcher {
                                                     autoReset: request.args?.autoReset,
                                                     sound: request.args?.sound, color: request.args?.color, pane: pane)
             return actions.setSessionStatus(request.target, window: request.args?.window, update: update)
+        case .sessionAgent:
+            return dispatchSessionAgent(request)
         default:
             preconditionFailure("unexpected session command: \(request.cmd.rawValue)")
         }
+    }
+
+    /// `session.agent`: remember (or clear) which agent conversation a pane is on. The agent's own hook is
+    /// the caller — it is the only party that knows the id — so the arguments mirror what a hook can see:
+    /// the agent kind, the id from its stdin payload, its config root from the environment, its pane from
+    /// `ROOK_PANE`, and its pid (the ownership proof the app checks against the pane's foreground process).
+    private func dispatchSessionAgent(_ request: ControlRequest) -> ControlResponse {
+        guard let kind = AgentKind(rawValue: request.args?.agent ?? "") else {
+            return ControlResponse(ok: false, error: "invalid agent (expected claude or codex)")
+        }
+        var pane: StatusPane?
+        if let rawPane = request.args?.pane {
+            guard let parsed = StatusPane(rawValue: rawPane) else {
+                return ControlResponse(ok: false, error: "--pane must be left, right, or scratch")
+            }
+            // a scratch terminal is never restored (it has no persisted state), so there is no conversation
+            // to resume for it — reporting one would silently do nothing
+            guard parsed != .scratch else {
+                return ControlResponse(ok: false, error: "session.agent supports --pane left or right")
+            }
+            pane = parsed
+        }
+        let id = request.args?.agentID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ref = (id?.isEmpty == false) ? AgentSessionRef(kind: kind, id: id!,
+                                                           configDir: request.args?.configDir) : nil
+        let update = ControlAgentSessionUpdate(ref: ref, pane: pane, agentPid: request.args?.agentPid)
+        return actions.setAgentSession(request.target, window: request.args?.window, update: update)
     }
 
     private func dispatchSessionMove(targets: [String], window: String?, move: ControlSessionMove) -> ControlResponse {

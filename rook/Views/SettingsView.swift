@@ -113,6 +113,13 @@ private struct GeneralSettingsView: View {
                 }
                 Toggle("Restore running commands on restart", isOn: restoreRunningCommand)
                     .accessibilityIdentifier("settings-restore-running-command")
+                Toggle("Resume agent conversations", isOn: resumeAgentSessions)
+                    .accessibilityIdentifier("settings-resume-agent-sessions")
+                    .disabled(model.settings.restoreRunningCommand != true)
+                SettingHint("A restored Claude Code or Codex pane comes back on the conversation it was on, "
+                            + "instead of a blank one. Needs Help ▸ Install Agent Status Hooks (the agent's own "
+                            + "hook reports the conversation); without it, the pane continues the last "
+                            + "conversation in its directory.")
                 Toggle("Confirm before closing a session", isOn: confirmCloseSession)
                     .accessibilityIdentifier("settings-confirm-close-session")
                 Toggle("Allow undo after closing sessions and workspaces", isOn: closeGraceUndoEnabled)
@@ -150,6 +157,13 @@ private struct GeneralSettingsView: View {
     private var restoreRunningCommand: Binding<Bool> {
         Binding(get: { model.settings.restoreRunningCommand ?? false },
                 set: { model.setRestoreRunningCommand($0 ? true : nil) })
+    }
+
+    /// 1:1 with the toggle; nil (the default) reads as OFF. The toggle is disabled unless the re-run
+    /// itself is on — resuming is what the re-run TYPES, so on its own it would do nothing.
+    private var resumeAgentSessions: Binding<Bool> {
+        Binding(get: { model.settings.resumeAgentSessions ?? false },
+                set: { model.setResumeAgentSessions($0 ? true : nil) })
     }
 
     /// 1:1 with the toggle; nil (the default) reads as OFF, so on → true / off → nil keeps settings.json

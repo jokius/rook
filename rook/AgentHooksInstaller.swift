@@ -95,7 +95,8 @@ enum AgentHooksInstaller {
     // refreshed on every run: any prior baked block is stripped first, healing a moved bundle.
     private static func bakeRookctlPath() throws {
         guard let tool = bundledTool else { return } // no bundled CLI: leave the PATH fallback in place
-        for name in [AgentHooksInstall.wrapperName, AgentHooksInstall.codexWrapperName] {
+        for name in [AgentHooksInstall.wrapperName, AgentHooksInstall.codexWrapperName,
+                     AgentHooksInstall.sessionWrapperName] {
             let wrapper = destinationFolder.appendingPathComponent(name)
             let original = try String(contentsOf: wrapper, encoding: .utf8)
             let stripped = stripBakedBlock(from: original)

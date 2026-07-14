@@ -96,7 +96,8 @@ public enum CommandRestore {
     }
 
     /// POSIX single-quote one argument: wrap in `'…'`, and render each embedded `'` as `'\''`.
-    private static func shellQuote(_ arg: String) -> String {
+    /// Shared with `AgentResume`, which quotes the pieces of a resume command line the same way.
+    static func shellQuote(_ arg: String) -> String {
         "'" + arg.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 

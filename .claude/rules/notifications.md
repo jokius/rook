@@ -169,6 +169,20 @@ paths:
   Peer terminals get the decline case for free by different means rook avoids:
   cmux owns the permission decision UI (a blocking hook round-trip captures accept/deny),
   herdr scrapes the PTY (the prompt chrome leaving the screen clears it).
+- **Three agent-shaped things on a session, do not conflate them.**
+  (1) `Session.agentKind` / the tree's `agent` field — WHICH agent the pane RUNS,
+  OBSERVED by `AgentMonitor` from the foreground process (`AgentKind.classify`), no hooks needed, no write
+  command; it drives the sidebar's agent logo (see the Sidebar rule).
+  (2) `Session.agentIndicator` / the tree's `status`+`statusPane`+`statusBlink`+`statusColor` — what the
+  agent REPORTS about its TURN (`session.status`, driven by its hooks): ephemeral, never persisted, and the
+  subject of this whole rule.
+  (3) `Session.agentSession`/`splitAgentSession` / the tree's `agentSession`+`splitAgentSession` — the agent
+  CONVERSATION the pane is on (`{kind, id, configDir?}`), REPORTED by the agent's own `SessionStart` hook
+  over `session.agent` and PERSISTED, so a restart can resume that conversation (see the Control API +
+  Settings rules).
+  A conversation id exists nowhere in the process table, which is exactly why (3) needs a hook while (1)
+  does not — and (3) says nothing about the agent's turn state, so a session can carry any of the three
+  without the others.
 - **Pane-aware selection reveal.**
   The same `AgentIndicator.statusPane` tag (set via `session.status --pane`, see the Control API rule) also
   decides WHERE a GUI selection lands: EVERY user-initiated selection — attention-nav (⌃⌥↑/⌃⌥↓),

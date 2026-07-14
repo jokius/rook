@@ -232,6 +232,8 @@ final class SettingsModel {
     func setSidebarFontSize(_ value: Double?) { settings.sidebarFontSize = value; persistAndApply() }
     // not a ghostty key, so persistAndApply()'s writeGhosttyConfig() no-ops and no surface reload fires.
     func setRestoreRunningCommand(_ value: Bool?) { settings.restoreRunningCommand = value; persistAndApply() }
+    // rides restoreRunningCommand (the re-run is what types the resume line); also not a ghostty key.
+    func setResumeAgentSessions(_ value: Bool?) { settings.resumeAgentSessions = value; persistAndApply() }
     // chrome flag, not a ghostty key: persistAndApply() no-ops the config but rides .rookAppearanceChanged.
     func setAttentionButtonEnabled(_ value: Bool?) { settings.attentionButtonEnabled = value; persistAndApply() }
 
@@ -675,6 +677,7 @@ final class SettingsModel {
 
     private func applyRestoreRunningCommand() {
         GhosttyApp.shared.setRestoreRunningCommand(settings.restoreRunningCommand ?? false)
+        GhosttyApp.shared.setResumeAgentSessions(settings.resumeAgentSessions ?? false)
     }
 
     private func applyAttentionButtonEnabled() {

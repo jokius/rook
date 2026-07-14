@@ -993,7 +993,9 @@
                   style="position: absolute; left: 0; top: 1px; color: #7ece8f; font-family: &quot;JetBrains Mono&quot;, monospace"
                   >›</span
                 ><strong style="color: #e6e1d7">General</strong> — mouse scroll speed and right-click-to-paste, where a new session
-                opens, an opt-in re-run of each pane's foreground command on restart, an opt-in confirm before closing a session,
+                opens, an opt-in re-run of each pane's foreground command on restart, an opt-in
+                <strong style="color: #e6e1d7">Resume agent conversations</strong> riding on it (a restored Claude Code or Codex
+                pane comes back on the conversation it was on, not a blank one), an opt-in confirm before closing a session,
                 and whether to load your global Ghostty config.
               </div>
               <div style="font-size: 15px; line-height: 1.6; color: #cbc6bc; padding-left: 22px; position: relative">
@@ -1074,7 +1076,7 @@
               "
             >
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 0">
-                Looking for the full list? All 64 commands, with every argument, return value, and error, live on the
+                Looking for the full list? All 65 commands, with every argument, return value, and error, live on the
                 <a href="/commands" style="color: #7ece8f; font-weight: 500">Command reference →</a>
               </p>
             </div>
@@ -1940,7 +1942,40 @@
               tool run → active, Stop → completed, permission prompt → blocked). Six Codex lifecycle events run a dedicated adapter.
               A permission request is only a candidate because it fires before Auto Review; the adapter keeps automatic decisions
               active and changes the row to blocked only after a real approval or structured question appears in that pane.
-              Re-running upgrades an older Rook-managed Codex block and is otherwise idempotent.
+              Re-running upgrades an older Rook-managed Codex block and is otherwise idempotent. The package also installs
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rook-agent-session.sh</span> on both
+              agents' <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">SessionStart</span> event —
+              the hook that makes resuming conversations work. If you installed the hooks before that landed, re-run the installer.
+            </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              <strong style="color: #e6e1d7">Resume agent conversations.</strong> A restored pane that was running an agent gets
+              the agent back, but on a <em>blank</em> conversation. Turn on
+              <strong style="color: #e6e1d7">Settings ▸ General ▸ Resume agent conversations</strong> (off by default; it rides on
+              <strong style="color: #e6e1d7">Restore running commands on restart</strong>, which is what re-runs the pane's
+              command) and the pane comes back on the conversation it was on. Only the agent knows its conversation id, so its
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">SessionStart</span> hook reports it
+              over the control channel with
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl session agent claude --from-hook</span>
+              (the hook's JSON payload arrives on stdin; the config root defaults to
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">CLAUDE_CONFIG_DIR</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">CODEX_HOME</span>
+              and the pane to <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">$ROOK_PANE</span>).
+              A report is only accepted from the pane's own agent, so a nested
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">claude -p</span> cannot overwrite it
+              with a throwaway conversation. It reads back on
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl tree --json</span> as each
+              session's <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agentSession</span> /
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">splitAgentSession</span>
+              (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">{kind, id, configDir?}</span>) —
+              distinct from <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agent</span>, which is
+              merely which agent the pane runs. On restart the shell gets
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">env CLAUDE_CONFIG_DIR='…' claude --resume &lt;id&gt;</span>
+              plus the flags the pane originally carried; the
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">env</span> prefix runs the binary from
+              PATH, bypassing a shell alias or function that would re-pick the profile and lose the conversation. Without the hook
+              installed there is no id and the pane falls back to
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">claude --continue</span> /
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">codex resume --last</span> (the last
+              conversation in that directory); it needs a clean quit, and an agent behind tmux or ssh is not restored.
             </p>
           </section>
 
@@ -1974,7 +2009,8 @@
                 default) re-runs the command each pane had in the foreground at the last clean quit — a re-run, not a reattach.
                 Only a single-process command restores faithfully; a force-quit or crash captures nothing; and the multiplexers in
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">restore-denylist.conf</span>
-                (seeded with tmux/screen/zellij) start fresh.
+                (seeded with tmux/screen/zellij) start fresh. A re-run coding agent comes back on a blank conversation unless
+                <strong style="color: #e6e1d7">Resume agent conversations</strong> is on as well.
               </li>
               <li style="font-size: 15px; line-height: 1.65; color: #cbc6bc; padding-left: 22px; position: relative">
                 <span

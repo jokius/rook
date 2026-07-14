@@ -114,6 +114,21 @@ public struct ControlSessionCreateOptions: Equatable, Sendable {
 /// Parsed `session.status` payload. Sound validation and playback stay host-side; `color` is the
 /// per-call `#rrggbb` glyph-tint override (validated for hex in the dispatcher), threaded onto the
 /// ephemeral `AgentIndicator`.
+/// What `session.agent` asks the app to remember for one pane: the conversation ref (nil = clear it), which
+/// pane it belongs to (`left`=main, `right`=split; nil = main), and the pid of the agent that reported it —
+/// the ownership proof the app checks against the pane's live foreground process.
+public struct ControlAgentSessionUpdate: Equatable, Sendable {
+    public let ref: AgentSessionRef?
+    public let pane: StatusPane?
+    public let agentPid: Int?
+
+    public init(ref: AgentSessionRef?, pane: StatusPane? = nil, agentPid: Int? = nil) {
+        self.ref = ref
+        self.pane = pane
+        self.agentPid = agentPid
+    }
+}
+
 public struct ControlSessionStatusUpdate: Equatable, Sendable {
     public let status: AgentStatus
     public let blink: Bool?
