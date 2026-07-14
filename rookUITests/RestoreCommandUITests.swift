@@ -153,6 +153,9 @@ final class RestoreCommandUITests: XCTestCase {
         XCTAssertEqual(reported["ok"] as? Bool, true, "the hook's report should be accepted: \(reported)")
 
         gracefulQuit()
+        // the pane's foreground must be captured AS THE AGENT — the resume rides on that capture
+        XCTAssertEqual(capturedForegroundCommands().first?.first, "claude",
+                       "the fake agent should be captured as the foreground, got \(capturedForegroundCommands())")
         // the conversation must be PERSISTED (with its config root) alongside the captured foreground
         let refs = persistedAgentSessions()
         XCTAssertEqual(refs.first?["id"] as? String, conversation, "the conversation should persist, got \(refs)")
@@ -160,7 +163,7 @@ final class RestoreCommandUITests: XCTestCase {
         XCTAssertEqual(refs.first?["configDir"] as? String, "/tmp/cfg")
 
         app.launchForUITest()
-        let screen = try restoredPaneText()
+        let screen = try restoredPaneText(waitingFor: "--resume")
         XCTAssertTrue(screen.contains("--resume") && screen.contains(conversation),
                       "the restored pane should resume THAT conversation, got: \(screen)")
         XCTAssertTrue(screen.contains("CLAUDE_CONFIG_DIR=/tmp/cfg") || screen.contains("CLAUDE_CONFIG_DIR='/tmp/cfg'"),
@@ -179,6 +182,7 @@ final class RestoreCommandUITests: XCTestCase {
 
         gracefulQuit()
         app.launchForUITest()
+        RunLoop.current.run(until: Date().addingTimeInterval(3)) // give an (incorrect) resume time to appear
         let screen = try restoredPaneText()
         XCTAssertFalse(screen.contains("--resume"),
                        "with the resume toggle off the agent must come back bare, got: \(screen)")
@@ -213,13 +217,19 @@ final class RestoreCommandUITests: XCTestCase {
         app.launchEnvironment["HOME"] = stateDir.path
     }
 
-    /// Run a fake agent as the pane's foreground: `exec -a claude tee <marker>` renames `tee`'s argv[0] to
-    /// `claude`, which is exactly what `AgentKind.classify` keys on — and `tee` blocks on the terminal, so
-    /// it is still the foreground process at quit. (zsh's `exec -a`; the login shell here is the user's.)
+    /// Run a fake agent as the pane's foreground: `(exec -a claude tee <marker>)` renames `tee`'s argv[0]
+    /// to `claude`, which is exactly what `AgentKind.classify` keys on — and `tee` blocks on the terminal,
+    /// so it is still the foreground at quit. (The runner is sandboxed, so a real executable named
+    /// `claude` can't be dropped for the app to run; renaming argv[0] is the way in.)
+    ///
+    /// The SUBSHELL parens are load-bearing: a bare `exec` REPLACES the login shell, and libghostty then
+    /// reports no foreground pid at all (the pty's foreground process IS its direct child), so the quit
+    /// capture comes back empty. Forking first keeps the shell alive as the parent and the fake agent as a
+    /// genuine foreground child.
     private func runFakeAgent() {
         XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 30), "seeded session row")
         RunLoop.current.run(until: Date().addingTimeInterval(1))
-        app.typeText("exec -a claude tee \(marker.path)\n")
+        app.typeText("(exec -a claude tee \(marker.path))\n")
         XCTAssertTrue(poll { FileManager.default.fileExists(atPath: self.marker.path) },
                       "the fake agent should create its marker on start (terminal must be focused)")
     }
@@ -243,13 +253,20 @@ final class RestoreCommandUITests: XCTestCase {
         return result
     }
 
-    /// The restored pane's visible buffer — the line rook typed into the shell on restore.
-    private func restoredPaneText() throws -> String {
+    /// The restored pane's visible buffer once it settles — `initial_input` reaches the shell only after
+    /// libghostty spawns it, so poll for `needle` rather than reading once after a fixed sleep.
+    private func restoredPaneText(waitingFor needle: String? = nil) throws -> String {
         XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 30), "session restored")
-        RunLoop.current.run(until: Date().addingTimeInterval(2)) // let initial_input reach the shell
-        let response = try sendCommand(#"{"cmd":"session.text","args":{"lines":20}}"#)
-        let result = response["result"] as? [String: Any]
-        return (result?["text"] as? String) ?? ""
+        var text = ""
+        let deadline = Date().addingTimeInterval(20)
+        repeat {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+            let response = try sendCommand(#"{"cmd":"session.text","args":{"lines":20}}"#)
+            text = ((response["result"] as? [String: Any])?["text"] as? String) ?? ""
+            guard let needle else { break }
+            if text.contains(needle) { break }
+        } while Date() < deadline
+        return text
     }
 
     /// Every persisted `foregroundCommand` across the window snapshots written at quit (the capture oracle).

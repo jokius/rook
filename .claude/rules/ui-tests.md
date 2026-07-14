@@ -192,4 +192,21 @@ paths:
   `sh -c 'tee …; true'` (a compound list keeps `sh` the foreground) — NOT an executable script file,
   since the runner writes its sandboxed temp dir and the app can't exec a script from there (a plain
   `tee` marker writes there fine, but exec is blocked).
+- **Faking an AGENT foreground (for the resume-agent-conversations e2e): rename argv[0] in a SUBSHELL,
+  `(exec -a claude tee <marker>)` — the parens are LOAD-BEARING.**
+  `AgentKind.classify` keys on the argv[0] basename, and the sandboxed runner cannot drop a real
+  executable named `claude` for the app to run, so renaming `tee`'s argv[0] is the way to fake an agent
+  that is also a live, blocking foreground process.
+  A BARE `exec -a claude tee …` (no parens) REPLACES the login shell, and libghostty then reports NO
+  foreground pid at all (the pty's foreground process is its own direct child), so the quit capture comes
+  back EMPTY and the whole restore path silently no-ops — the test fails with an empty
+  `foregroundCommand`, not with a resume bug.
+  Forking first (the subshell) keeps the shell as the parent and the fake agent as a genuine foreground
+  child, which is what `ghostty_surface_foreground_pid` reports.
+- **A UI test that types a shell command FAILS SILENTLY on a non-latin keyboard layout.**
+  `app.typeText` synthesizes real keystrokes, so with a Cyrillic layout active the command reaches the
+  shell as Cyrillic: the marker file is never created and the test fails on an unrelated-looking
+  assertion (or hangs, or scatters the text into whatever app has focus).
+  It is ENVIRONMENTAL, like the HazeOver occlusion above: switch the layout to latin and re-run before
+  suspecting the test.
 
