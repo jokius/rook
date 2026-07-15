@@ -449,7 +449,7 @@ struct Session: ParsableCommand {
         func makeRequest() throws -> ControlRequest {
             let kind = AgentKind(rawValue: agent)
             let env = ProcessInfo.processInfo.environment
-            let resolvedID = clear ? nil : (fromHook ? Self.idFromStdin() : id)
+            let resolvedID = clear ? nil : (fromHook ? Self.idFromStdin(kind: kind) : id)
             // a --from-hook call whose payload carried no id must NOT read as a clear (that would forget a
             // good ref on one malformed payload), so fail loudly instead
             if !clear, resolvedID == nil {
@@ -465,10 +465,13 @@ struct Session: ParsableCommand {
         }
 
         /// The hook payload arrives on stdin; parse it here so the installed hook script stays a thin
-        /// wrapper with no `jq` dependency.
-        private static func idFromStdin() -> String? {
+        /// wrapper with no `jq` dependency. The RESUME id is derived per agent (`resumeID(for:)`): claude's
+        /// diverges from the live `session_id` on a resumed conversation, so it comes from the transcript
+        /// file the hook reports, not the raw id.
+        private static func idFromStdin(kind: AgentKind?) -> String? {
             let data = FileHandle.standardInput.readDataToEndOfFile()
-            return AgentHookPayload.parse(data)?.sessionID
+            guard let payload = AgentHookPayload.parse(data) else { return nil }
+            return kind.map(payload.resumeID(for:)) ?? payload.sessionID
         }
     }
 

@@ -110,4 +110,41 @@ struct AgentHookPayloadTests {
         #expect(AgentHookPayload.parse(Data(#"{"session_id":""}"#.utf8)) == nil)
         #expect(AgentHookPayload.parse(Data(#"{"cwd":"/x"}"#.utf8)) == nil)
     }
+
+    /// A RESUMED claude conversation keeps writing to its ORIGINAL transcript file while stamping new
+    /// turns with a FRESH `session_id`, so `claude --resume <session_id>` finds no file. The id to resume
+    /// by is the transcript file's stem, which is what `--resume` resolves against.
+    @Test("claude resumes by the transcript file stem, not the live session id")
+    func claudeResumeIDFromTranscriptPath() {
+        let json = """
+        {"session_id":"4aa1a235-6973-428b-86d9-f5e406f26a93",
+         "transcript_path":"/Users/x/.claude-work/projects/-work/cd355200-a4fa-4bec-aaba-fcb8984cc52e.jsonl",
+         "cwd":"/Users/x/work","hook_event_name":"SessionStart","source":"resume"}
+        """
+        let payload = AgentHookPayload.parse(Data(json.utf8))
+        #expect(payload?.resumeID(for: .claude) == "cd355200-a4fa-4bec-aaba-fcb8984cc52e")
+    }
+
+    /// Codex resolves `resume <id>` by the session id, NOT by the rollout file name, so its resume id is
+    /// the reported `session_id` even when a transcript path is present.
+    @Test("codex resumes by its session id, not the rollout file name")
+    func codexResumeIDIsSessionID() {
+        let json = """
+        {"session_id":"019f5c97-8c56-78e1",
+         "transcript_path":"/Users/x/.codex/sessions/rollout-2026-07-15-019f5c97.jsonl"}
+        """
+        let payload = AgentHookPayload.parse(Data(json.utf8))
+        #expect(payload?.resumeID(for: .codex) == "019f5c97-8c56-78e1")
+    }
+
+    /// Without a transcript path (an older agent, or a payload missing the field) the session id is the
+    /// only id we have, so it is the honest fallback rather than nothing.
+    @Test("claude falls back to the session id when there is no transcript path")
+    func claudeResumeIDFallsBackToSessionID() {
+        #expect(AgentHookPayload.parse(Data(#"{"session_id":"abc"}"#.utf8))?.resumeID(for: .claude) == "abc")
+        #expect(AgentHookPayload.parse(Data(#"{"session_id":"abc","transcript_path":""}"#.utf8))?
+            .resumeID(for: .claude) == "abc")
+        #expect(AgentHookPayload.parse(Data(#"{"session_id":"abc","transcript_path":"/tmp/dir/"}"#.utf8))?
+            .resumeID(for: .claude) == "dir")
+    }
 }

@@ -13,10 +13,14 @@ public struct AgentHookPayload: Decodable, Equatable, Sendable {
     /// Claude's `SessionStart` source (`startup`/`resume`/`clear`/`compact`); absent on other events and
     /// on Codex.
     public let source: String?
+    /// The absolute path of the conversation's transcript file — the file `claude --resume` resolves a
+    /// conversation by. Present in Claude's hook payload; absent on older agents.
+    public let transcriptPath: String?
 
     enum CodingKeys: String, CodingKey {
         case sessionID = "session_id"
         case cwd, source
+        case transcriptPath = "transcript_path"
     }
 
     /// Decode a hook payload, or nil when the input is not JSON, is not an object, or carries no
@@ -26,5 +30,28 @@ public struct AgentHookPayload: Decodable, Equatable, Sendable {
         guard let payload = try? JSONDecoder().decode(AgentHookPayload.self, from: data),
               !payload.sessionID.isEmpty else { return nil }
         return payload
+    }
+
+    /// The id to RESUME this conversation by, which is NOT always the live `session_id` the hook reports.
+    ///
+    /// `claude --resume <id>` resolves a conversation by its TRANSCRIPT FILE stem, and for a RESUMED or
+    /// forked conversation that stem DIVERGES from `session_id`: Claude keeps appending to the ORIGINAL
+    /// file (`<root>.jsonl`) while stamping each new turn with a fresh `session_id`, so no `<session_id>.jsonl`
+    /// file ever exists and resuming by `session_id` silently finds nothing. So for claude, prefer the file
+    /// stem of `transcript_path`, falling back to `session_id` only when no usable path is present.
+    ///
+    /// Codex is the opposite: `codex resume <id>` resolves by the session id, not by the rollout file name,
+    /// so its resume id is always the reported `session_id`.
+    public func resumeID(for kind: AgentKind) -> String {
+        switch kind {
+        case .claude:
+            if let transcriptPath, let file = transcriptPath.split(separator: "/").last {
+                let stem = file.hasSuffix(".jsonl") ? file.dropLast(".jsonl".count) : file
+                if !stem.isEmpty { return String(stem) }
+            }
+            return sessionID
+        case .codex:
+            return sessionID
+        }
     }
 }
