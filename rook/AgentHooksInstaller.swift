@@ -82,6 +82,16 @@ enum AgentHooksInstaller {
         try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? fm.removeItem(at: destination) // drop a prior install (ignore if absent) so copy can't collide
         try fm.copyItem(at: source, to: destination)
+        // Force the exec bit on every hook entry-point script, regardless of the bundle's on-disk mode:
+        // Claude Code / Codex invoke them via `/bin/sh -c '<path> …'`, which needs it, and a script that
+        // reaches ~/.config as 0644 dies with "Permission denied" — SILENTLY, a hook failure being
+        // non-blocking — so the hook never runs (this is exactly how session.agent went dark once). copyItem
+        // preserves the bundle mode and the later path-bake preserves it too, so a stray 0644 would survive.
+        for name in [AgentHooksInstall.wrapperName, AgentHooksInstall.codexWrapperName,
+                     AgentHooksInstall.sessionWrapperName] {
+            let script = destination.appendingPathComponent(name)
+            try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+        }
     }
 
     // the sentinel line marking the installer-baked ROOKCTL default in the wrapper; a re-run finds
