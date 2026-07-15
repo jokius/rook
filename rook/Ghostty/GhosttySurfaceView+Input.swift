@@ -157,7 +157,7 @@ extension GhosttySurfaceView {
     private func reportMousePos(from event: NSEvent) {
         guard let surface else { return }
         let pt = mousePoint(from: event)
-        ghostty_surface_mouse_pos(surface, pt.x, pt.y, mods(event))
+        ghostty_surface_mouse_pos(surface, pt.x, pt.y, mouseMods(event))
         lastReportedMousePoint = pt
     }
 
@@ -166,13 +166,13 @@ extension GhosttySurfaceView {
         window?.makeFirstResponder(self)
         updateGhosttyFocus()
         reportMousePos(from: event)
-        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, mods(event))
+        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, mouseMods(event))
     }
 
     override func mouseUp(with event: NSEvent) {
         guard let surface else { return }
         reportMousePos(from: event)
-        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mods(event))
+        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mouseMods(event))
     }
 
     // forward right- and middle-button press/release to libghostty so its mouse bindings fire (e.g.
@@ -182,13 +182,13 @@ extension GhosttySurfaceView {
     override func rightMouseDown(with event: NSEvent) {
         guard let surface else { return }
         reportMousePos(from: event)
-        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RIGHT, mods(event))
+        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RIGHT, mouseMods(event))
     }
 
     override func rightMouseUp(with event: NSEvent) {
         guard let surface else { return }
         reportMousePos(from: event)
-        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_RIGHT, mods(event))
+        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_RIGHT, mouseMods(event))
     }
 
     // only the middle button (buttonNumber 2) maps to GHOSTTY_MOUSE_MIDDLE; any other extra button
@@ -196,13 +196,13 @@ extension GhosttySurfaceView {
     override func otherMouseDown(with event: NSEvent) {
         guard event.buttonNumber == 2, let surface else { super.otherMouseDown(with: event); return }
         reportMousePos(from: event)
-        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_MIDDLE, mods(event))
+        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_MIDDLE, mouseMods(event))
     }
 
     override func otherMouseUp(with event: NSEvent) {
         guard event.buttonNumber == 2, let surface else { super.otherMouseUp(with: event); return }
         reportMousePos(from: event)
-        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_MIDDLE, mods(event))
+        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_MIDDLE, mouseMods(event))
     }
 
     override func mouseDragged(with event: NSEvent) { mouseMoved(with: event) }
@@ -224,7 +224,7 @@ extension GhosttySurfaceView {
     /// (a button is down) so a selection/drag that crosses the edge isn't reported at `-1, -1`.
     override func mouseExited(with event: NSEvent) {
         guard let surface, NSEvent.pressedMouseButtons == 0 else { return }
-        ghostty_surface_mouse_pos(surface, -1, -1, mods(event))
+        ghostty_surface_mouse_pos(surface, -1, -1, mouseMods(event))
         lastReportedMousePoint = NSPoint(x: -1, y: -1)
     }
 
@@ -269,6 +269,27 @@ extension GhosttySurfaceView {
         if flags.contains(.option) { m |= GHOSTTY_MODS_ALT.rawValue }
         if flags.contains(.capsLock) { m |= GHOSTTY_MODS_CAPS.rawValue }
         return ghostty_input_mods_e(rawValue: m)
+    }
+
+    /// The mods to report for a MOUSE event: `mods(_:)` plus a synthetic SHIFT whenever ⌘ is held.
+    ///
+    /// libghostty only tracks hovered links (and so only fires `GHOSTTY_ACTION_OPEN_URL` on a click) when
+    /// the program is NOT reporting mouse events — or when SHIFT is held, which by convention releases the
+    /// mouse from the program's grab (`Surface.zig`: the link refresh is gated on
+    /// `mouse_event == .none or (mods.shift and !mouseShiftCapture())`). A TUI that grabs the mouse — Claude
+    /// Code, vim, less — therefore kills the ⌘-click that opens a path, which is exactly where it matters:
+    /// the file an agent just wrote is named INSIDE the session running that agent. Reporting the grab-release
+    /// SHIFT for any ⌘-held mouse event makes ⌘-click behave the same in a TUI as in a bare shell.
+    ///
+    /// libghostty then strips the synthetic SHIFT back out before matching the link's own modifiers
+    /// (`mouseModsWithCapture`), so the click still resolves as a plain ⌘-click. The trade-off is that while ⌘
+    /// is held the program sees no mouse reports at all — it is being pointed at a link, not clicked in — and
+    /// a program that explicitly claims SHIFT (XTSHIFTESCAPE) opts out, falling back to today's ⌘-⇧-click.
+    /// Keyboard events keep the raw `mods(_:)`: adding SHIFT there would turn ⌘K into ⌘-⇧-K.
+    private func mouseMods(_ event: NSEvent) -> ghostty_input_mods_e {
+        let m = mods(event)
+        guard event.modifierFlags.contains(.command) else { return m }
+        return ghostty_input_mods_e(rawValue: m.rawValue | GHOSTTY_MODS_SHIFT.rawValue)
     }
 
     private func mods(_ event: NSEvent) -> ghostty_input_mods_e {

@@ -446,3 +446,24 @@ paths:
   own `MarkdownDocument` — LaunchServices never sees it, so the never-launch-a-file boundary holds) /
   `.reveal` (any other local file) / `.ignore`.
 
+- **A ⌘-held MOUSE event reports a synthetic SHIFT (`GhosttySurfaceView+Input.mouseMods`) — that is the only
+  reason ⌘-click opens a link inside a mouse-grabbing TUI.**
+  libghostty refreshes its hovered-link state (and therefore fires `GHOSTTY_ACTION_OPEN_URL` on the click)
+  only when the program is NOT reporting mouse events, or when SHIFT is held — the convention that releases
+  the mouse from the program's grab (`Surface.zig` gates the link refresh on
+  `mouse_event == .none or (mods.shift and !mouseShiftCapture())`).
+  Claude Code enables SGR mouse reporting (`?1000`/`?1006`), as do vim, less and tmux, so a bare ⌘-hover in
+  an agent session got a text caret instead of an underlined link and the click did nothing — precisely
+  where the feature matters, since the file an agent just wrote is named INSIDE the session running it.
+  `mouseMods(_:)` therefore ORs `GHOSTTY_MODS_SHIFT` into the mods of every mouse position/button report
+  whenever ⌘ is down, and libghostty strips that SHIFT back out before matching the link's own modifiers
+  (`mouseModsWithCapture`), so the click still resolves as a plain ⌘-click.
+  Keyboard events keep the raw `mods(_:)` — adding SHIFT there would turn ⌘K into ⌘-⇧-K — and `scrollWheel`
+  keeps it too, so a ⌘-scroll still reaches the program.
+  Trade-off: while ⌘ is held the program receives NO mouse reports (it is being pointed at, not clicked in),
+  and a program that explicitly claims SHIFT (XTSHIFTESCAPE) opts out, falling back to ⌘-⇧-click.
+  Symptom to recognize: "the link works in the shell but not while an agent runs" is this gate, not the
+  classifier — before touching `LinkPolicy`, check whether ⌘-⇧-hover underlines what ⌘-hover does not.
+  Not accessibility-observable (no UI test): verified by ⌘-clicking a path inside a running Claude Code
+  session.
+
