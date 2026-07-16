@@ -210,7 +210,7 @@ paths:
   Covered e2e by `ControlAPIUITests.testSessionPasteWithImageInsertsTempPNGPath` (image data from the
   sandboxed runner DOES reach the app's pasteboard read — unlike a file URL, which does not; see
   [[control-api]]).
-- **`unshifted_codepoint` is what decides whether a TUI sees Ctrl-C on a NON-LATIN layout — under Ctrl/Option
+- **`unshifted_codepoint` is what decides whether a TUI sees Ctrl-C on a NON-LATIN layout — under Ctrl/Option/Command
   it must carry the ASCII-capable layout's character, not the layout's own.**
   libghostty has TWO key encoders and they disagree about non-latin layouts.
   The LEGACY one maps a Ctrl chord through the PHYSICAL key (`key_encode.zig` `ctrlSeq` has an explicit
@@ -226,10 +226,17 @@ paths:
   `GhosttySurfaceView+Input.unshiftedCodepoint` therefore substitutes the character the same PHYSICAL key
   carries on the user's ASCII-capable layout (`KeyboardLayout.asciiCodepoint` — `TISCopyCurrentASCIICapableKeyboardLayoutInputSource`
   + `UCKeyTranslate`, the trick iTerm2/kitty/WezTerm all use) — but ONLY when a shortcut modifier
-  (Ctrl or Option) is held AND the layout's own character is non-ASCII.
+  (Ctrl, Option, or Command) is held AND the layout's own character is non-ASCII.
   Both guards are load-bearing: unmodified typing keeps reporting the REAL character (so Cyrillic text
   input is untouched), and a latin layout is never rewritten (Dvorak/Colemak key POSITIONS are the user's
   deliberate choice — `KeyCodepoint.unshifted` in `rookCore` owns that rule and is unit-tested).
+  Command is in the guard for a subtler reason than Ctrl/Option: ⌘C never reaches the shell, but on a LATIN
+  layout the Edit-menu key equivalents swallow ⌘C/⌘V/⌘A before `keyDown`, whereas on a NON-LATIN layout the
+  menu's produced-character match fails, the ⌘ chord reaches the `.command` branch and is kitty-encoded —
+  and without the substitution it went out as `CSI 1089;9u` ("⌘ + с"), which Claude Code renders as a
+  literal `с` in the terminal (the copy is a no-op because a mouse-grabbing TUI has no ghostty selection).
+  With it the chord is `CSI 99;9u` ("⌘ + c"), which the program drops — so the ⌘C bug is layout-only and
+  Claude-Code-only, exactly like the Ctrl-C one.
   Ghostty.app computes this field the same way rook used to (`characters(byApplyingModifiers: [])`),
   so this is an UPSTREAM behavior rook fixes on its own side — do not expect a libghostty bump to
   make it redundant.

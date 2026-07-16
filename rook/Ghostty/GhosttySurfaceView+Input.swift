@@ -365,17 +365,25 @@ extension GhosttySurfaceView {
 
     /// The codepoint of the key with NO modifiers applied — what libghostty reports as the key's identity,
     /// and what decides whether a TUI program (Claude Code, vim, tmux — anything speaking the kitty keyboard
-    /// protocol) recognizes a shortcut. Under a SHORTCUT modifier (Ctrl or Option) a non-latin layout would
-    /// report its own letter — Cyrillic `с` (U+0441) for the C key — and the program would see "Ctrl + с"
-    /// instead of Ctrl-C, so the interrupt never lands. There we substitute the character the same PHYSICAL
-    /// key carries on the ASCII-capable layout, so the chord travels by position. Unmodified typing is
-    /// untouched (the real character is reported), so entering Cyrillic text keeps working exactly as before.
+    /// protocol) recognizes a shortcut. Under a SHORTCUT modifier (Ctrl, Option, or Command) a non-latin
+    /// layout would report its own letter — Cyrillic `с` (U+0441) for the C key — and the program would see
+    /// "Ctrl + с" instead of Ctrl-C, so the interrupt never lands. There we substitute the character the same
+    /// PHYSICAL key carries on the ASCII-capable layout, so the chord travels by position. Unmodified typing
+    /// is untouched (the real character is reported), so entering Cyrillic text keeps working exactly as
+    /// before.
+    ///
+    /// Command matters even though ⌘C never reaches the shell: on a LATIN layout the Edit-menu key
+    /// equivalents swallow ⌘C/⌘V/⌘A before `keyDown`, but on a non-latin layout the menu's produced-character
+    /// match fails, the ⌘ chord reaches the `.command` branch and is kitty-encoded — and without this it went
+    /// out as `CSI 1089;9u` ("⌘ + с"), which Claude Code renders as a literal `с` in the terminal instead of
+    /// a no-op copy. Substituting the latin key makes it `CSI 99;9u` ("⌘ + c"), which the program drops.
     private func unshiftedCodepoint(from event: NSEvent) -> UInt32 {
         guard let chars = event.characters(byApplyingModifiers: []),
               let scalar = chars.unicodeScalars.first
         else { return 0 }
         let flags = event.modifierFlags
-        guard flags.contains(.control) || flags.contains(.option), scalar.value > 0x7F else { return scalar.value }
+        guard flags.contains(.control) || flags.contains(.option) || flags.contains(.command),
+              scalar.value > 0x7F else { return scalar.value }
         return KeyCodepoint.unshifted(layout: scalar.value,
                                       latin: KeyboardLayout.asciiCodepoint(forKeyCode: event.keyCode))
     }
