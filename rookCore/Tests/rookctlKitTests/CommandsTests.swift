@@ -193,6 +193,15 @@ struct CommandsTests {
         #expect(try request(["session", "select"]) == ControlRequest(cmd: .sessionSelect, target: "active"))
     }
 
+    @Test func sessionDuplicateDefaultsActive() throws {
+        #expect(try request(["session", "duplicate"]) == ControlRequest(cmd: .sessionDuplicate, target: "active"))
+    }
+
+    @Test func sessionDuplicateTargetAndWindow() throws {
+        let expected = ControlRequest(cmd: .sessionDuplicate, target: "9f3c", args: ControlArgs(window: "win"))
+        #expect(try request(["session", "duplicate", "--target", "9f3c", "--window", "win"]) == expected)
+    }
+
     @Test func sessionSeenDefaultsActive() throws {
         #expect(try request(["session", "seen"]) == ControlRequest(cmd: .sessionSeen, target: "active"))
     }

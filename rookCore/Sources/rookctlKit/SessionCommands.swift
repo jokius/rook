@@ -18,7 +18,7 @@ func validatePaneArgument(_ pane: String?) throws {
 struct Session: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Session commands.",
-        subcommands: [New.self, Close.self, Select.self, Go.self, Rename.self, Reveal.self, Move.self, TypeText.self,
+        subcommands: [New.self, Duplicate.self, Close.self, Select.self, Go.self, Rename.self, Reveal.self, Move.self, TypeText.self,
                       Split.self, Scratch.self, FileTree.self, Markdown.self, Focus.self, Resize.self,
                       Copy.self, Paste.self,
                       SelectAll.self, Text.self, Status.self, Agent.self, FlagCommand.self,
@@ -64,6 +64,20 @@ struct Session: ParsableCommand {
                 ControlArgs(name: name, cwd: cwd, workspace: workspace, workspaceName: workspaceName,
                             createWorkspace: createWorkspace ? true : nil, noSelect: noSelect ? true : nil,
                             command: command, wait: wait ? true : nil, after: after, before: before)))
+        }
+    }
+
+    /// No options: the target session names both the destination workspace and the cwd, so a duplicate is
+    /// fully described by `--target` (the GUI half is the sidebar row's "Duplicate").
+    struct Duplicate: RequestCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Duplicate a session: a fresh shell in its directory, placed right after it.")
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+        var echoesResultID: Bool { true }
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .sessionDuplicate, target: target.target, args: options.withWindow())
         }
     }
 

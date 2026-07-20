@@ -200,6 +200,10 @@ All ten are read-only projections of GUI state.
   undo/reopen record when enabled, immediate close when disabled. Returns `result.affected`.
 - `session select [--target] [--window W]`.
 - `session rename <name> [--target] [--window W]`.
+- `session duplicate [--target] [--window W]` — duplicate the target session into a FRESH shell rooted at
+  its focused-pane cwd, inserted directly after it in the same workspace; returns the new id. ONLY the
+  directory carries over (a plain shell — no running command, no split/scratch). The GUI twins are the
+  sidebar row's Duplicate Session, the menu bar, the ⌃⇧P palette, and a `duplicate_session` keymap action.
 - `session reveal [--target] [--window W]` — select the target session's focused-pane working
   directory in Finder. Errors when that directory no longer exists.
 - `session go --to next|prev|first|last|next-attention|prev-attention [--window W]` — move the

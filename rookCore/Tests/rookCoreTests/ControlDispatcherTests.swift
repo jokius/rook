@@ -227,6 +227,19 @@ struct ControlDispatcherTests {
         #expect(actions.calls.isEmpty)
     }
 
+    @Test func sessionDuplicateRoutesTargetAndWindow() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        actions.nextSessionDuplicateResponse = ControlResponse(ok: true, result: ControlResult(id: "dup-session"))
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionDuplicate, target: "9f3c", args: ControlArgs(window: "win")
+        ))
+
+        #expect(response == ControlResponse(ok: true, result: ControlResult(id: "dup-session")))
+        #expect(actions.calls == [.sessionDuplicate(target: "9f3c", window: "win")])
+    }
+
     @Test func sessionMoveRoutesPlacementForms() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)

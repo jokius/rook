@@ -192,7 +192,7 @@ The theme picker (View ▸ Select Theme…, or the action palette) previews each
 
 `rook` can be driven from a script over a local unix-domain socket through a companion CLI, `rookctl`. This is for personal scripting — fire-and-forget commands that manage workspaces and sessions, inject text, and invoke control actions. There is no terminal-output streaming and no event subscription.
 
-The sections below cover the common cases. All 65 commands, with every argument, return value, and error, are documented in the **[Command reference](https://rook.app/commands)**.
+The sections below cover the common cases. All 66 commands, with every argument, return value, and error, are documented in the **[Command reference](https://rook.app/commands)**.
 
 The app bundles `rookctl` inside `rook.app`. The easiest way to put it on your PATH is **Help ▸ Install Command Line Tool…**, which symlinks the bundled binary into `/usr/local/bin` (the first entry in macOS's default PATH). When that directory is user-writable it installs silently; otherwise it asks once for an administrator password.
 
@@ -220,6 +220,7 @@ rookctl session new --workspace-name servers --create-workspace --name "myhost" 
 rookctl session new --after active             # create right after the current session (--before to precede it); the anchor's workspace is used
 rookctl session new --cwd ~/src/rook --no-select   # create in the background: appended, but the current session stays selected and focused
 rookctl session new --command "zsh -lc 'make test'" --wait  # hold the session open on a press-any-key prompt after the command exits (needs --command)
+rookctl session duplicate                       # duplicate the current session into a fresh shell in its directory, right after it
 rookctl session type --target 9f3c $'make test\n'      # inject text into a session by id prefix
 echo 'make test' | rookctl session type --target active --stdin
 rookctl session go --to next                   # step to the next session (next|prev|first|last; stops at ends)

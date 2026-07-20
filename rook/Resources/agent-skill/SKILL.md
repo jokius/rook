@@ -120,7 +120,7 @@ you work. For any session-scoped command meant to act on *this* session — `ove
 `type`, `text`, `background`, `status`, `copy`, … — pass `--target "$ROOK_SESSION_ID"`. Omit it and
 you open overlays / type into whatever the user has selected, not your own session.
 
-## Command summary (65 commands)
+## Command summary (66 commands)
 
 Run `rookctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
 **examples.md**.
@@ -185,7 +185,7 @@ image and an emoji keep their own colors).
   press-any-key prompt after it exits, persists, and reads back on the `tree` node's `commandWait`.
 - `close [--target T ...]` — close one session, or repeat `--target` to close a batch with one
   grace-period undo.
-- `select` · `rename <name>` · `reveal` (select the focused pane's cwd in Finder).
+- `select` · `rename <name>` · `duplicate` (fresh shell in the session's cwd, right after it) · `reveal` (select the focused pane's cwd in Finder).
 - `go --to next|prev|first|last|next-attention|prev-attention` — move the selection between sessions.
 - `move <workspace>` (relocate) or `move --to up|down|top|bottom` (reorder within the workspace) or
   `move --after SID | --before SID` (place after/before an anchor session; the anchor carries its own

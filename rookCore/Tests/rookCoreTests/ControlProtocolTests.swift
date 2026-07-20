@@ -39,6 +39,7 @@ struct ControlProtocolTests {
             ControlRequest(cmd: .sessionNew, args: ControlArgs(workspaceName: "servers", createWorkspace: true)),
             ControlRequest(cmd: .sessionNew, args: ControlArgs(noSelect: true)),
             ControlRequest(cmd: .sessionNew, args: ControlArgs(command: "make test", wait: true)),
+            ControlRequest(cmd: .sessionDuplicate, target: "9f3c"),
             ControlRequest(cmd: .sessionClose, target: "9f3c"),
             ControlRequest(cmd: .sessionClose, args: ControlArgs(targets: ["9f3c", "abcd"])),
             ControlRequest(cmd: .sessionSelect, target: "9f3c"),

@@ -180,7 +180,7 @@ paths:
   The skill is a REFERENCE/knowledge skill (both user-invocable via `/rook` and model-triggered,
   `allowed-tools: Bash(rookctl *)`; the agent-neutral `description` carries the trigger nouns since
   Codex may ignore the extra `when_to_use` field — unknown frontmatter is harmless),
-  authored at `rook/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 65-command
+  authored at `rook/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 66-command
   summary + the image-display helper + a troubleshooting/reporting pointer;
   `reference.md` full per-command detail + keymap format; `examples.md` rookctl recipes;
   `troubleshooting.md` diagnosing the common problems (keymap editor, custom actions,
@@ -258,10 +258,10 @@ paths:
   rules, then remaining targets resolve inside that same store so one command never mutates multiple windows.
   The top-level `target` also carries the first explicit batch target so a new CLI talking to a still-running
   pre-batch server degrades to a named session instead of accidentally acting on `active`.
-- **Command catalog (65 commands):**
+- **Command catalog (66 commands):**
   - `tree`
   - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.color`/`workspace.icon`
-  - `session.new`/`session.close`/`session.select`/`session.rename`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.agent`/`session.flag`/`session.seen`/`session.background`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
+  - `session.new`/`session.close`/`session.select`/`session.rename`/`session.duplicate`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.agent`/`session.flag`/`session.seen`/`session.background`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
   - `surface.zoom`
   - `dashboard`
   - `quick`/`quick.type`/`quick.text`
@@ -286,7 +286,7 @@ paths:
   Setting echoes the resulting effective side in `result.text`; the BARE form (no name) reads the side
   the last config feed applied (`SettingsModel.lastAppliedIsDark`), which the test polls to prove the
   flip actually drove the reload.
-  `AppearanceFlipUITests` is its only consumer; the public command count stays 65.
+  `AppearanceFlipUITests` is its only consumer; the public command count stays 66.
 
   `workspace.delete` honors keep-at-least-one and returns an error instead of the GUI confirm alert (nothing
   blocks on a modal).
@@ -482,7 +482,7 @@ paths:
   (the last two also `validate()`-guarded); and round-trip + e2e (`testSessionNewWithCommandRunsAsProcess`,
   `testSessionNewWithName`, `testSessionNewWorkspaceNameCreatesThenReuses`) cover them.
   `session.new` ALSO takes `--no-select` and `--wait` (ports of upstream bdc3684 + 8220978 — NO new
-  `Command` case, catalog stays 65).
+  `Command` case for the flags — the catalog bump to 66 is `session.duplicate` below).
   `ControlArgs.noSelect` + `ControlSessionCreateOptions.noSelect` create the session in the BACKGROUND:
   `AppStore.addSession` gained a defaulted `select: Bool = true` gating `selectedSessionID` /
   `autoUnfocusIfOutsideFocus` / `recordRecency`, `makeSessionResponse` passes `select: !noSelect` and skips
@@ -496,6 +496,21 @@ paths:
   (`false`→nil write, nil→`false` restore), `closePrimaryPane` clears it alongside `initialCommand` on split
   promotion, `--wait` without `--command` is rejected in BOTH the dispatcher AND the CLI `validate()`, and
   its read-back is the new `ControlSessionNode.commandWait` (gated `initialCommand != nil && commandWait`).
+  `session.duplicate` (target = the source session) duplicates it into a FRESH shell rooted at the source's
+  focused-pane cwd (`Session.focusedCwd`), inserted directly AFTER it in the same workspace via the host-free
+  `AppStore.duplicateSession` → `addSession(toWorkspace:cwd:at:)`; ONLY the directory carries over (no
+  command/name/split/scratch — a plain shell).
+  It is a NEW `Command` case (catalog 65 → 66).
+  Five callers share the one `AppStore.duplicateSession` seam: the control arm (`ControlActions.duplicateSession`,
+  which focuses only when the target store is the active one, like `session.new`), and — via
+  `AppActions.duplicateSession(_:in:)` / `duplicateActiveSession()` (`AppActions+Duplicate.swift`) — the
+  sidebar row context menu, the menu bar, the ⌃⇧P palette, and the keyless `BuiltinAction.duplicateSession`
+  keymap action.
+  READ-BACK is the returned `result.id` (a create command — no new tree field, state-mutating-read-back
+  EXEMPT).
+  Four-point audit: `case sessionDuplicate` in `ControlProtocol`, the `.sessionDuplicate` dispatcher arm +
+  `ControlActions.duplicateSession`, the `rookctl session duplicate` subcommand, and round-trip +
+  dispatcher + CLI + `AppStoreDuplicateTests` (e2e in `ControlAPIUITests` — deferred, XCUITest).
   `session.type` injects into the target surface.
   `args.pane` picks the pane like `session.text` (`left`|`right`|`scratch`, no `other`):
   omitted/`left` is the MAIN pane (omitted deliberately keeps the pre-pane behavior — always the main

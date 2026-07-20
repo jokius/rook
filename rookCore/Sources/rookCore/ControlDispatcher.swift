@@ -7,6 +7,7 @@ import Foundation
 public protocol ControlActions {
     func controlTree(window: String?) -> ControlResponse
     func createSession(_ options: ControlSessionCreateOptions) -> ControlResponse
+    func duplicateSession(_ target: String?, window: String?) -> ControlResponse
     func selectSession(_ target: String?, window: String?) -> ControlResponse
     func goSession(window: String?, direction: SessionNavigation) -> ControlResponse
     func closeSession(_ target: String?, window: String?) -> ControlResponse
@@ -154,8 +155,8 @@ public struct ControlDispatcher {
         switch request.cmd {
         case .tree:
             return actions.controlTree(window: request.args?.window)
-        case .sessionNew, .sessionSelect, .sessionGo, .sessionClose, .sessionRename, .sessionReveal,
-                .sessionMove, .sessionFlag, .sessionSeen, .sessionStatus, .sessionAgent:
+        case .sessionNew, .sessionDuplicate, .sessionSelect, .sessionGo, .sessionClose, .sessionRename,
+                .sessionReveal, .sessionMove, .sessionFlag, .sessionSeen, .sessionStatus, .sessionAgent:
             return dispatchSessionCommand(request)
         case .sessionSplit, .sessionScratch, .sessionFileTree, .sessionMarkdown, .sessionFocus, .sessionResize,
                 .surfaceZoom,
@@ -218,6 +219,10 @@ public struct ControlDispatcher {
                 before: args?.before,
                 noSelect: args?.noSelect == true
             ))
+        case .sessionDuplicate:
+            // no options: the source session names its own workspace AND its cwd, so a duplicate is fully
+            // described by the target. The GUI half is the sidebar row's "Duplicate".
+            return actions.duplicateSession(request.target, window: request.args?.window)
         case .sessionSelect:
             return actions.selectSession(request.target, window: request.args?.window)
         case .sessionGo:

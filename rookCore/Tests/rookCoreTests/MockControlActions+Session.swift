@@ -13,6 +13,11 @@ extension MockControlActions {
         return ControlResponse(ok: true)
     }
 
+    func duplicateSession(_ target: String?, window: String?) -> ControlResponse {
+        calls.append(.sessionDuplicate(target: target, window: window))
+        return nextSessionDuplicateResponse
+    }
+
     func goSession(window: String?, direction: SessionNavigation) -> ControlResponse {
         calls.append(.sessionGo(window: window, direction))
         return ControlResponse(ok: true)
