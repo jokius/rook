@@ -116,6 +116,20 @@ never two bundles in one window.
   `TitleProbeView` registers/unregisters on attach/close; `raise(_:)` brings an already-open window forward
   (the dedup-by-id raise path), `close(_:)` runs `performClose` (driving the standard `willClose` teardown,
   used by `window.close`).
+- **`open -a rook <path>` / Finder "Open With ▸ Rook" on a folder — WARM-ONLY odoc.**
+  `AppDelegate.application(_:open:)` resolves each URL through the host-free `OpenPathResolver.directory(for:)`
+  (a folder → itself, a regular file → its parent, a non-file/missing path → nil), queues the directories in
+  `pendingOpenDirectories`, and `drainPendingOpenDirectories` grafts one session per directory into
+  `library.activeStore` via `AppActions.openSession(atDirectory:)` (NOT `uiActionsEnabled`-gated — an external
+  OS-open must land like a socket command), raising the landing window with `WindowRegistry.raise`
+  (0.1 s × 50 backoff until a store resolves, then the queue is dropped).
+  `CFBundleDocumentTypes` = `public.folder` (Viewer) in `rook/Info.plist` is what lists Rook in Finder's
+  Open-With for folders (the odoc AppleEvent delivers `open -a` either way); it CANNOT live in `project.yml`
+  because our build sets an explicit `INFOPLIST_FILE` xcodegen can't merge complex array keys into.
+  A COLD launch (Rook not running) is DELIBERATELY unsupported — a SwiftUI `WindowGroup` + odoc limitation;
+  do NOT re-attempt an in-process fix.
+  Keep-in-sync EXEMPT: `openSession(atDirectory:)` is the OS-open onto a capability the socket already exposes
+  (`session.new --cwd`, frontmost-defaulted), like `reveal` — no new `Command`/`rookctl`/`commands.html`.
 - **Per-window quick terminal.**
   `QuickTerminalController` is no longer a `static let shared` singleton — it is a per-window instance
   owned by `WindowContentView` (as `@State`), registered in the app-side `QuickTerminalRegistry` (`Views/QuickTerminal.swift`,

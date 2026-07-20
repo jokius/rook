@@ -492,3 +492,26 @@ paths:
   Not accessibility-observable (no UI test): verified by ⌘-clicking a path inside a running Claude Code
   session.
 
+- **OSC 11 dynamic background renders PER-PANE under window translucency — handled in `COLOR_CHANGE`, not
+  ignored.**
+  A program tints its pane background with OSC 11 (`printf '\033]11;#rrggbb\a'`), e.g. an rc that tints the
+  scratch pane to tell it apart.
+  Under rook's window translucency every surface renders `background-opacity = 0` (the AppKit window backing
+  supplies the tint), so libghostty applying the OSC color to its render state and firing `COLOR_CHANGE` only
+  as a NOTIFICATION never showed.
+  `GhosttyCallbacks` now handles `COLOR_CHANGE` for the BACKGROUND kind and gives that surface its OWN
+  `.color` config overlay — the SAME per-surface path as `session background color` (`WatermarkConfig` →
+  `configWithOverlay` → `ghostty_surface_update_config`) — at `background-opacity = windowOpacity`, so the
+  pane renders its OSC tint translucently and per-pane without touching the window backing or any other
+  surface.
+  It survives a config reload, an opacity change, and a dashboard open/close, is deduped per prompt, and is
+  tracked on `GhosttySurfaceView.oscBackgroundColorHex` (released whenever a watermark or plain config
+  replaces the overlay, so a re-emitted OSC right after `session background clear/set` still renders).
+  The C callback fires inside a libghostty tick, so it hops to `@MainActor` via `DispatchQueue.main.async`
+  (the hex is copied before the hop).
+  **KNOWN LIMITATION:** `session background color` CANNOT override a LIVE OSC 11 — libghostty stores OSC 11
+  in the terminal's dynamic `override` layer, config only sets `default`, and the renderer draws
+  `override orelse default`; the pinned libghostty (`4dcb09ada`) exposes no API to reset the override, so an
+  explicit `session background color` is masked until the program emits OSC 111 or the surface is recreated.
+  OSC 10/12 (foreground/cursor) are NOT wired.
+

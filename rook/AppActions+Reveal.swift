@@ -30,4 +30,19 @@ extension AppActions {
         NSWorkspace.shared.activateFileViewerSelecting([url])
         return true
     }
+
+    /// Open a terminal session rooted at `directory` in the last-active window — the entry point for
+    /// `open -a rook <path>` and Finder "Open With ▸ rook" on a folder (`AppDelegate.application(_:open:)`).
+    /// Not gated on `uiActionsEnabled`: an external OS-open, like a socket command, must land regardless of a
+    /// modal zoom/dashboard. Resolves `store` = the last-active window (what `session.new` also defaults to),
+    /// and returns whether it landed so the delegate can retry until a store resolves.
+    @discardableResult
+    func openSession(atDirectory directory: String) -> Bool {
+        guard let store, let workspaceID = store.currentWorkspaceID,
+              let session = store.addSession(toWorkspace: workspaceID, cwd: directory) else { return false }
+        store.noteUserActivity()
+        store.selectSession(session.id)
+        focusActiveSession()
+        return true
+    }
 }

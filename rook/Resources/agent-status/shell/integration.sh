@@ -6,9 +6,9 @@
 # Which commands count as agents is a regex, override before sourcing to taste:
 #   export ROOK_AGENT_RE='^(gemini|cursor-agent|my-agent)([[:space:]]|$)'
 #
-# Claude Code and Codex are intentionally NOT in the default list — their own
-# hooks drive finer per-turn state, which the coarse process-level active/idle
-# here would only fight. Add either here if you rely on the shell integration
+# Claude Code, Codex, and Pi are intentionally NOT in the default list — their own
+# hooks/extensions drive finer per-turn state, which the coarse process-level active/idle
+# here would only fight. Add any of them here if you rely on the shell integration
 # alone for it.
 #
 # Every entry point is best-effort and a clean no-op outside rook (guarded by

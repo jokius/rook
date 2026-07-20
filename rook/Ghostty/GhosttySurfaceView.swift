@@ -81,6 +81,10 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     /// the overlay factory from `Session.overlayBackgroundColor`.
     var overlayBackgroundColorHex: String?
 
+    /// The dynamic background color a program set on THIS surface via OSC 11 (`#rrggbb`), or nil for none.
+    /// Rendered per-pane by `applyOSCBackground` (which carries the detail).
+    var oscBackgroundColorHex: String?
+
     /// For a capturing overlay surface: receives the parsed exit status read from `overlayCodeFile` on
     /// teardown. Set by the overlay factory to record it onto the session for `session.overlay.result`.
     /// Called from `destroySurface` (main actor) on every in-process teardown, so the status is captured
@@ -248,7 +252,9 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     /// re-composes the surface config — a value shrinks the cell's font, nil rebuilds from the session model.
     var dashboardFontOverride: Double? {
         didSet {
-            applyWatermarkFromSession()
+            // keep a live OSC 11 tint across dashboard open/close (applyOSCBackground re-emits it with the
+            // dashboard font); else rebuild from the session model.
+            if let hex = oscBackgroundColorHex { applyOSCBackground(hex) } else { applyWatermarkFromSession() }
             // a SET override (-> value) can't strand a revert report — reportFontSize's
             // `dashboardFontOverride == nil` guard drops its CELL_SIZE report while the override is active
             // — so just drop any pending restore.

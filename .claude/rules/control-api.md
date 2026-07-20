@@ -170,6 +170,20 @@ paths:
   Because it is new, EXISTING users must RE-RUN Help ▸ Install Agent Status Hooks… to get it (the merge
   is idempotent and upgrades the managed block); without it there is no conversation id and a restored
   agent pane falls back to `--continue` / `resume --last`.
+- **Pi agent-status extension.**
+  When `~/.pi/agent` exists, the installer ALSO drops a Pi lifecycle extension (`rook-status.ts`) into
+  `~/.pi/agent/extensions/` (gated like the fish-rc gate), so a Pi agent inside rook reports onto its
+  session's row like Claude/Codex: `agent_start` → `active --blink`, `agent_settled` → `completed
+  --auto-reset` (Pi's own settled event).
+  It DELEGATES to the shared `rook-agent-status.sh` wrapper, guards on `ROOK_SESSION_ID` (no-op outside rook),
+  and uses a TYPE-ONLY SDK import so it needs no runtime package.
+  Pi has NO permission/question event, so a Pi session is `active`→`completed` only, NEVER `blocked`.
+  The host-free path/marker/result logic is `AgentHooksInstall` (the Pi extension paths, the ownership
+  marker, and a `PiResult.writeFailed` warning that DEGRADES on an FS error rather than throwing and hiding
+  that the Claude/Codex/shell steps succeeded); the destination is read via `readExistingConfig`
+  (nil=absent/throw=unreadable) so a non-ENOENT stat error can't read as absent and bypass the ownership
+  gate.
+  Control-API keep-in-sync EXEMPT (drives the existing `session.status`).
 - **Agent skill install (Claude Code + Codex).**
   A third Help entry, **Help ▸ Install Agent Skill…** (`SkillInstaller.run()`),
   copies a bundled, personal-scope Agent Skill to `~/.claude/skills/rook/` AND `~/.codex/skills/rook/`
