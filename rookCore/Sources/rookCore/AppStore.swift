@@ -363,10 +363,13 @@ public final class AppStore {
 
     /// Sets a session's agent status indicator (the sidebar status glyph). The single mutation point
     /// for the control channel's `session.status`. Stamps `statusChangedAt` with the current time on any
-    /// non-idle status (the attention list's newest-first sort key) and clears it on idle. No-op for an
-    /// unknown id. Not persisted (the indicator is ephemeral), so it never triggers a `save()`.
+    /// non-idle status (the attention list's newest-first sort key) and clears it on idle. Clears the
+    /// session's `autoFollowConsumed` on a transition INTO blocked, re-arming idle auto-follow for the
+    /// fresh episode. No-op for an unknown id. Not persisted (the indicator is ephemeral), so it never
+    /// triggers a `save()`.
     public func setAgentIndicator(_ indicator: AgentIndicator, forSession id: UUID) {
         guard let session = session(withID: id) else { return }
+        let wasBlocked = session.agentIndicator.status == .blocked
         var indicator = indicator
         // normalize a `.right` tag to `.left` when the session has NO split. A promoted survivor's
         // shell keeps its baked `ROOK_PANE=right`, so the agent-status hook re-emits `--pane right` after
@@ -385,6 +388,10 @@ public final class AppStore {
         }
         session.agentIndicator = indicator
         session.statusChangedAt = indicator.status == .idle ? nil : Date()
+        // a fresh block episode (entering blocked from a non-blocked status) re-arms idle auto-follow for
+        // this session, so it can pull the user here once more; a re-asserted blocked-over-blocked is not a
+        // new episode and stays muted (see Session.autoFollowConsumed).
+        if !wasBlocked, indicator.status == .blocked { session.autoFollowConsumed = false }
     }
 
     /// Pushes the current selection to the front of the recency stack (the Ctrl-Tab order).
@@ -414,8 +421,8 @@ public final class AppStore {
     }
 
     /// Removes a session, tears down its surface, and — if it was the active
-    /// session — reselects a neighbor (next in the same workspace, else the
-    /// previous, else any remaining session, else nil).
+    /// session — reselects the most-recently-active surviving session in scope
+    /// (see `closeReselectionTarget(after:)`), falling back to the positional neighbor.
     public func closeSession(_ sessionID: UUID) {
         guard let location = location(ofSession: sessionID) else { return }
         let wasActive = selectedSessionID == sessionID
@@ -430,9 +437,9 @@ public final class AppStore {
         WatermarkStorage.removeRenderedText(sessionID: sessionID) // drop any rendered .text PNG; the session is gone
         sessionRecency.remove(sessionID)
         if wasActive {
-            selectedSessionID = reselectionTarget(after: location)
+            selectedSessionID = closeReselectionTarget(after: location)
             replaceSidebarSelection(with: selectedSessionID)
-            autoUnfocusIfOutsideFocus(selectedSessionID) // the neighbor may live outside the focused workspace
+            autoUnfocusIfOutsideFocus(selectedSessionID) // the reselected session may live outside the focused workspace
             recordRecency()
         } else {
             pruneSidebarSelection()

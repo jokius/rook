@@ -205,6 +205,16 @@ paths:
   quick terminal was up, closing the window instead of the cover.
   `AppStore.currentWorkspaceID`/`defaultWorkspaceName` are the host-free placement/naming helpers behind
   New Session / New Workspace.
+- **Closing the ACTIVE session returns to the MOST-RECENTLY-ACTIVE survivor, not the positional neighbor**
+  (Discussion #147).
+  The shared host-free `AppStore.closeReselectionTarget(after:)` (`AppStore+CloseReselection.swift`, used by
+  all three close paths — `closeSession` + `softCloseSession`/`softCloseSessions`) reuses the same
+  `sessionRecency` the ⌃Tab switcher maintains, SCOPED to the closing session's own workspace (the flagged
+  set in `.flagged` mode).
+  The MRU widens beyond the scope only when the close leaves nothing there to return to, and falls back to
+  the positional `reselectionTarget` when the scoped recency is empty (e.g. right after a restore, before
+  anything has been activated) — so the worst case is the old neighbor behavior.
+  `removeWorkspace` keeps its own reselection, untouched.
 - **Session navigation (between sessions).**
   Previous/Next Session sit on ⌥⌘↑/⌥⌘↓; First/Last Session have NO hotkey (menu + palette + `session.go`
   only).

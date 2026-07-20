@@ -889,7 +889,8 @@
                 </div>
                 <div style="padding: 12px 16px; background: #14171a; color: #7ece8f">Ctrl-Tab</div>
                 <div style="padding: 12px 16px; background: #1a1e21; color: #cbc6bc">
-                  MRU session switcher (app-switcher style; survives a relaunch)
+                  MRU session switcher (app-switcher style; survives a relaunch) — the same recency returns
+                  you to your previously-active session when you close the one you are in
                 </div>
               </div>
             </div>
@@ -1918,9 +1919,10 @@
               <strong style="color: #e6e1d7">Settings ▸ Agent Status ▸ Auto-follow blocked sessions</strong>
               (Disabled by default, or a 5s/10s/30s/60s/5m idle timeout) and, after you have been idle from input for that long,
               the window selects and focuses the oldest blocked session, so you are pulled to whatever agent is waiting. It is
-              per-window and window-wide (crossing workspaces within the window), and always picks the oldest blocked session
-              first. Being parked on a blocked session suppresses further jumps until you type a reply, which clears its glyph
-              and re-arms the timer for the next one. The opt-in <strong style="color: #e6e1d7">Don't auto-follow away from a
+              per-window and window-wide (crossing workspaces within the window), and walks the blocked sessions
+              oldest-first. A block it pulls you to is muted once you move on: it shows each waiting block once, then stays
+              quiet, and re-arms for a session only when it leaves blocked and blocks anew, so it won't repeatedly yank you
+              back to the same one. Being parked on a blocked session still suppresses jumps while you stay on it. The opt-in <strong style="color: #e6e1d7">Don't auto-follow away from a
               running session</strong> (off by default) holds the selection put while the current session is
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">active</span>. Over the control
               channel, <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl tree --json</span>
