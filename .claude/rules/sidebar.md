@@ -87,6 +87,14 @@ paths:
   Covered by `PaneAwareStatusUITests.testSidebarClickRevealsBlockedSplitPane`.
 - Accessibility identifiers `session-row`, `workspace-row`, `edit-field`,
   and `add-session` back the XCUITests.
+- **Each WORKSPACE row carries a hover-revealed inline "+"** (`SidebarCellView.addButton`, accessibility id
+  `workspace-add-session` — distinct from the bottom-bar `add-session`), the Finder/Xcode convention:
+  `mouseEntered`/`mouseExited` on the cell toggle it via `setAddButtonVisible` (0↔width, so an idle row's
+  name + roll-up badge keep their slots), and its click runs the SAME `addSession(toWorkspace:cwd:)` path as
+  the right-click "New Session" (the `@objc addSessionButtonClicked` handler lives in
+  `WorkspaceSidebar+ContextMenu.swift` beside that private helper; `handleSingleClick` guards the button's
+  rect so clicking "+" doesn't also toggle the workspace's expansion).
+  GUI-only, no control surface (session creation is already `session.new`).
   Note the rename field surfaces as a `TextField` for sessions and a `StaticText` for workspaces,
   so UI tests match `edit-field` by identifier across element types.
 - **Sidebar multi-selection.**

@@ -14,6 +14,19 @@ final class SidebarCellView: NSTableCellView {
     /// Hidden on `.idle` (workspace rows always idle for now).
     let statusIcon = StatusIconView()
 
+    /// Inline "+" button between the name and the status icon, present only on workspace cells.
+    /// Nil for session cells. Set by the cell builder and used by `handleSingleClick` to guard
+    /// against toggling expansion when the click lands on this button.
+    var addButton: NSButton?
+
+    /// Width of `addButton`, toggled between 0 (hidden) and the glyph width by `setAddButtonVisible`
+    /// — the same collapse-the-slot convention as `StatusIconView.widthConstraint`, so an idle row's
+    /// name reclaims the space. Set by the cell builder alongside `addButton`.
+    var addButtonWidthConstraint: NSLayoutConstraint?
+
+    private static let addButtonWidth: CGFloat = 16
+    private var hoverTrackingArea: NSTrackingArea?
+
     /// A per-row override for the icon tint — the workspace's own `colorHex`, or nil to follow the theme.
     /// It must live HERE, applied inside `setColors`, because that is the single choke point every tint
     /// path funnels through (cell build, `didAddSubview`, the selection flip, and the theme change all
@@ -35,6 +48,39 @@ final class SidebarCellView: NSTableCellView {
         }
     }
 
+    /// Reveals or collapses the inline "+": the Finder/Xcode hover convention, so an idle row shows
+    /// no button and the roll-up badge keeps its slot. Driven by `mouseEntered`/`mouseExited` and
+    /// reset hidden when a reused cell is reconfigured in the row provider. No-op for session cells.
+    func setAddButtonVisible(_ visible: Bool) {
+        guard let addButton, let addButtonWidthConstraint else { return }
+        addButton.isHidden = !visible
+        addButtonWidthConstraint.constant = visible ? Self.addButtonWidth : 0
+    }
+
+    // hover tracking for the "+" reveal, workspace cells only (session cells have no button to show)
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea); self.hoverTrackingArea = nil }
+        guard addButton != nil else { return }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self
+        )
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        setAddButtonVisible(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        setAddButtonVisible(false)
+    }
+
     /// Color the row text/icon: a SELECTED row is brand chrome — graphite over the brand-green pill the
     /// row draws — while an UNSELECTED one follows the terminal theme's foreground, icons dimmed.
     /// A row with an `iconTint` keeps its OWN icon color in both states (at full alpha — a deliberate
@@ -48,7 +94,11 @@ final class SidebarCellView: NSTableCellView {
     func setColors(selected: Bool) {
         let color = selected ? .rookGraphite : (GhosttyApp.shared.terminalForegroundColor ?? .labelColor)
         textField?.textColor = selected ? color : (statusTint ?? color)
-        imageView?.contentTintColor = iconTint ?? color.withAlphaComponent(selected ? 0.85 : 0.6)
+        let iconAlpha: CGFloat = selected ? 0.85 : 0.6
+        imageView?.contentTintColor = iconTint ?? color.withAlphaComponent(iconAlpha)
+        // the "+" is chrome, not the workspace's colored icon — it follows the plain theme foreground at
+        // the same dimmed alpha, never the per-workspace `iconTint`.
+        addButton?.contentTintColor = color.withAlphaComponent(iconAlpha)
     }
 }
 
