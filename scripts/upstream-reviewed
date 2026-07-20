@@ -1,0 +1,6 @@
+# Upstream review watermark — the newest upstream/agterm commit we have TRIAGED
+# (taken, re-implemented on our own line, or consciously declined).
+# 'scripts/upstream.sh list' shows only commits AFTER this SHA.
+# Advance with: scripts/upstream.sh mark [<sha>]  (default: upstream/master tip).
+# Per-commit take/have/skip decisions live in the sync ledger (~/.claude/plans/rook/).
+7f2e22afebc3dc493a0804171676c045e4161d58  # 7f2e22a docs: prefer kill-by-pid over clean-quit for dev-instance teardown
