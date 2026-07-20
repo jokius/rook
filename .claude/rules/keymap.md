@@ -50,10 +50,19 @@ paths:
   1.5 s leader timeout, key-repeat ignored), and on `.fired` spawns a detached `/bin/sh -c` with the
   focused pane's `CommandContext` (cwd + selection + `$AGT_*` env); a non-zero exit posts a failure banner
   via `NotificationManager.notifyCommandFailure`.
-  It only fires when a `GhosttySurfaceView` holds first responder (so a bound chord never eats keystrokes
-  in a text field) and rebuilds its matcher on `.rookKeymapChanged`.
+  It fires from a focused `GhosttySurfaceView` OR from a rook terminal window whose focus is NOT on a text
+  field — INCLUDING an emptied window (every session closed, e.g. an all-SSH window whose `session new
+  --command "ssh …"` sessions exited on disconnect): a bound chord never eats keystrokes in a text field
+  (rename/palette/Settings) or reaches a non-terminal window, but a launcher chord still works once the
+  last session is gone (issue #249).
+  With no focused surface it runs the active session if one exists, else `spawnSessionless` fires a
+  session-free launcher context (frontmost window id + socket) — but ONLY for a command that does NOT
+  reference a session/workspace/selection token (`CommandContext.referencesSessionScopedContext`, host-free
+  + unit-tested), so a session-scoped body no-ops instead of running with silently-empty tokens (an empty
+  `{AGT_SESSION_PWD}` would turn `rm -rf …/*` into a root glob).
+  It rebuilds its matcher on `.rookKeymapChanged`.
   The runner also exposes a public `run(_:)` for the palette items, which resolve context from the active
-  session (no first responder to key off).
+  session (the same session-scoped no-op guard covers the palette).
   `CommandContext.pane` (the `{AGT_PANE}`/`$AGT_PANE` token, `left`|`right`)
   carries the fired-from pane: the keybind path derives it from the focused SURFACE's identity
   (`splitSurface === focusedSurface`), the palette path from `session.splitFocused` —
