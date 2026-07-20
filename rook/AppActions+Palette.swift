@@ -189,9 +189,11 @@ extension AppActions {
     }
 
     /// Toggle the `.attention` command palette (the window's non-idle sessions). Driven by the ⌃⇧I
-    /// `BuiltinAction.showAttention`, the Navigate ▸ Go to Attention… menu item, and the titlebar bell
-    /// icon — none of these route through the action palette's `runItem`, so a synchronous toggle is
-    /// correct. The ⌃⇧P launcher uses `openAttentionPalette()` instead (it must reopen async).
+    /// `BuiltinAction.showAttention` and the Navigate ▸ Go to Attention… menu item — the KEYBOARD form of
+    /// the attention picker; the titlebar bell now opens a `.popover` instead (its MOUSE form), so it no
+    /// longer routes here. Neither keyboard path goes through the action palette's `runItem`, so a
+    /// synchronous toggle is correct. The ⌃⇧P launcher uses `openAttentionPalette()` instead (it must
+    /// reopen async).
     func toggleAttentionPalette() {
         guard !terminalZoomActive else { return }
         palette?.toggle(.attention)

@@ -171,7 +171,7 @@ paths:
   scrolling after adding the font-size stepper).
   **Interface** (a new tab, `SettingsView.Tab.interface`, BETWEEN Appearance and Notifications) hides/shows
   INDIVIDUAL title-bar + sidebar-footer chrome elements over the host-free `InterfaceElement` enum
-  (title bar: `sidebarToggle`/`sessionName`/`windowName`/`scratch`/`split`/`quickTerminal`; sidebar footer:
+  (title bar: `recentSessions`/`sidebarToggle`/`sessionName`/`windowName`/`scratch`/`split`/`quickTerminal`; sidebar footer:
   `newWorkspace`/`newSession`/`flaggedView`/`workspaceAddSession`), all shown by default.
   Persisted as `AppSettings.hiddenInterfaceElements` (`[String]?`, tolerant raw-string decode so an unknown
   future name survives a toggle; nil = all shown), mirrored into `GhosttyApp.hiddenInterfaceElements` and
@@ -185,8 +185,9 @@ paths:
   cluster is only TWO groups (scratch/split | quick), so the render site gates rook's single divider with an
   inline `(showScratch || showSplit) && showQuick` instead of wiring that rule — flagged for when the cluster
   regrows.
-  rook LACKS upstream's recent-sessions + dashboard title-bar buttons, so those two `InterfaceElement` cases
-  are deliberately omitted (6 title-bar cases, not upstream's 8).
+  rook LACKS upstream's dashboard title-bar button, so that one `InterfaceElement` case is deliberately
+  omitted (7 title-bar cases — the `recentSessions` clock was added with the title-bar popovers; only
+  dashboard is still missing, vs upstream's 8).
   GUI-only and control-API EXEMPT (every gated element's action already has full control coverage).
   Working-norm (this file + root CLAUDE.md): when adding a new toggleable UI element, PROPOSE an Interface
   toggle for it — ask first, never automatic.

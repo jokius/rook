@@ -5,8 +5,8 @@ import Foundation
 /// (it is simply dropped) rather than failing the whole decode — the AppSettings forward-compat rule.
 /// Every element is shown by default; hiding one adds its raw name to the persisted list.
 ///
-/// rook's title bar has no recent-sessions or dashboard button (both are upstream-only), so those cases
-/// are deliberately absent — the enum lists only the chrome rook actually draws.
+/// rook's title bar has no dashboard button (upstream-only), so that case is deliberately absent — the
+/// enum lists only the chrome rook actually draws. The recent-sessions clock IS present (`recentSessions`).
 public enum InterfaceElement: String, Codable, Sendable, CaseIterable {
     // title bar
     case sidebarToggle
@@ -15,6 +15,7 @@ public enum InterfaceElement: String, Codable, Sendable, CaseIterable {
     case scratch
     case split
     case quickTerminal
+    case recentSessions
     // sidebar
     case newWorkspace
     case newSession
@@ -42,6 +43,7 @@ public enum InterfaceElement: String, Codable, Sendable, CaseIterable {
         case .scratch: return "Scratch terminal"
         case .split: return "Split view"
         case .quickTerminal: return "Quick terminal"
+        case .recentSessions: return "Recent sessions"
         case .newWorkspace: return "New workspace"
         case .newSession: return "New session"
         case .flaggedView: return "Flagged view"
@@ -56,9 +58,12 @@ public enum InterfaceElement: String, Codable, Sendable, CaseIterable {
     /// between a full A and a full C. A group reduced to one button flows in without a bracketing separator.
     /// Host-free so the rule is unit-tested without an app host; the view supplies the three counts.
     ///
-    /// Ported verbatim from upstream for parity: rook's own title bar lacks the recent-sessions and
-    /// dashboard buttons, so its trailing cluster has only two groups (scratch/split, quick-terminal) and
-    /// gates its single divider inline — this three-group rule applies once a build grows the cluster back.
+    /// Ported verbatim from upstream for parity, but rook still gates its divider INLINE rather than
+    /// wiring this rule: rook's title bar has the recent-sessions/attention popover group and the
+    /// scratch/split + quick-terminal controls, but no dashboard button — so its `countC` (quick) never
+    /// reaches 2, which collapses this "2+ on both sides" rule, and rook's convention keeps a divider for a
+    /// single-button neighbor (`1+ on both sides`) that this rule would drop. The render site
+    /// (`WindowContentView.titlebarTrailingActions`) gates the single popovers↔view-controls divider inline.
     public static func titlebarGroupDividers(countA: Int, countB: Int, countC: Int) -> (afterA: Bool, afterB: Bool) {
         let afterA = countA >= 2 && countB >= 2
         let afterB = (countB >= 2 && countC >= 2) || (countA >= 2 && countC >= 2 && countB == 0)

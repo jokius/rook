@@ -4,7 +4,7 @@ import Testing
 
 /// The host-free `InterfaceElement` chrome-visibility rules: the title-bar group-divider boundary table,
 /// the tolerant raw-string decode of `AppSettings.hiddenInterfaceElements`, the section partition, and the
-/// workspace add-session element.
+/// workspace add-session + recent-sessions elements.
 struct InterfaceElementTests {
     @Test func hiddenInterfaceElementsDefaultsNilAndShowsEverything() {
         let settings = AppSettings()
@@ -32,8 +32,18 @@ struct InterfaceElementTests {
         let titleBar = InterfaceElement.allCases.filter { $0.section == .titleBar }
         let sidebar = InterfaceElement.allCases.filter { $0.section == .sidebar }
         #expect(titleBar.count + sidebar.count == InterfaceElement.allCases.count)
+        #expect(titleBar == [.sidebarToggle, .sessionName, .windowName, .scratch, .split, .quickTerminal, .recentSessions])
         #expect(sidebar == [.newWorkspace, .newSession, .flaggedView, .workspaceAddSession])
-        #expect(!titleBar.isEmpty)
+    }
+
+    @Test func recentSessionsIsATitleBarInterfaceElement() {
+        // the title-bar recent-sessions clock is a title-bar-section toggle, shown by default, separate from
+        // the other title-bar buttons.
+        #expect(InterfaceElement.recentSessions.section == .titleBar)
+        #expect(InterfaceElement.recentSessions.displayName == "Recent sessions")
+        let hidden = AppSettings(hiddenInterfaceElements: ["recentSessions"])
+        #expect(hidden.isInterfaceElementHidden(.recentSessions))
+        #expect(!hidden.isInterfaceElementHidden(.quickTerminal)) // hiding one does not hide the other
     }
 
     @Test func workspaceAddSessionIsADistinctSidebarInterfaceElement() {

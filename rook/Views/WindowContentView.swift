@@ -56,6 +56,12 @@ struct WindowContentView: View {
     /// user has hidden in Settings ▸ Interface. Refreshed on `.rookAppearanceChanged`, like `toolbarMode`,
     /// so flipping a toggle shows/hides the element live without a relaunch. `shows(_:)` reads it.
     @State var hiddenInterfaceElements: Set<InterfaceElement> = WindowContentView.resolvedHiddenInterfaceElements()
+    /// Whether the recent-sessions popover (the mouse form of the Ctrl-Tab switcher) is shown, anchored on
+    /// the title-bar clock button. Internal so the `+RecentSessions` extension's button/rows can toggle it.
+    @State var recentSessionsShown = false
+    /// Whether the attention popover (the mouse form of the ⌃⇧I attention palette) is shown, anchored on the
+    /// title-bar bell. Internal so the `+RecentSessions` extension's bell/rows can toggle it.
+    @State var attentionPopoverShown = false
     /// Custom sidebar width and show/hide both live on the per-window `AppStore` (`sidebarWidth` /
     /// `sidebarVisible`), persisted in `Snapshot` so they restore on relaunch. The toolbar button, the View
     /// menu, the palette, and the `sidebar` control command share `sidebarVisible`.

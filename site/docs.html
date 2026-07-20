@@ -1916,9 +1916,11 @@
               When the sidebar is hidden the glyphs go with it, so an optional
               <strong style="color: #e6e1d7">title-bar bell</strong> (Settings ▸ Notifications ▸ Show attention indicator, off by
               default) reflects the window: dimmed when nothing needs you, plain when a session is active or completed, filled
-              amber when any is blocked. Clicking it — or ⌃⇧I, <strong style="color: #e6e1d7">Navigate ▸ Go to Attention…</strong>,
-              or the action palette's "Show Attention" — opens the <strong style="color: #e6e1d7">attention list</strong>: this
-              window's non-idle sessions, sorted blocked → active → completed. Over the control channel,
+              amber when any is blocked. Clicking it opens a <strong style="color: #e6e1d7">popover</strong> of this window's
+              non-idle sessions, sorted blocked → active → completed; a row jumps to that session. ⌃⇧I,
+              <strong style="color: #e6e1d7">Navigate ▸ Go to Attention…</strong>, or the action palette's "Show Attention" open
+              the same list as a searchable palette. A sibling <strong style="color: #e6e1d7">clock</strong> button opens a
+              popover of the window's recently-used sessions (the mouse form of the Ctrl-Tab switcher). Over the control channel,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl tree --json</span> reports
               each session's <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">status</span> and
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">statusPane</span> (which pane set it).

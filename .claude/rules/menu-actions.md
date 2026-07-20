@@ -331,6 +331,22 @@ paths:
   The order is persisted (`Snapshot.sessionRecency`, an optional field like the other post-v1 additions)
   and re-seeded on restore — stale ids dropped, the restored selection floated to the front — so the
   switcher works right after a relaunch instead of starting empty (#110).
+- **Two title-bar mouse POPOVERS mirror the keyboard forms** (`WindowContentView+RecentSessions.swift`).
+  A **clock button** opens a popover of the window's recently-used sessions (the current one EXCLUDED — not
+  a jump target), the mouse form of the Ctrl-Tab MRU switcher; a row click switches, disabled until there
+  are >= 2 sessions.
+  The **attention bell** now opens a popover of the window's attention sessions with their status glyphs (a
+  row click selects + reveals the blocked pane) INSTEAD of the command palette — ⌃⇧I / Navigate ▸ Go to
+  Attention… keep the searchable palette (`toggleAttentionPalette` stays wired to the keyboard/menu path), so
+  the bell is the mouse form and the palette the keyboard form.
+  Both tint to the terminal theme, SUPPRESS auto-follow while open, and self-dismiss when their list empties;
+  they are button-anchored `.popover`s (respecting the transparent-titlebar-scrim rule, see [[libghostty]]),
+  NOT body overlays.
+  `SessionSwitcherRow` gained optional themed-foreground + status-glyph params (DEFAULTING off, so the
+  Ctrl-Tab overlay is byte-unchanged).
+  The clock button is gated by the `recentSessions` Interface element (see [[settings]]); the bell keeps its
+  own `attentionButtonEnabled` opt-in.
+  The icons live in ONE trailing title-bar cluster (order: clock, bell, divider, scratch, split, quick).
   Persistence is pure model/restore behavior with no new user action,
   so it is control-API keep-in-sync EXEMPT.
   Keys come from app-wide `NSEvent` local monitors (`.keyDown` for Ctrl+Tab / Ctrl+Shift+Tab / Esc,

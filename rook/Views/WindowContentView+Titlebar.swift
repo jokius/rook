@@ -81,9 +81,10 @@ extension WindowContentView {
     }
 
     /// Custom titlebar row replacing the system toolbar: the sidebar toggle pinned to the sidebar's
-    /// trailing edge (by the divider), the title at the terminal's start, and the split / quick-terminal
-    /// buttons at the trailing edge. Positions track `sidebarWidth`; the left inset clears the system
-    /// traffic lights. Each button is gated by its Interface toggle (`shows(_:)`).
+    /// trailing edge (by the divider), the title at the terminal's start, and the trailing action cluster
+    /// (recent-sessions / attention popovers, a divider, then the scratch / split / quick-terminal buttons)
+    /// at the trailing edge. Positions track `sidebarWidth`; the left inset clears the system traffic
+    /// lights. Each button is gated by its Interface toggle (`shows(_:)`), the bell by `attentionButtonEnabled`.
     private var titlebarRow: some View {
         HStack(spacing: 0) {
             Color.clear.frame(width: 78).allowsHitTesting(false) // system traffic lights
@@ -109,9 +110,6 @@ extension WindowContentView {
                 // so double-clicking it zooms and dragging it moves the window — the rest of the row is
                 // empty spacers (already non-hittable) and the buttons, which keep their own clicks.
                 .allowsHitTesting(false)
-            if attentionButtonEnabled {
-                attentionButton.labelStyle(.iconOnly).padding(.leading, 10)
-            }
             Spacer(minLength: 12)
             titlebarTrailingActions
         }
@@ -132,22 +130,31 @@ extension WindowContentView {
         .background { WindowControlArea() }
     }
 
-    /// The title bar's trailing action cluster, each button gated by its Interface toggle: the per-session
-    /// scratch / split controls and the window-level quick terminal. The divider is drawn only when there
-    /// is a visible button on BOTH sides, so hiding a whole group never leaves a bracketing separator.
+    /// The title bar's ONE trailing action cluster (upstream's grouping): the recent-sessions clock and the
+    /// attention bell — the two mouse popovers — then a divider, then the per-session scratch / split
+    /// controls and the window-level quick terminal. The clock is gated by its Interface toggle, the bell by
+    /// `attentionButtonEnabled`, the rest by their Interface toggles. The single popovers↔view-controls
+    /// divider is drawn only when there is a visible button on BOTH sides, so hiding a whole group never
+    /// leaves a bracketing separator.
     ///
-    /// rook's cluster has only these two groups — it has no recent-sessions or dashboard button — so the
-    /// full three-group `InterfaceElement.titlebarGroupDividers` rule (ported host-free for parity) reduces
-    /// to this inline two-group condition, which also keeps the default (everything shown) divider that the
-    /// three-group rule would drop for a single-button neighbor.
+    /// rook has no dashboard button, so the three groups collapse to two here (popovers | scratch/split +
+    /// quick) and the divider is gated inline — the full three-group `InterfaceElement.titlebarGroupDividers`
+    /// rule (ported host-free for parity) is "2+ on both sides" and would drop a divider for a single-button
+    /// neighbor, which rook's `1+ on both sides` convention keeps.
     private var titlebarTrailingActions: some View {
+        let showRecent = shows(.recentSessions)
+        let showAttention = attentionButtonEnabled
         let showScratch = shows(.scratch)
         let showSplit = shows(.split)
         let showQuick = shows(.quickTerminal)
+        let showPopovers = showRecent || showAttention
+        let showViewControls = showScratch || showSplit || showQuick
         return HStack(spacing: 14) {
+            if showRecent { recentSessionsButton.labelStyle(.iconOnly) }
+            if showAttention { attentionButton.labelStyle(.iconOnly) }
+            if showPopovers && showViewControls { titlebarDivider }
             if showScratch { scratchButton.labelStyle(.iconOnly) }
             if showSplit { splitButton.labelStyle(.iconOnly) }
-            if (showScratch || showSplit) && showQuick { titlebarDivider }
             if showQuick { quickTerminalButton.labelStyle(.iconOnly) }
         }
         .padding(.trailing, 14)
@@ -237,30 +244,5 @@ extension WindowContentView {
         }
         .help(helpHint("Quick Terminal", .quickTerminal))
         .accessibilityIdentifier("quick-terminal-toggle")
-    }
-
-    /// Title-bar bell reflecting the window's attention state at a glance (opt-in, gated by the
-    /// `attentionButtonEnabled` mirror). Three states from `store.attentionSessions`: empty → a dimmed
-    /// disabled outline bell; non-empty with nothing blocked → a plain enabled bell in `chromeText`; any
-    /// blocked session → a filled bell tinted the blocked-status color. No count, no pulse. Click opens
-    /// the `.attention` palette. Reading `store.attentionSessions` in the body registers the per-session
-    /// `agentIndicator` observation, so the glyph re-renders live as a status changes. `.accessibilityValue`
-    /// (none|attention|blocked) exposes the otherwise-unobservable bell↔bell.fill state to XCUITest,
-    /// mirroring `StatusIconView`'s state-name value.
-    private var attentionButton: some View {
-        let sessions = store.attentionSessions
-        let blocked = sessions.contains { $0.agentIndicator.status == .blocked }
-        let empty = sessions.isEmpty
-        return Button {
-            actions.toggleAttentionPalette()
-        } label: {
-            Label("Attention", systemImage: blocked ? "bell.fill" : "bell")
-        }
-        .foregroundStyle(blocked ? Color(nsColor: GhosttyApp.shared.blockedStatusColor) : chromeText)
-        .opacity(empty ? 0.35 : 1)
-        .disabled(empty)
-        .help(helpHint(empty ? "No sessions need attention" : "Show sessions that need attention", .showAttention))
-        .accessibilityIdentifier("attention-button")
-        .accessibilityValue(empty ? "none" : (blocked ? "blocked" : "attention"))
     }
 }
