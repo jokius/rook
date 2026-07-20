@@ -63,9 +63,11 @@ paths:
   It rebuilds its matcher on `.rookKeymapChanged`.
   The runner also exposes a public `run(_:)` for the palette items, which resolve context from the active
   session (the same session-scoped no-op guard covers the palette).
-  `CommandContext.pane` (the `{AGT_PANE}`/`$AGT_PANE` token, `left`|`right`)
+  `CommandContext.pane` (the `{AGT_PANE}`/`$AGT_PANE` token, `left`|`right`|`scratch`)
   carries the fired-from pane: the keybind path derives it from the focused SURFACE's identity
-  (`splitSurface === focusedSurface`), the palette path from `session.splitFocused` —
+  (`splitSurface === focusedSurface` = `right`; a SESSIONLESS focused surface that IS the active session's
+  `scratchSurface` = `scratch`, via `runFromSessionlessSurface` — the quick terminal and overlays are NOT
+  panes and keep the active-session fallback), the palette path from `session.splitFocused` —
   so a script can feed it back as `rookctl session type --pane "$AGT_PANE"` to type into the very
   pane the shortcut was pressed in.
   It reflects the pane's PHYSICAL surface slot: a promoted split survivor (the primary pane exited and the
