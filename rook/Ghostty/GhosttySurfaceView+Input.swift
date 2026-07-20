@@ -209,13 +209,25 @@ extension GhosttySurfaceView {
     override func rightMouseDragged(with event: NSEvent) { mouseMoved(with: event) }
     override func otherMouseDragged(with event: NSEvent) { mouseMoved(with: event) }
 
-    override func mouseMoved(with event: NSEvent) { reportMousePos(from: event) }
+    /// Re-assert the libghostty-requested cursor on every move. `cursorUpdate` only fires on tracking-area
+    /// entry (not per intra-area move), and SwiftUI — which owns the cursor for the hosted view — can reset
+    /// it on any move, so without this the pointing hand would revert to the arrow while moving along a link.
+    /// Gated on `deckVisible`: only the on-screen pane sets the process-global cursor, so a background deck
+    /// surface never paints its shape over the visible terminal (issue #225).
+    override func mouseMoved(with event: NSEvent) {
+        reportMousePos(from: event)
+        guard deckVisible else { return }
+        Self.nsCursor(for: mouseShape).set()
+    }
 
     /// The pointer entered the surface: restore libghostty's mouse position from the current point, undoing
     /// `mouseExited`'s `-1, -1` reset so hovered-link and cursor-shape state are correct on re-entry.
     /// (`scrollWheel` also syncs `mouse_pos` when stale, so the first post-re-entry scroll no longer depends
     /// on this — but the restore still matters for hover/link state before any move.)
-    override func mouseEntered(with event: NSEvent) { reportMousePos(from: event) }
+    override func mouseEntered(with event: NSEvent) {
+        pointerInside = true
+        reportMousePos(from: event)
+    }
 
     /// The pointer left the surface. Report negative coordinates so libghostty clears any hovered-link
     /// state — it drops `over_link`, reverts the mouse shape, and re-renders without the underline (see its
@@ -224,6 +236,7 @@ extension GhosttySurfaceView {
     /// (a button is down) so a selection/drag that crosses the edge isn't reported at `-1, -1`.
     override func mouseExited(with event: NSEvent) {
         guard let surface, NSEvent.pressedMouseButtons == 0 else { return }
+        pointerInside = false
         ghostty_surface_mouse_pos(surface, -1, -1, mouseMods(event))
         lastReportedMousePoint = NSPoint(x: -1, y: -1)
     }
@@ -454,17 +467,42 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
 
     /// Applies the cursor shape libghostty requested (`GHOSTTY_ACTION_MOUSE_SHAPE`) — the pointing hand
     /// over a link, the I-beam over the grid, resize/crosshair/grab in the matching modes. No-ops when
-    /// unchanged; otherwise invalidates the cursor rects so AppKit re-queries `resetCursorRects` and
-    /// re-applies the cursor under the current pointer position (libghostty sends this as the mouse moves).
+    /// unchanged; otherwise sets the cursor at once — but only while this is the on-screen pane (`deckVisible`)
+    /// and the pointer is inside, so a background deck surface never paints its shape over the visible terminal
+    /// (issue #225), and a revert delivered after the pointer already left (the I-beam libghostty emits once
+    /// `mouseExited` reports `-1, -1`) can't paint the terminal cursor onto the sidebar. Setting it here is what
+    /// makes a stationary shape change (⌘ pressed over a link without moving) take effect immediately;
+    /// `mouseMoved` re-asserts it as the pointer moves and `cursorUpdate` on entry.
     func applyMouseShape(_ shape: ghostty_action_mouse_shape_e) {
         guard shape != mouseShape else { return }
         mouseShape = shape
-        window?.invalidateCursorRects(for: self)
+        if deckVisible, pointerInside { Self.nsCursor(for: shape).set() }
     }
 
-    /// AppKit cursor-rectangle hook: paint the whole surface with the libghostty-requested cursor.
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: Self.nsCursor(for: mouseShape))
+    /// AppKit cursor hook (the `.cursorUpdate` tracking-area callback, NOT cursor rectangles): paint the whole
+    /// surface with the libghostty-requested cursor. The surface is hosted inside SwiftUI (`TerminalView`),
+    /// which owns the cursor and resets it as the mouse moves, so `addCursorRect`/`resetCursorRects` never take
+    /// hold here (the link still underlines because libghostty draws that, but the pointing hand is dropped).
+    /// Setting the cursor from `cursorUpdate` re-asserts it on AppKit's cursor pass — the same reason upstream
+    /// Ghostty.app drives the cursor through SwiftUI rather than cursor rectangles. Gated on `deckVisible`:
+    /// AppKit still delivers a `cursorUpdate` to a hidden deck surface on window activation, so a background
+    /// pane must not set the cursor here (issue #225 refocus).
+    override func cursorUpdate(with event: NSEvent) {
+        guard deckVisible else { return }
+        Self.nsCursor(for: mouseShape).set()
+    }
+
+    /// Re-assert this pane's cursor when its window becomes key. AppKit does NOT re-issue a `cursorUpdate`
+    /// to the visible pane on bare window activation, so a reactivating click otherwise leaves the OS default
+    /// (arrow) cursor until the next mouse move. Gated on `deckVisible` (only the on-screen pane sets the
+    /// cursor) + `isKeyWindow` + pointer-in-bounds (checked fresh from `mouseLocationOutsideOfEventStream`,
+    /// since `pointerInside` can be stale on a no-move activation) — so it never paints the terminal cursor
+    /// over the sidebar/titlebar or a background window, and with hidden surfaces already muted it wins uncontested.
+    func reassertCursorOnActivation() {
+        guard deckVisible, let window, window.isKeyWindow else { return }
+        let pointInView = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard bounds.contains(pointInView) else { return }
+        Self.nsCursor(for: mouseShape).set()
     }
 
     /// Maps a libghostty mouse-shape to the closest AppKit `NSCursor`. Shapes without a system cursor

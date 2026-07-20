@@ -210,9 +210,16 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     /// panes do NOT reach AppKit's drag machinery (the NSView keeps `alphaValue == 1`, and AppKit's
     /// drag-destination resolution does NOT consult `hitTest`), so if every surface stayed a registered
     /// drag target a file drop would land on whichever is topmost in z-order — an INVISIBLE background
-    /// session — instead of the one under the cursor. `didSet` (un)registers the drag types to fix that.
+    /// session — instead of the one under the cursor. `didSet` (un)registers the drag types to fix that,
+    /// and (dis)installs the mouse-tracking area for the same reason (see `updatePointerTracking`).
     var deckVisible = true {
-        didSet { updateDropRegistration() }
+        didSet {
+            // `TerminalView` assigns this on every SwiftUI update pass, so skip the tracking-area teardown/
+            // rebuild + drag re-registration unless the visibility actually flipped.
+            guard deckVisible != oldValue else { return }
+            updateDropRegistration()
+            updatePointerTracking()
+        }
     }
 
     /// View-only mode: the surface is rendered but takes NO mouse or keyboard input (the dashboard grid
@@ -281,14 +288,21 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     var _selectedRange = NSRange(location: NSNotFound, length: 0)
     var keyTextAccumulator: [String] = []
     var currentKeyEvent: NSEvent?
-    private var currentTrackingArea: NSTrackingArea?
+
+    // the pointer's mouse-tracking area, managed by GhosttySurfaceView+Tracking.swift (a stored property
+    // can't live in an extension, so it stays here as internal rather than private).
+    var currentTrackingArea: NSTrackingArea?
 
     /// The mouse-cursor shape libghostty last requested for this surface (`GHOSTTY_ACTION_MOUSE_SHAPE`):
     /// the I-beam over the grid, the pointing hand over a detected link / OSC-8 hyperlink, resize/crosshair
-    /// in the matching modes. `resetCursorRects` maps it to an `NSCursor`. Defaults to the terminal I-beam
+    /// in the matching modes. `cursorUpdate` maps it to an `NSCursor`. Defaults to the terminal I-beam
     /// so the resting cursor is right before the first event. Not `private` so the `+Input` extension (which
-    /// owns the cursor-rect override and `applyMouseShape`) can read it.
+    /// owns the `cursorUpdate` override and `applyMouseShape`) can read it.
     var mouseShape: ghostty_action_mouse_shape_e = GHOSTTY_MOUSE_SHAPE_TEXT
+
+    /// Whether the pointer is inside this surface (from `mouseEntered`/`mouseExited`), gating the immediate
+    /// `.set()` in `applyMouseShape` so a revert delivered after the pointer left can't leak onto the sidebar.
+    var pointerInside = false
 
     /// The last pointer position pushed to libghostty via `ghostty_surface_mouse_pos` (view-flipped
     /// coordinates), or nil before the first report. `scrollWheel` syncs the position only when the current
@@ -329,7 +343,10 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
                     // focus transition does. becomeFirstResponder can't cover this: AppKit's per-window
                     // first responder never resigned while rook was backgrounded, so no focus transition
                     // fires on return, leaving the badge stuck until you switch sessions and back.
-                    if becameKey { self.clearUnseenOnRefocus() }
+                    if becameKey {
+                        self.reassertCursorOnActivation()
+                        self.clearUnseenOnRefocus()
+                    }
                 }
             }
             focusObservers.append(token)
@@ -734,23 +751,5 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
             if !suppressFocusChange { onFocusChange?(false) }
         }
         return result
-    }
-
-    // MARK: - Tracking area
-
-    private func setupTrackingArea() {
-        if let existing = currentTrackingArea { removeTrackingArea(existing) }
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
-            owner: self
-        )
-        addTrackingArea(area)
-        currentTrackingArea = area
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        setupTrackingArea()
     }
 }

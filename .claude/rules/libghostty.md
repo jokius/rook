@@ -336,6 +336,24 @@ paths:
 - **strdup buffer lifetime.**
   `working_directory` (and `initial_input`) `const char*` buffers must outlive `ghostty_surface_new`;
   they are held in a `nonisolated(unsafe)` array and freed only in `destroySurface()`.
+- **Only the ON-SCREEN deck pane sets the process-global cursor — `deckVisible` gates every cursor write.**
+  The eager deck mounts every session's surface with a tracking area, and AppKit tracking ignores SwiftUI
+  `.opacity(0)`/overlap exactly like the drag-destination resolution (the `deckVisible` drag note above),
+  so several stacked hidden surfaces receive the SAME `mouseMoved` and each calls the process-global
+  `NSCursor.set()` — a hidden session cached at a different shape (a mouse-reporting TUI, or an OSC 22
+  pointer shape) then paints over the visible terminal (the restored-session arrow↔I-beam flicker, #225).
+  `setupTrackingArea` therefore installs the tracking area only while `deckVisible`, and `mouseMoved`,
+  `applyMouseShape`, and `cursorUpdate` each guard `deckVisible`; the tracking + pointer methods live in
+  `GhosttySurfaceView+Tracking.swift`, and `reassertCursorOnActivation` re-asserts the visible pane's
+  cursor on `didBecomeKey`.
+  The shape itself is applied via a `cursorUpdate(with:)` callback + an immediate `NSCursor.set()` on
+  change (gated on the pointer being INSIDE the surface), NOT cursor rectangles — the surface is
+  SwiftUI-hosted (`TerminalView`), which owns the cursor and resets any `addCursorRect` on every mouse
+  move, so the pointing hand over a ⌘-hovered link was silently dropped (this is distinct from the
+  cursor-STYLE note below, which is the block/bar shape libghostty draws inside the grid).
+  `WindowContentView` also feeds `!quickTerminal.isVisible` into the panes'/scratch'/overlay's `deckVisible`
+  so a covered pane stops competing for the cursor while the quick terminal covers the deck.
+  Like the cursor-focus and disclosure-triangle cases, this is verified BY EYE, not a UI test.
 - **Cursor shape is a config default, not set in code.**
   `rook/Resources/ghostty-defaults.conf` (loaded first in `GhosttyApp.loadConfig`,
   so a user's `~/.config/ghostty/config` still overrides it) pins a steady block cursor with `cursor-style = block`
