@@ -166,7 +166,7 @@ All ten are read-only projections of GUI state.
 
 ## session
 
-- `session new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--name NAME] [--after SID | --before SID] [--window W]`
+- `session new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--name NAME] [--no-select] [--wait] [--after SID | --before SID] [--window W]`
   — create a session and focus it; returns the new id. `--cwd` sets the start directory (default
   `$HOME`). The destination workspace is addressed one of two mutually-exclusive ways: `--workspace`
   (id / unique prefix / `active`, the default) or `--workspace-name` (the sidebar label) — the latter
@@ -189,6 +189,12 @@ All ten are read-only projections of GUI state.
   therefore mutually exclusive with each other and with `--workspace`/`--workspace-name` (the anchor
   already picks the workspace). `rookctl session new --after active` is the headline case: create
   right after the current session in one round-trip.
+  `--no-select` creates the session in the BACKGROUND — appended, but the current selection and focus stay
+  put (the inverse of the overlay's `--follow`); it reads back as the session NOT being `active` on `tree`.
+  `--wait` (requires `--command`) HOLDS a command session open on libghostty's press-any-key prompt after
+  the command exits instead of closing — the session-surface counterpart of `overlay open --wait`; it
+  persists (a restored command session re-runs and holds again) and reads back on the `tree` node's
+  `commandWait`.
 - `session close [--target T ...] [--window W]` — close one session, or repeat `--target` to close
   several sessions in the same window/store. Batch close honors the GUI grace-undo setting: one grouped
   undo/reopen record when enabled, immediate close when disabled. Returns `result.affected`.

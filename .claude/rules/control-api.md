@@ -481,6 +481,21 @@ paths:
   across the id- and name-addressed paths; the `session new` CLI carries `--command`/`--name`/`--workspace-name`/`--create-workspace`
   (the last two also `validate()`-guarded); and round-trip + e2e (`testSessionNewWithCommandRunsAsProcess`,
   `testSessionNewWithName`, `testSessionNewWorkspaceNameCreatesThenReuses`) cover them.
+  `session.new` ALSO takes `--no-select` and `--wait` (ports of upstream bdc3684 + 8220978 — NO new
+  `Command` case, catalog stays 65).
+  `ControlArgs.noSelect` + `ControlSessionCreateOptions.noSelect` create the session in the BACKGROUND:
+  `AppStore.addSession` gained a defaulted `select: Bool = true` gating `selectedSessionID` /
+  `autoUnfocusIfOutsideFocus` / `recordRecency`, `makeSessionResponse` passes `select: !noSelect` and skips
+  the focus call, and the `--create-workspace` path threads `clearFocus: !noSelect` so a background create
+  can't drop a focused workspace; read-back is the existing `tree` `active` flag (a background session is
+  not `active`) — state-mutating-read-back EXEMPT, no new field.
+  `ControlArgs.wait` + `ControlSessionCreateOptions.wait` HOLD a `--command` session open on libghostty's
+  press-any-key prompt after the command exits: `rookApp.makeSurface` threads `session.commandWait` into
+  the existing `GhosttySurfaceView` `waitAfterCommand` param (the same one the overlay factory uses via
+  `overlayWait`), it persists via `Session.commandWait` (`@ObservationIgnored`) + `SessionSnapshot.commandWait`
+  (`false`→nil write, nil→`false` restore), `closePrimaryPane` clears it alongside `initialCommand` on split
+  promotion, `--wait` without `--command` is rejected in BOTH the dispatcher AND the CLI `validate()`, and
+  its read-back is the new `ControlSessionNode.commandWait` (gated `initialCommand != nil && commandWait`).
   `session.type` injects into the target surface.
   `args.pane` picks the pane like `session.text` (`left`|`right`|`scratch`, no `other`):
   omitted/`left` is the MAIN pane (omitted deliberately keeps the pre-pane behavior — always the main

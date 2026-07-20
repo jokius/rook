@@ -187,6 +187,11 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
     /// (e.g. an `ssh …` shortcut) re-runs its command on restore instead of coming back a plain shell. A
     /// live `foregroundCommand` takes precedence at restore. Optional for forward-compat like the fields above.
     public var initialCommand: String?
+    /// Whether a `--command` session holds its surface after the command exits (`session.new --command …
+    /// --wait`), so a restored command session that re-runs its command holds again instead of vanishing —
+    /// keeping the held/closed behavior consistent across restart. nil (missing key) decodes as false.
+    /// Optional for forward-compat like the fields above.
+    public var commandWait: Bool?
     /// The session's background watermark (image or rasterized text), or nil for none. Optional so a
     /// snapshot already on disk before this field was added still decodes (as nil → no watermark) instead
     /// of failing the load and wiping the saved tree, like the fields above. A `.text` watermark
@@ -197,7 +202,8 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
                 splitCwd: String? = nil, splitRatio: Double? = nil, flagged: Bool? = nil,
                 foregroundCommand: [String]? = nil, splitForegroundCommand: [String]? = nil,
                 agentSession: AgentSessionRef? = nil, splitAgentSession: AgentSessionRef? = nil,
-                initialCommand: String? = nil, backgroundWatermark: BackgroundWatermark? = nil,
+                initialCommand: String? = nil, commandWait: Bool? = nil,
+                backgroundWatermark: BackgroundWatermark? = nil,
                 fileTreeVisible: Bool? = nil, markdownPath: String? = nil) {
         self.id = id
         self.customName = customName
@@ -212,6 +218,7 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         self.agentSession = agentSession
         self.splitAgentSession = splitAgentSession
         self.initialCommand = initialCommand
+        self.commandWait = commandWait
         self.backgroundWatermark = backgroundWatermark
         self.fileTreeVisible = fileTreeVisible
         self.markdownPath = markdownPath
@@ -220,7 +227,7 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, customName, cwd, isSplit, fontSize, splitCwd, splitRatio, flagged
         case foregroundCommand, splitForegroundCommand, agentSession, splitAgentSession
-        case initialCommand, backgroundWatermark, fileTreeVisible
+        case initialCommand, commandWait, backgroundWatermark, fileTreeVisible
         case markdownPath
     }
 
@@ -247,6 +254,7 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         agentSession = (try? c.decodeIfPresent(AgentSessionRef.self, forKey: .agentSession)) ?? nil
         splitAgentSession = (try? c.decodeIfPresent(AgentSessionRef.self, forKey: .splitAgentSession)) ?? nil
         initialCommand = try c.decodeIfPresent(String.self, forKey: .initialCommand)
+        commandWait = try c.decodeIfPresent(Bool.self, forKey: .commandWait)
         backgroundWatermark = (try? c.decodeIfPresent(BackgroundWatermark.self, forKey: .backgroundWatermark)) ?? nil
         fileTreeVisible = try c.decodeIfPresent(Bool.self, forKey: .fileTreeVisible)
         markdownPath = try c.decodeIfPresent(String.self, forKey: .markdownPath)

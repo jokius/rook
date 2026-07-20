@@ -201,6 +201,10 @@ public struct ControlDispatcher {
             if args?.createWorkspace == true, args?.workspaceName == nil {
                 return ControlResponse(ok: false, error: "--create-workspace requires --workspace-name")
             }
+            // --wait holds the surface after the command exits, so it is meaningless without a command.
+            if args?.wait == true, args?.command == nil {
+                return ControlResponse(ok: false, error: "--wait requires --command")
+            }
             return actions.createSession(ControlSessionCreateOptions(
                 window: args?.window,
                 cwd: args?.cwd,
@@ -208,9 +212,11 @@ public struct ControlDispatcher {
                 workspaceName: args?.workspaceName,
                 createWorkspace: args?.createWorkspace,
                 command: args?.command,
+                wait: args?.wait,
                 name: args?.name,
                 after: args?.after,
-                before: args?.before
+                before: args?.before,
+                noSelect: args?.noSelect == true
             ))
         case .sessionSelect:
             return actions.selectSession(request.target, window: request.args?.window)

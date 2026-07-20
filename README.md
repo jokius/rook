@@ -218,6 +218,8 @@ rookctl session new --command "sh -c 'clear; ssh user@host'"  # --command is arg
 rookctl session new --name "myhost" --command "ssh user@host"  # pre-name the session (sidebar label set at creation)
 rookctl session new --workspace-name servers --create-workspace --name "myhost"  # open in the "servers" workspace, creating it if absent (idempotent)
 rookctl session new --after active             # create right after the current session (--before to precede it); the anchor's workspace is used
+rookctl session new --cwd ~/src/rook --no-select   # create in the background: appended, but the current session stays selected and focused
+rookctl session new --command "zsh -lc 'make test'" --wait  # hold the session open on a press-any-key prompt after the command exits (needs --command)
 rookctl session type --target 9f3c $'make test\n'      # inject text into a session by id prefix
 echo 'make test' | rookctl session type --target active --stdin
 rookctl session go --to next                   # step to the next session (next|prev|first|last; stops at ends)

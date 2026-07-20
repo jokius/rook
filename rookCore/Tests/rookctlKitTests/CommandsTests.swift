@@ -163,6 +163,23 @@ struct CommandsTests {
             == "session.new takes --after/--before or a workspace, not both")
     }
 
+    @Test func sessionNewNoSelect() throws {
+        // --no-select sets noSelect=true on the wire (omitted when the flag is absent).
+        let expected = ControlRequest(cmd: .sessionNew, args: ControlArgs(noSelect: true))
+        #expect(try request(["session", "new", "--no-select"]) == expected)
+    }
+
+    @Test func sessionNewWaitWithCommand() throws {
+        // --wait sets wait=true on the wire (omitted when the flag is absent); it rides --command.
+        let expected = ControlRequest(cmd: .sessionNew, args: ControlArgs(command: "make test", wait: true))
+        #expect(try request(["session", "new", "--command", "make test", "--wait"]) == expected)
+    }
+
+    @Test func sessionNewRejectsWaitWithoutCommand() {
+        // --wait holds the surface after the command exits, so it is meaningless without --command; validate() rejects it.
+        #expect(validationMessage(["session", "new", "--wait"]) == "--wait requires --command")
+    }
+
     @Test func sessionClose() throws {
         #expect(try request(["session", "close", "--target", "x"]) == ControlRequest(cmd: .sessionClose, target: "x"))
     }

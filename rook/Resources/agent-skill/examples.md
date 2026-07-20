@@ -44,6 +44,8 @@ Run a command AS the session's process (closes when it exits, no echoed command 
 ```bash
 rookctl session new --command "ssh host -p 22"     # a default-PATH binary: argv-split (quotes respected), no shell, no echo
 rookctl session new --command "zsh -lc 'htop'"     # Homebrew/non-default binary: --command has the app's GUI PATH, so wrap in a login shell (or use an absolute path); bare "htop" exits 127
+rookctl session new --command "zsh -lc 'make test'" --wait  # hold the session on the press-any-key prompt after the command exits (--wait needs --command)
+rookctl session new --cwd "$HOME/project" --no-select       # background create: appended, but the current session stays selected/focused
 ```
 
 Create a session pre-named (label set at creation, no follow-up rename):

@@ -99,6 +99,11 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// For `session.new` with `workspaceName`: create the named workspace when none exists (idempotent
     /// reuse-or-create). An error without `workspaceName` — there is nothing to create by id.
     public var createWorkspace: Bool?
+    /// For `session.new`: create the session in the background without selecting or focusing it, leaving
+    /// the current selection untouched (the CLI's `--no-select`). Omitted/`false` keeps the default
+    /// select-and-focus behavior. The read-back is the existing `tree` `active` flag — the new node is not
+    /// `active`.
+    public var noSelect: Bool?
     /// Text to inject for `session.type` / `quick.type`; the search needle for `session.search`.
     public var text: String?
     /// Whether `session.type` may select a never-shown session to realize its surface.
@@ -169,8 +174,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var body: String?
     /// The program the overlay terminal runs for `session.overlay.open` (e.g. `revdiff`).
     public var command: String?
-    /// Whether `session.overlay.open` keeps the overlay open after its command exits (showing the
-    /// "press any key to close" prompt) instead of closing immediately.
+    /// Whether a command surface keeps its "press any key to close" prompt after the command exits instead
+    /// of closing immediately: `session.overlay.open --wait` (the overlay) and `session.new --command …
+    /// --wait` (the primary session surface, held via `Session.commandWait`).
     public var wait: Bool?
     /// For `session.overlay.open`, the percent of the pane (1...100) a *floating* overlay panel
     /// occupies in both dimensions; omitted gives the default full-pane overlay. Also carries the new
@@ -242,7 +248,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
 
     public init(name: String? = nil, cwd: String? = nil, targets: [String]? = nil,
                 workspace: String? = nil, workspaceName: String? = nil,
-                createWorkspace: Bool? = nil, text: String? = nil, select: Bool? = nil, mode: String? = nil,
+                createWorkspace: Bool? = nil, noSelect: Bool? = nil, text: String? = nil, select: Bool? = nil, mode: String? = nil,
                 command: String? = nil, wait: Bool? = nil, sizePercent: Int? = nil, full: Bool? = nil,
                 follow: Bool? = nil, window: String? = nil,
                 pane: String? = nil, to: String? = nil, after: String? = nil, before: String? = nil,
@@ -262,6 +268,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.workspace = workspace
         self.workspaceName = workspaceName
         self.createWorkspace = createWorkspace
+        self.noSelect = noSelect
         self.text = text
         self.select = select
         self.mode = mode
@@ -373,6 +380,11 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public let overlaySizePercent: Int?
     public let scratch: Bool
     public let flagged: Bool
+    /// For a `--command` session, whether it was created to HOLD its surface after the command exits
+    /// (`session.new --command … --wait`) rather than closing immediately; nil/omitted for a plain session
+    /// or a non-holding command session. The read side of `session.new --wait`, so a script can record and
+    /// restore the flag (it persists across restart, unlike an overlay's live-only wait).
+    public let commandWait: Bool?
     /// Whether the session's file-tree panel is shown, or nil when hidden (omitted from the JSON). The read
     /// side of `session.filetree` — so a script can record and restore each session's panel state.
     public let fileTreeVisible: Bool?
@@ -446,6 +458,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public init(id: String, name: String, cwd: String, title: String? = nil, active: Bool, split: Bool,
                 splitRatio: Double? = nil, splitFocused: Bool? = nil,
                 overlay: Bool = false, overlaySizePercent: Int? = nil, scratch: Bool = false, flagged: Bool = false,
+                commandWait: Bool? = nil,
                 fileTreeVisible: Bool? = nil, fileTreeRoot: String? = nil, markdownPath: String? = nil,
                 foreground: [String]? = nil, splitForeground: [String]? = nil, agent: String? = nil,
                 agentSession: AgentSessionRef? = nil, splitAgentSession: AgentSessionRef? = nil,
@@ -466,6 +479,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.overlaySizePercent = overlaySizePercent
         self.scratch = scratch
         self.flagged = flagged
+        self.commandWait = commandWait
         self.fileTreeVisible = fileTreeVisible
         self.fileTreeRoot = fileTreeRoot
         self.markdownPath = markdownPath

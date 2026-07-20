@@ -136,6 +136,48 @@ struct ControlDispatcherTests {
         #expect(actions.calls.isEmpty)
     }
 
+    @Test func sessionNewRoutesNoSelect() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        actions.nextSessionNewResponse = ControlResponse(ok: true, result: ControlResult(id: "bg-session"))
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionNew, args: ControlArgs(noSelect: true)
+        ))
+
+        let options = ControlSessionCreateOptions(window: nil, cwd: nil, workspace: nil, workspaceName: nil,
+                                                  createWorkspace: nil, command: nil, name: nil, noSelect: true)
+        #expect(response == ControlResponse(ok: true, result: ControlResult(id: "bg-session")))
+        #expect(actions.calls == [.sessionNew(options)])
+    }
+
+    @Test func sessionNewThreadsWaitWithCommand() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        actions.nextSessionNewResponse = ControlResponse(ok: true, result: ControlResult(id: "held"))
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionNew, args: ControlArgs(command: "make test", wait: true)
+        ))
+
+        let options = ControlSessionCreateOptions(window: nil, cwd: nil, workspace: nil, workspaceName: nil,
+                                                  createWorkspace: nil, command: "make test", wait: true, name: nil)
+        #expect(response == ControlResponse(ok: true, result: ControlResult(id: "held")))
+        #expect(actions.calls == [.sessionNew(options)])
+    }
+
+    @Test func sessionNewRejectsWaitWithoutCommand() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionNew, args: ControlArgs(wait: true)
+        ))
+
+        #expect(response == ControlResponse(ok: false, error: "--wait requires --command"))
+        #expect(actions.calls.isEmpty)
+    }
+
     @Test func sessionNewRoutesPlacementOptions() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)

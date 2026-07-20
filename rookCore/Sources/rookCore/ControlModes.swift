@@ -89,25 +89,34 @@ public struct ControlSessionCreateOptions: Equatable, Sendable {
     public let workspaceName: String?
     public let createWorkspace: Bool?
     public let command: String?
+    /// Whether a `--command` session HOLDS its surface after the command exits (`--wait`) instead of
+    /// closing immediately. Meaningful only with `command`; the dispatcher rejects `--wait` without a
+    /// `--command`.
+    public let wait: Bool?
     public let name: String?
     /// Anchor session to place the new session right AFTER (id / prefix / `active`); the anchor carries
     /// its own workspace, so this bypasses `workspace`/`workspaceName`. Mutually exclusive with `before`.
     public let after: String?
     /// Anchor session to place the new session right BEFORE, the mirror of `after`.
     public let before: String?
+    /// Create the session in the background: skip selecting and focusing it, leaving the current selection
+    /// untouched (the CLI's `--no-select`). Defaults to false — the normal select-and-focus behavior.
+    public let noSelect: Bool
 
     public init(window: String?, cwd: String?, workspace: String?, workspaceName: String?,
-                createWorkspace: Bool?, command: String?, name: String?,
-                after: String? = nil, before: String? = nil) {
+                createWorkspace: Bool?, command: String?, wait: Bool? = nil, name: String?,
+                after: String? = nil, before: String? = nil, noSelect: Bool = false) {
         self.window = window
         self.cwd = cwd
         self.workspace = workspace
         self.workspaceName = workspaceName
         self.createWorkspace = createWorkspace
         self.command = command
+        self.wait = wait
         self.name = name
         self.after = after
         self.before = before
+        self.noSelect = noSelect
     }
 }
 

@@ -171,7 +171,7 @@ workspace node's `icon` + `iconKind`. The color applies only to a symbol or a mo
 image and an emoji keep their own colors).
 
 **session**
-- `new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--name NAME] [--after SID | --before SID]` —
+- `new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--name NAME] [--no-select] [--wait] [--after SID | --before SID]` —
   create (and focus) a session. Target the workspace by id/prefix (`--workspace`) OR by name
   (`--workspace-name`, mutually exclusive); add `--create-workspace` to reuse-or-create the named
   workspace when absent. `--command` runs that program as the session process instead of a login shell
@@ -180,7 +180,9 @@ image and an emoji keep their own colors).
   `--name` seeds the sidebar label (default: the auto basename). `--after`/`--before` place it directly
   after/before an anchor session (id/prefix/`active`) instead of appending — the anchor carries its own
   workspace, so it's mutually exclusive with `--workspace`/`--workspace-name`. `new --after active` =
-  create right after the current session.
+  create right after the current session. `--no-select` creates in the background (selection/focus stay
+  put; reads back as not `active`); `--wait` (needs `--command`) holds a command session open on the
+  press-any-key prompt after it exits, persists, and reads back on the `tree` node's `commandWait`.
 - `close [--target T ...]` — close one session, or repeat `--target` to close a batch with one
   grace-period undo.
 - `select` · `rename <name>` · `reveal` (select the focused pane's cwd in Finder).
