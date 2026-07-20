@@ -54,4 +54,28 @@ final class SettingsStoreTests {
         try nestedStore.save(settings)
         #expect(nestedStore.load() == settings)
     }
+
+    @Test func dockBounceDefaultsOffAndEachModeRoundTrips() throws {
+        // default (nil) resolves to off.
+        #expect(AppSettings().dockBounce == nil)
+        #expect(AppSettings().effectiveDockBounce == .off)
+        // each known raw value persists and resolves back to its case.
+        for mode in DockBounce.allCases {
+            let settings = AppSettings(dockBounce: mode.rawValue)
+            try store.save(settings)
+            #expect(store.load() == settings)
+            #expect(store.load().effectiveDockBounce == mode)
+        }
+        // an unknown/future raw value degrades to off instead of failing the read.
+        #expect(AppSettings(dockBounce: "supernova").effectiveDockBounce == .off)
+    }
+
+    @Test func notificationSoundNameDefaultsNilAndRoundTrips() throws {
+        // default = no sound.
+        #expect(AppSettings().notificationSoundName == nil)
+        let settings = AppSettings(notificationSoundName: "Glass")
+        try store.save(settings)
+        #expect(store.load() == settings)
+        #expect(store.load().notificationSoundName == "Glass")
+    }
 }

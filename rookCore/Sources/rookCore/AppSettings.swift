@@ -12,6 +12,17 @@ public enum ToolbarMode: String, Codable, Sendable, CaseIterable {
     case hidden
 }
 
+/// How a delivered notification bounces the Dock icon (macOS `requestUserAttention`): `off` (no bounce),
+/// `once` (a single `.informationalRequest`), or `untilFocused` (a `.criticalRequest` that bounces until
+/// rook becomes active). Stored raw on `AppSettings` so an unknown future value decodes tolerantly (via
+/// `effectiveDockBounce`). The default `off` case is named `off` (not `none`) to avoid the `Optional.none`
+/// collision at the `effectiveDockBounce` call site, matching the `AutoFollowAttention.off` precedent.
+public enum DockBounce: String, Codable, Sendable, CaseIterable {
+    case off
+    case once
+    case untilFocused
+}
+
 /// User-facing appearance settings, persisted independently of the workspace tree.
 ///
 /// Every field is optional: nil means "use the ghostty default", and a settings file written
@@ -179,6 +190,21 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// a glance). nil means the default (off). An app-level chrome flag, NOT a ghostty key — it never
     /// appears in `ghosttyConfigLines()`; it only gates whether the titlebar builds the icon.
     public var attentionButtonEnabled: Bool?
+    /// How a delivered notification bounces the Dock icon (`off`/`once`/`untilFocused`), stored as a
+    /// `DockBounce` RAW STRING so an unknown future value decodes tolerantly to the default via
+    /// `effectiveDockBounce` (the AppSettings forward-compat rule). nil means the default (`off`). An
+    /// app-level attention setting, NOT a ghostty key — it never appears in `ghosttyConfigLines()`;
+    /// `NotificationManager` reads its mirror and issues the matching `requestUserAttention`, a no-op while
+    /// rook is the frontmost app.
+    public var dockBounce: String?
+    /// Name of the system sound attached to a delivered desktop notification (e.g. `Glass`), or
+    /// nil/empty for no sound (the default). Delivered as `UNNotificationSound(named:)` on the banner's
+    /// content (the `.aiff` suffix is added when the name has none), so it RIDES the banner: gated by
+    /// `notificationsEnabled` and the macOS notification authorization, and silenced by Do Not Disturb —
+    /// unlike the badge and the Dock bounce, which fire whether or not banners show (only the Settings
+    /// picker's preview uses `NSSound`). An app-level value, NOT a ghostty key — it never appears in
+    /// `ghosttyConfigLines()`.
+    public var notificationSoundName: String?
     /// Name of the system sound played when a session enters the `blocked` status (e.g. `Glass`, resolved by
     /// `NSSound(named:)`), or nil/empty for no sound (the default). A per-call `session.status --sound`
     /// overrides this. An app-level value played at the AppKit level, NOT a ghostty key — it never appears
@@ -243,6 +269,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 sidebarBackgroundShift: Int? = nil, restoreRunningCommand: Bool? = nil,
                 resumeAgentSessions: Bool? = nil,
                 inheritGlobalGhosttyConfig: Bool? = nil, attentionButtonEnabled: Bool? = nil,
+                dockBounce: String? = nil, notificationSoundName: String? = nil,
                 blockedStatusSoundName: String? = nil, rightClickPaste: Bool? = nil,
                 newSessionDirectory: String? = nil, newSessionCustomDirectory: String? = nil,
                 confirmCloseSession: Bool? = nil, closeGraceUndoEnabled: Bool? = nil,
@@ -271,6 +298,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.resumeAgentSessions = resumeAgentSessions
         self.inheritGlobalGhosttyConfig = inheritGlobalGhosttyConfig
         self.attentionButtonEnabled = attentionButtonEnabled
+        self.dockBounce = dockBounce
+        self.notificationSoundName = notificationSoundName
         self.blockedStatusSoundName = blockedStatusSoundName
         self.rightClickPaste = rightClickPaste
         self.newSessionDirectory = newSessionDirectory
@@ -290,6 +319,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// read point the app target uses, so callers never touch the raw shim.
     public var effectiveToolbarMode: ToolbarMode {
         toolbarMode.flatMap(ToolbarMode.init(rawValue:)) ?? (compactToolbar == false ? .normal : .compact)
+    }
+
+    /// The resolved Dock-bounce mode: the explicit `dockBounce` when set to a KNOWN raw value, else `off`.
+    /// An unknown/nil raw value falls through to `off` the same way, so a future-written mode never fails
+    /// the read. The single read point the app target uses, so callers never touch the raw string.
+    public var effectiveDockBounce: DockBounce {
+        dockBounce.flatMap(DockBounce.init(rawValue:)) ?? .off
     }
 
     /// The working directory a new session should open in, resolving the `newSessionDirectory` mode

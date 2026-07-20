@@ -27,6 +27,23 @@ paths:
   `send(toSession:title:body:)` is the control channel's entry point (the `notify` command / `rookctl notify`):
   same badge + banner + reveal-identity machinery, but NO focus-suppression (the caller asked for it)
   and attributed to the `.main` pane.
+- **Notification sound (opt-in, `AppSettings.notificationSoundName`, None default).**
+  A system sound attached as `content.sound` INSIDE the banner block (after the `bannersEnabled` guard) in
+  BOTH the OSC `notify` and control `send` paths, so it RIDES the banner — it follows `notificationsEnabled`,
+  the notification authorization (now `[.alert, .badge, .sound]`), and Do Not Disturb, and `willPresent`
+  returns `[.banner, .list, .sound]`.
+  A banners-off user is never audibly interrupted.
+  DISTINCT from the Agent-Status **Blocked sound** (`StatusSoundPlayer`, a raw `NSSound` on a `blocked`
+  transition — the Settings picker reuses `StatusSoundPlayer.standardNames` for the list, but the paths are
+  separate).
+  GUI-only, control-API EXEMPT (the sound rides the banner the `notify`/OSC paths already drive).
+- **Dock bounce (opt-in, `AppSettings.dockBounce`, off default).**
+  A host-free `DockBounce` enum (off / once = informational / untilFocused = critical, which macOS
+  auto-cancels when rook activates); `bounceDock()` fires `NSApp.requestUserAttention` AFTER the `unseenCount`
+  bump but BEFORE the `bannersEnabled` guard in BOTH paths, so it is banner-INDEPENDENT.
+  Both request types no-op while rook is frontmost, so a bounce only ever fires for a BACKGROUND notification
+  (no extra gating needed).
+  GUI-only, control-API EXEMPT.
 - **Suppression**
   is the pure, rookCore-tested `TerminalNotification.shouldDeliver(firingIsFocused:appActive:)`:
   drop entirely only when the firing surface is the key window's first responder AND `NSApp.isActive`

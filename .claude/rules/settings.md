@@ -16,7 +16,7 @@ paths:
   NO version field — optionality is the forward-compat) + `SettingsStore` (JSON at `<stateDir>/settings.json`,
   `ROOK_STATE_DIR`-isolated, mirrors `PersistenceStore`).
   Fields: `fontFamily`/`fontSize`/`theme`/`darkTheme`/`followSystemAppearance` + `backgroundOpacity` (0...1) / `backgroundBlur` (CGS radius)
-  + `notificationsEnabled` / `toolbarMode` / `notificationBadgeEnabled` / `attentionButtonEnabled`
+  + `notificationsEnabled` / `toolbarMode` / `notificationBadgeEnabled` / `attentionButtonEnabled` / `notificationSoundName` / `dockBounce`
   + the agent-status glyph colors `activeStatusColorHex`/`blockedStatusColorHex`/`completedStatusColorHex`
   (nil defaults: `notificationsEnabled`/`notificationBadgeEnabled` = on,
   `toolbarMode` = the three-state titlebar chrome `ToolbarMode { normal, compact, hidden }`,
@@ -168,7 +168,12 @@ paths:
   back to nil, matching the terminal font-size stepper's style) + the inactive-pane-mute slider.
   The formerly-separate **Panes** section was folded into **Window** so the tab still fits 480×590 without
   scrolling after adding the font-size stepper).
-  **Notifications** (a **Notifications** section with the banner / badge / attention-indicator toggles).
+  **Notifications** (a **Notifications** section with the banner / badge / attention-indicator toggles,
+  plus a notification-sound picker (`notificationSoundName`, None default, attached as `UNNotificationSound`
+  to the banner so it rides `notificationsEnabled` + auth + DND) and a dock-bounce mode picker (`dockBounce`,
+  a host-free `DockBounce` off/once/untilFocused enum, off default — fires `NSApp.requestUserAttention` after
+  the badge bump in both the OSC-notify and control-send paths, no-op while frontmost);
+  both are GUI-only and control-API EXEMPT, the same class as the Agent-Status Blocked sound).
   **Agent Status** (a **Colors** section with the three glyph color pickers, a **Sound** section with
   the blocked-sound picker, an **Auto-follow** section with the idle-timeout Picker
   (Disabled/5s/10s/30s/60s/5m) + the "Don't auto-follow away from a running session" Toggle, and a trailing
