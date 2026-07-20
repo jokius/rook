@@ -85,33 +85,37 @@ extension WindowContentView {
     /// to add a session to the current workspace (default cwd) or a picked directory.
     var bottomBar: some View {
         HStack(spacing: 2) {
-            Button {
-                actions.newWorkspace()
-            } label: {
-                Image(systemName: "rectangle.stack.badge.plus")
-                    .frame(width: 24, height: 22)
-                    .contentShape(Rectangle())
+            if shows(.newWorkspace) {
+                Button {
+                    actions.newWorkspace()
+                } label: {
+                    Image(systemName: "rectangle.stack.badge.plus")
+                        .frame(width: 24, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .help(helpHint("New Workspace", .newWorkspace))
+                .accessibilityLabel("New Workspace")
             }
-            .buttonStyle(.borderless)
-            .help(helpHint("New Workspace", .newWorkspace))
-            .accessibilityLabel("New Workspace")
 
-            Menu {
-                Button("New Session") { actions.newSession() }
-                Button("Open Directory…") { actions.openDirectory() }
-            } label: {
-                Image(systemName: "plus.rectangle")
-                    .frame(width: 24, height: 22)
-                    .contentShape(Rectangle())
+            if shows(.newSession) {
+                Menu {
+                    Button("New Session") { actions.newSession() }
+                    Button("Open Directory…") { actions.openDirectory() }
+                } label: {
+                    Image(systemName: "plus.rectangle")
+                        .frame(width: 24, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.borderlessButton)
+                // a borderless Menu ignores foregroundStyle on its glyph but follows the accent tint.
+                .tint(chromeText)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help(helpHint("New Session", .newSession))
+                .accessibilityLabel("Add session")
+                .accessibilityIdentifier("add-session")
             }
-            .menuStyle(.borderlessButton)
-            // a borderless Menu ignores foregroundStyle on its glyph but follows the accent tint.
-            .tint(chromeText)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help(helpHint("New Session", .newSession))
-            .accessibilityLabel("Add session")
-            .accessibilityIdentifier("add-session")
 
             Spacer()
 
@@ -140,23 +144,25 @@ extension WindowContentView {
 
             // flip the sidebar between the workspace tree and the flat flagged working-set list. 2-state
             // glyph (filled in flagged mode); the switch animates via splitRoot's `.animation(value:)`.
-            Button {
-                actions.toggleFlaggedView()
-            } label: {
-                let flagged = store.sidebarMode == .flagged
-                Image(systemName: flagged ? "flag.fill" : "flag")
-                    .frame(width: 24, height: 22)
-                    .contentShape(Rectangle())
+            if shows(.flaggedView) {
+                Button {
+                    actions.toggleFlaggedView()
+                } label: {
+                    let flagged = store.sidebarMode == .flagged
+                    Image(systemName: flagged ? "flag.fill" : "flag")
+                        .frame(width: 24, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                // nothing to show: disable entering an empty flagged view (tree mode + no flags). Stays
+                // enabled in flagged mode so the button can always switch back to the tree. The explicit
+                // chromeText foregroundStyle defeats SwiftUI's default disabled dimming, so mute it by hand.
+                .disabled(store.sidebarMode == .tree && store.flaggedSessions.isEmpty)
+                .opacity(store.sidebarMode == .tree && store.flaggedSessions.isEmpty ? 0.35 : 1)
+                .help(helpHint(store.sidebarMode == .flagged ? "Show all sessions" : "Show flagged sessions", .toggleFlaggedView))
+                .accessibilityLabel("Toggle Flagged View")
+                .accessibilityIdentifier("flagged-view-toggle")
             }
-            .buttonStyle(.borderless)
-            // nothing to show: disable entering an empty flagged view (tree mode + no flags). Stays
-            // enabled in flagged mode so the button can always switch back to the tree. The explicit
-            // chromeText foregroundStyle defeats SwiftUI's default disabled dimming, so mute it by hand.
-            .disabled(store.sidebarMode == .tree && store.flaggedSessions.isEmpty)
-            .opacity(store.sidebarMode == .tree && store.flaggedSessions.isEmpty ? 0.35 : 1)
-            .help(helpHint(store.sidebarMode == .flagged ? "Show all sessions" : "Show flagged sessions", .toggleFlaggedView))
-            .accessibilityLabel("Toggle Flagged View")
-            .accessibilityIdentifier("flagged-view-toggle")
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)

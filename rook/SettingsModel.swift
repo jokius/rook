@@ -82,6 +82,7 @@ final class SettingsModel {
         applyStatusRowHighlight()
         applyRestoreRunningCommand()
         applyAttentionButtonEnabled()
+        applyInterfaceElements()
         // create the commented starter keymap on first launch, then load + parse it.
         ensureStarterKeymap()
         loadKeymap()
@@ -244,6 +245,16 @@ final class SettingsModel {
     func setResumeAgentSessions(_ value: Bool?) { settings.resumeAgentSessions = value; persistAndApply() }
     // chrome flag, not a ghostty key: persistAndApply() no-ops the config but rides .rookAppearanceChanged.
     func setAttentionButtonEnabled(_ value: Bool?) { settings.attentionButtonEnabled = value; persistAndApply() }
+
+    /// Show/hide one title-bar or sidebar-footer chrome element (Settings ▸ Interface). Mutates the RAW
+    /// hidden set (not the resolved one) so an unknown future element name survives a toggle; an empty set
+    /// maps back to nil so settings.json stays minimal.
+    func setInterfaceElementVisible(_ element: InterfaceElement, visible: Bool) {
+        var hidden = Set(settings.hiddenInterfaceElements ?? [])
+        if visible { hidden.remove(element.rawValue) } else { hidden.insert(element.rawValue) }
+        settings.hiddenInterfaceElements = hidden.isEmpty ? nil : hidden.sorted()
+        persistAndApply()
+    }
 
     /// Persist whether rook inherits the user's global `~/.config/ghostty/config` and FULLY reload the
     /// ghostty config so the change takes effect live. NOT a `ghosttyConfigLines()` key, so
@@ -661,6 +672,7 @@ final class SettingsModel {
         applyStatusRowHighlight()
         applyRestoreRunningCommand()
         applyAttentionButtonEnabled()
+        applyInterfaceElements()
         // refresh the app chrome (title bar + sidebar + quick terminal) with the new terminal color,
         // window translucency, and toolbar style immediately, rather than only when the window next
         // re-keys. The title-bar re-sync and the cwd-subtitle drop both ride this notification.
@@ -700,6 +712,10 @@ final class SettingsModel {
 
     private func applyAttentionButtonEnabled() {
         GhosttyApp.shared.setAttentionButtonEnabled(settings.attentionButtonEnabled ?? false)
+    }
+
+    private func applyInterfaceElements() {
+        GhosttyApp.shared.setHiddenInterfaceElements(settings.resolvedHiddenInterfaceElements)
     }
 
     /// Push the current auto-follow configuration into a single window's store. Called when a window's

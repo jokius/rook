@@ -6,12 +6,13 @@ extension WindowContentView {
     /// The titlebar title (first line): the active session's display name, suffixed with the window
     /// name as "session — window" when the window has a custom (user-set) name, so a renamed window
     /// is identifiable at a glance. Auto "window N" names are omitted. "Rook" when nothing is selected.
+    /// Always the real name (NOT gated by the Interface toggles), because the body's `WindowAccessor` uses
+    /// it as the OS window title so Mission Control / the Window menu stay labelled regardless of what the
+    /// on-screen `titleText` shows.
     var windowTitle: String {
         let session = store.activeSession?.displayName ?? "Rook"
-        guard let info = library.windows.first(where: { $0.id == windowID }), info.hasCustomName else {
-            return session
-        }
-        return "\(session) — \(info.name)"
+        guard let name = customWindowName else { return session }
+        return "\(session) — \(name)"
     }
 
     /// The titlebar subtitle (second line): the focused pane's `subtitleDetail` — its terminal title for
@@ -21,11 +22,35 @@ extension WindowContentView {
         toolbarMode == .normal ? (store.activeSession?.subtitleDetail ?? "") : ""
     }
 
-    /// The window title at the terminal's leading edge: the session name, plus the cwd subtitle on a
-    /// second line only in normal mode (compact drops it for a single short row).
+    /// The window's user-set name, or nil when it has none (an auto "window N" name). Feeds the optional
+    /// window-name part of `windowTitle`/`titleText`.
+    private var customWindowName: String? {
+        guard let info = library.windows.first(where: { $0.id == windowID }), info.hasCustomName else { return nil }
+        return info.name
+    }
+
+    /// The VISIBLE title-bar label, honoring the Interface toggles: the session name (hidden by
+    /// `.sessionName`), the custom window name (hidden by `.windowName`), or both joined as
+    /// "session — window". Empty when both parts are hidden or absent — distinct from `windowTitle`, which
+    /// always feeds the OS window title so Mission Control / the Window menu stay labelled regardless.
+    private var titleText: String {
+        let sessionPart = shows(.sessionName) ? (store.activeSession?.displayName ?? "Rook") : nil
+        let windowPart = shows(.windowName) ? customWindowName : nil
+        switch (sessionPart, windowPart) {
+        case let (session?, window?): return "\(session) — \(window)"
+        case let (session?, nil): return session
+        case let (nil, window?): return window
+        case (nil, nil): return ""
+        }
+    }
+
+    /// The window title at the terminal's leading edge: the session/window name (gated by the Interface
+    /// toggles), plus the cwd subtitle on a second line only in normal mode (compact drops it).
     private var titleLabel: some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(windowTitle).fontWeight(.semibold)
+            if !titleText.isEmpty {
+                Text(titleText).fontWeight(.semibold)
+            }
             if !windowSubtitle.isEmpty {
                 Text(windowSubtitle)
                     .font(.caption)
@@ -58,19 +83,25 @@ extension WindowContentView {
     /// Custom titlebar row replacing the system toolbar: the sidebar toggle pinned to the sidebar's
     /// trailing edge (by the divider), the title at the terminal's start, and the split / quick-terminal
     /// buttons at the trailing edge. Positions track `sidebarWidth`; the left inset clears the system
-    /// traffic lights.
+    /// traffic lights. Each button is gated by its Interface toggle (`shows(_:)`).
     private var titlebarRow: some View {
         HStack(spacing: 0) {
             Color.clear.frame(width: 78).allowsHitTesting(false) // system traffic lights
             if store.sidebarVisible {
                 HStack(spacing: 0) {
                     Spacer(minLength: 0)
-                    sidebarToggleButton.labelStyle(.iconOnly)
+                    // keep the sidebar-width frame even when the toggle is hidden, so the title still starts
+                    // at the terminal's leading edge; the Spacer fills the freed space.
+                    if shows(.sidebarToggle) {
+                        sidebarToggleButton.labelStyle(.iconOnly)
+                    }
                 }
                 .frame(width: max(40, CGFloat(store.sidebarWidth) - 78))
                 Color.clear.frame(width: 11).allowsHitTesting(false) // 1px divider + gap to the title
             } else {
-                sidebarToggleButton.labelStyle(.iconOnly)
+                if shows(.sidebarToggle) {
+                    sidebarToggleButton.labelStyle(.iconOnly)
+                }
                 Spacer().frame(width: 12)
             }
             titleLabel
@@ -82,14 +113,7 @@ extension WindowContentView {
                 attentionButton.labelStyle(.iconOnly).padding(.leading, 10)
             }
             Spacer(minLength: 12)
-            HStack(spacing: 14) {
-                scratchButton.labelStyle(.iconOnly)
-                splitButton.labelStyle(.iconOnly)
-                // separates the per-session view toggles (scratch/split) from the window-level quick terminal.
-                Rectangle().fill(chromeText.opacity(0.25)).frame(width: 1, height: 16)
-                quickTerminalButton.labelStyle(.iconOnly)
-            }
-            .padding(.trailing, 14)
+            titlebarTrailingActions
         }
         .buttonStyle(.plain)
         // tint the title text and the toolbar buttons with the terminal theme's foreground so the
@@ -106,6 +130,32 @@ extension WindowContentView {
         // hit-testing (above) so their region falls through to it. Custom titlebar = no native title-bar
         // double-click handling, hence this.
         .background { WindowControlArea() }
+    }
+
+    /// The title bar's trailing action cluster, each button gated by its Interface toggle: the per-session
+    /// scratch / split controls and the window-level quick terminal. The divider is drawn only when there
+    /// is a visible button on BOTH sides, so hiding a whole group never leaves a bracketing separator.
+    ///
+    /// rook's cluster has only these two groups — it has no recent-sessions or dashboard button — so the
+    /// full three-group `InterfaceElement.titlebarGroupDividers` rule (ported host-free for parity) reduces
+    /// to this inline two-group condition, which also keeps the default (everything shown) divider that the
+    /// three-group rule would drop for a single-button neighbor.
+    private var titlebarTrailingActions: some View {
+        let showScratch = shows(.scratch)
+        let showSplit = shows(.split)
+        let showQuick = shows(.quickTerminal)
+        return HStack(spacing: 14) {
+            if showScratch { scratchButton.labelStyle(.iconOnly) }
+            if showSplit { splitButton.labelStyle(.iconOnly) }
+            if (showScratch || showSplit) && showQuick { titlebarDivider }
+            if showQuick { quickTerminalButton.labelStyle(.iconOnly) }
+        }
+        .padding(.trailing, 14)
+    }
+
+    /// The 1px themed separator between two title-bar button groups.
+    private var titlebarDivider: some View {
+        Rectangle().fill(chromeText.opacity(0.25)).frame(width: 1, height: 16)
     }
 
     /// A tooltip string with the action's current shortcut appended in parentheses (e.g. `Toggle

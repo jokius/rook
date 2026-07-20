@@ -16,7 +16,7 @@ paths:
   NO version field — optionality is the forward-compat) + `SettingsStore` (JSON at `<stateDir>/settings.json`,
   `ROOK_STATE_DIR`-isolated, mirrors `PersistenceStore`).
   Fields: `fontFamily`/`fontSize`/`theme`/`darkTheme`/`followSystemAppearance` + `backgroundOpacity` (0...1) / `backgroundBlur` (CGS radius)
-  + `notificationsEnabled` / `toolbarMode` / `notificationBadgeEnabled` / `attentionButtonEnabled` / `notificationSoundName` / `dockBounce`
+  + `notificationsEnabled` / `toolbarMode` / `notificationBadgeEnabled` / `attentionButtonEnabled` / `notificationSoundName` / `dockBounce` / `hiddenInterfaceElements`
   + the agent-status glyph colors `activeStatusColorHex`/`blockedStatusColorHex`/`completedStatusColorHex`
   (nil defaults: `notificationsEnabled`/`notificationBadgeEnabled` = on,
   `toolbarMode` = the three-state titlebar chrome `ToolbarMode { normal, compact, hidden }`,
@@ -151,7 +151,8 @@ paths:
   `ContentView` mirrors the color into `terminalColor` view state (the quick terminal's opaque backing
   re-renders with the new color) and `TitleProbeView` re-applies the window appearance.
   Without this the chrome only refreshed when the window next re-keyed.
-  UI is the standard SwiftUI `Settings` scene (Cmd+,) with a 5-tab `TabView` (frame 480×590).
+  UI is the standard SwiftUI `Settings` scene (Cmd+,) with a 6-tab `TabView` (frame 540×590 — widened from
+  480 when the Interface tab's toggles overflowed).
   An explicit `TabView(selection:)` binding (`@State` default `.general`) suppresses SwiftUI's
   `com_apple_SwiftUI_Settings_selectedTabIndex` auto-persistence, so the window always opens on General
   instead of restoring the last-used tab.
@@ -168,6 +169,27 @@ paths:
   back to nil, matching the terminal font-size stepper's style) + the inactive-pane-mute slider.
   The formerly-separate **Panes** section was folded into **Window** so the tab still fits 480×590 without
   scrolling after adding the font-size stepper).
+  **Interface** (a new tab, `SettingsView.Tab.interface`, BETWEEN Appearance and Notifications) hides/shows
+  INDIVIDUAL title-bar + sidebar-footer chrome elements over the host-free `InterfaceElement` enum
+  (title bar: `sidebarToggle`/`sessionName`/`windowName`/`scratch`/`split`/`quickTerminal`; sidebar footer:
+  `newWorkspace`/`newSession`/`flaggedView`/`workspaceAddSession`), all shown by default.
+  Persisted as `AppSettings.hiddenInterfaceElements` (`[String]?`, tolerant raw-string decode so an unknown
+  future name survives a toggle; nil = all shown), mirrored into `GhosttyApp.hiddenInterfaceElements` and
+  re-gated live per window via `.rookAppearanceChanged` — the SAME chrome-mirror pattern as
+  `attentionButtonEnabled` (`SettingsModel.setInterfaceElementVisible` mutates the RAW set → nil when empty;
+  `applyInterfaceElements` pushes the resolved set to the mirror in the init + `apply()` sequences).
+  Each element gates at its render site through `WindowContentView.shows(_:)` (title bar in `+Titlebar`,
+  sidebar footer in `+Overlays`, the workspace-row `+` in `SidebarRowViews.mouseEntered`).
+  The host-free `InterfaceElement.titlebarGroupDividers` (a divider draws only where two groups that each
+  still show 2+ buttons meet) is ported + boundary-table-tested for upstream parity, but rook's trailing
+  cluster is only TWO groups (scratch/split | quick), so the render site gates rook's single divider with an
+  inline `(showScratch || showSplit) && showQuick` instead of wiring that rule — flagged for when the cluster
+  regrows.
+  rook LACKS upstream's recent-sessions + dashboard title-bar buttons, so those two `InterfaceElement` cases
+  are deliberately omitted (6 title-bar cases, not upstream's 8).
+  GUI-only and control-API EXEMPT (every gated element's action already has full control coverage).
+  Working-norm (this file + root CLAUDE.md): when adding a new toggleable UI element, PROPOSE an Interface
+  toggle for it — ask first, never automatic.
   **Notifications** (a **Notifications** section with the banner / badge / attention-indicator toggles,
   plus a notification-sound picker (`notificationSoundName`, None default, attached as `UNNotificationSound`
   to the banner so it rides `notificationsEnabled` + auth + DND) and a dock-bounce mode picker (`dockBounce`,

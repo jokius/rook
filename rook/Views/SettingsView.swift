@@ -3,17 +3,18 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The Settings window (Cmd+,): five tabs — General (mouse, sessions, ghostty config),
-/// Appearance (font/theme + window translucency + pane dimming), Notifications (banner / badge /
-/// attention toggles), Agent Status (the sidebar glyph colors + blocked sound + auto-follow), and Key
-/// Mapping (the config directory + keymap diagnostics + Reload).
+/// The Settings window (Cmd+,): six tabs — General (mouse, sessions, ghostty config),
+/// Appearance (font/theme + window translucency + pane dimming), Interface (per-element title-bar and
+/// sidebar chrome visibility), Notifications (banner / badge / attention toggles), Agent Status (the
+/// sidebar glyph colors + blocked sound + auto-follow), and Key Mapping (the config directory + keymap
+/// diagnostics + Reload).
 struct SettingsView: View {
     let model: SettingsModel
 
     /// Identifies each tab. An explicit selection binding is what keeps the window opening on General:
     /// without it, SwiftUI's Settings scene auto-persists the last tab to `selectedTabIndex` in user
     /// defaults and restores it next launch, which we don't want for a settings window.
-    private enum Tab: Hashable { case general, appearance, notifications, agentStatus, keyMapping }
+    private enum Tab: Hashable { case general, appearance, interface, notifications, agentStatus, keyMapping }
     @State private var selection: Tab = .general
 
     var body: some View {
@@ -24,6 +25,9 @@ struct SettingsView: View {
             AppearanceSettingsView(model: model)
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
                 .tag(Tab.appearance)
+            InterfaceSettingsView(model: model)
+                .tabItem { Label("Interface", systemImage: "macwindow") }
+                .tag(Tab.interface)
             NotificationsSettingsView(model: model)
                 .tabItem { Label("Notifications", systemImage: "bell") }
                 .tag(Tab.notifications)
@@ -34,7 +38,7 @@ struct SettingsView: View {
                 .tabItem { Label("Key Mapping", systemImage: "keyboard") }
                 .tag(Tab.keyMapping)
         }
-        .frame(width: 480, height: 590)
+        .frame(width: 540, height: 590)
         // keep macOS from saving/restoring the Settings window across launches. Otherwise a
         // process-launch reopen (see rookApp's FB11763863 workaround) resurrects a stale Settings
         // window on whatever tab it was last on, which steals key focus from the real launch window.
@@ -436,6 +440,58 @@ private struct AppearanceSettingsView: View {
     private var inactivePaneMuteStrength: Binding<Double> {
         Binding(get: { Double(model.settings.inactivePaneMuteStrength ?? AppSettings.defaultInactivePaneMuteStrength) },
                 set: { let v = Int($0.rounded()); model.setInactivePaneMuteStrength(v == AppSettings.defaultInactivePaneMuteStrength ? nil : v) })
+    }
+}
+
+/// Interface tab: per-element visibility of the window's title-bar and sidebar chrome, grouped by
+/// surface (Title Bar / Sidebar) and laid out two toggles per row so the tab keeps fitting the fixed
+/// 540×590 Settings window without scrolling as the element set grows. Every element is shown by default;
+/// a toggle off adds it to `AppSettings.hiddenInterfaceElements`. Each toggle live-applies through
+/// `SettingsModel`; the title-bar and footer elements re-gate in every open window via
+/// `.rookAppearanceChanged`, while the hover-only workspace add-session "+" re-gates on its next hover.
+private struct InterfaceSettingsView: View {
+    let model: SettingsModel
+
+    var body: some View {
+        Form {
+            twoColumnSection("Title Bar", elements: InterfaceElement.allCases.filter { $0.section == .titleBar })
+            twoColumnSection("Sidebar", elements: InterfaceElement.allCases.filter { $0.section == .sidebar })
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+
+    /// A section whose toggles lay out TWO per row, so the tab keeps fitting the fixed Settings window
+    /// without scrolling as the `InterfaceElement` set grows. Each toggle fills half the row around a
+    /// centered `Divider`, so the two columns read as EVEN and visibly separated (each column's switch
+    /// trails at its own right edge); an odd final element pairs with an empty half.
+    @ViewBuilder
+    private func twoColumnSection(_ title: String, elements: [InterfaceElement]) -> some View {
+        Section(title) {
+            ForEach(Array(stride(from: 0, to: elements.count, by: 2)), id: \.self) { start in
+                HStack(spacing: 16) {
+                    toggle(for: elements[start]).frame(maxWidth: .infinity)
+                    Divider()
+                    if start + 1 < elements.count {
+                        toggle(for: elements[start + 1]).frame(maxWidth: .infinity)
+                    } else {
+                        Spacer().frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+    }
+
+    private func toggle(for element: InterfaceElement) -> some View {
+        Toggle(element.displayName, isOn: binding(for: element))
+            .accessibilityIdentifier("settings-interface-\(element.rawValue)")
+    }
+
+    /// A show/hide toggle for one element: ON = visible (the default), so hiding it is the opt-in that
+    /// writes to `hiddenInterfaceElements`.
+    private func binding(for element: InterfaceElement) -> Binding<Bool> {
+        Binding(get: { !model.settings.isInterfaceElementHidden(element) },
+                set: { model.setInterfaceElementVisible(element, visible: $0) })
     }
 }
 

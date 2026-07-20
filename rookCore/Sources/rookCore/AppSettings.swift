@@ -258,6 +258,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// state, so it would keep half the sidebar colored. Render-only, applied at the AppKit level when
     /// the sidebar draws, NOT a ghostty key — it never appears in `ghosttyConfigLines()`.
     public var statusRowHighlightEnabled: Bool?
+    /// Raw names of title-bar / sidebar chrome elements the user has HIDDEN (see `InterfaceElement`).
+    /// nil/empty means every element is shown (the default). Stored as raw strings so an unknown future
+    /// element name decodes tolerantly (it is dropped by `resolvedHiddenInterfaceElements`) instead of
+    /// failing the whole decode — the AppSettings forward-compat rule. A GUI-only chrome value applied at
+    /// the AppKit/SwiftUI level, NOT a ghostty key — it never appears in `ghosttyConfigLines()`.
+    public var hiddenInterfaceElements: [String]?
 
     public init(fontFamily: String? = nil, fontSize: Double? = nil, theme: String? = nil,
                 darkTheme: String? = nil, followSystemAppearance: Bool? = nil,
@@ -275,7 +281,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 confirmCloseSession: Bool? = nil, closeGraceUndoEnabled: Bool? = nil,
                 autoFollowAttention: String? = nil,
                 autoFollowStayOnActive: Bool? = nil, sidebarFontSize: Double? = nil,
-                editorApp: String? = nil, statusRowHighlightEnabled: Bool? = nil) {
+                editorApp: String? = nil, statusRowHighlightEnabled: Bool? = nil,
+                hiddenInterfaceElements: [String]? = nil) {
         self.fontFamily = fontFamily
         self.fontSize = fontSize
         self.theme = theme
@@ -311,6 +318,20 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.sidebarFontSize = sidebarFontSize
         self.editorApp = editorApp
         self.statusRowHighlightEnabled = statusRowHighlightEnabled
+        self.hiddenInterfaceElements = hiddenInterfaceElements
+    }
+
+    /// The resolved set of hidden chrome elements: the known raw names from `hiddenInterfaceElements`,
+    /// with any unknown (future-written) names dropped. The single read point the app target and the
+    /// Settings UI use, so callers never touch the raw string list.
+    public var resolvedHiddenInterfaceElements: Set<InterfaceElement> {
+        Set((hiddenInterfaceElements ?? []).compactMap(InterfaceElement.init(rawValue:)))
+    }
+
+    /// Whether a given chrome element is hidden. Everything is shown by default, so an element absent from
+    /// the persisted list reads as visible.
+    public func isInterfaceElementHidden(_ element: InterfaceElement) -> Bool {
+        resolvedHiddenInterfaceElements.contains(element)
     }
 
     /// The resolved titlebar row state: the explicit `toolbarMode` when set to a KNOWN raw value, else the

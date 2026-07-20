@@ -78,4 +78,17 @@ final class SettingsStoreTests {
         #expect(store.load() == settings)
         #expect(store.load().notificationSoundName == "Glass")
     }
+
+    @Test func hiddenInterfaceElementsDefaultsNilAndRoundTrips() throws {
+        // default (nil) = every chrome element is shown.
+        #expect(AppSettings().hiddenInterfaceElements == nil)
+        #expect(AppSettings().resolvedHiddenInterfaceElements.isEmpty)
+        // a hidden set persists and resolves back to the same elements.
+        let settings = AppSettings(hiddenInterfaceElements: ["scratch", "workspaceAddSession"])
+        try store.save(settings)
+        #expect(store.load() == settings)
+        #expect(store.load().resolvedHiddenInterfaceElements == [.scratch, .workspaceAddSession])
+        #expect(store.load().isInterfaceElementHidden(.scratch))
+        #expect(!store.load().isInterfaceElementHidden(.split))
+    }
 }

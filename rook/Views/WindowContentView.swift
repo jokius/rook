@@ -52,6 +52,10 @@ struct WindowContentView: View {
     /// Refreshed on `.rookAppearanceChanged`, like `toolbarMode`, so flipping the Settings toggle
     /// shows/hides the bell live without a relaunch.
     @State var attentionButtonEnabled: Bool = WindowContentView.resolvedAttentionButtonEnabled()
+    /// Mirror of `GhosttyApp.hiddenInterfaceElements`: the title-bar / sidebar-footer chrome elements the
+    /// user has hidden in Settings ▸ Interface. Refreshed on `.rookAppearanceChanged`, like `toolbarMode`,
+    /// so flipping a toggle shows/hides the element live without a relaunch. `shows(_:)` reads it.
+    @State var hiddenInterfaceElements: Set<InterfaceElement> = WindowContentView.resolvedHiddenInterfaceElements()
     /// Custom sidebar width and show/hide both live on the per-window `AppStore` (`sidebarWidth` /
     /// `sidebarVisible`), persisted in `Snapshot` so they restore on relaunch. The toolbar button, the View
     /// menu, the palette, and the `sidebar` control command share `sidebarVisible`.
@@ -159,6 +163,7 @@ struct WindowContentView: View {
             toolbarMode = WindowContentView.resolvedToolbarMode()
             chromeText = WindowContentView.resolvedChromeText()
             attentionButtonEnabled = WindowContentView.resolvedAttentionButtonEnabled()
+            hiddenInterfaceElements = WindowContentView.resolvedHiddenInterfaceElements()
             inactivePaneMute = WindowContentView.resolvedInactivePaneMute()
             sidebarShift = WindowContentView.resolvedSidebarShift()
         }
@@ -640,6 +645,18 @@ struct WindowContentView: View {
     /// settings change (posting `.rookAppearanceChanged`) shows/hides the title bar bell live.
     private static func resolvedAttentionButtonEnabled() -> Bool {
         GhosttyApp.shared.attentionButtonEnabled
+    }
+
+    /// The hidden-chrome-element set from the (non-observable) `GhosttyApp`, mirrored into view state so a
+    /// settings change (posting `.rookAppearanceChanged`) shows/hides the gated chrome live.
+    private static func resolvedHiddenInterfaceElements() -> Set<InterfaceElement> {
+        GhosttyApp.shared.hiddenInterfaceElements
+    }
+
+    /// Whether a title-bar / sidebar-footer chrome element should be drawn. Everything is shown unless the
+    /// user hid it in Settings ▸ Interface.
+    func shows(_ element: InterfaceElement) -> Bool {
+        !hiddenInterfaceElements.contains(element)
     }
 
     /// The inactive-pane mute strength from the (non-observable) `GhosttyApp`, mirrored into view state
