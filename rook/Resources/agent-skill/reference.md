@@ -97,9 +97,11 @@ tree is collapsed to this workspace — the read side of `workspace focus`, dist
 SELECTED workspace; omitted unless this is the focused one, and absent entirely when nothing is focused),
 `color` (the workspace's sidebar icon tint as `#rrggbb` — the read side of `workspace color`; omitted
 when it uses the theme default, so a script can record a color, change it, and restore it),
-and `icon` + `iconKind` (the sidebar icon and how to read it — `symbol` = an SF Symbol name, `emoji` = the
+`icon` + `iconKind` (the sidebar icon and how to read it — `symbol` = an SF Symbol name, `emoji` = the
 grapheme, `image` = the path of the copy in the state dir; both omitted when the workspace uses the default
-glyph. The read side of `workspace icon`: feeding `icon` straight back restores it, an image path included).
+glyph. The read side of `workspace icon`: feeding `icon` straight back restores it, an image path included),
+and `root` (the workspace's root directory — the read side of `workspace root`; omitted when unset, so a
+script can record a root, change it, and restore it).
 
 The tree object itself carries ten top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
@@ -163,6 +165,15 @@ All ten are read-only projections of GUI state.
   Read back from the tree workspace node's `icon` + `iconKind`; feeding `icon` straight back restores it.
   The GUI equivalent is the row's context menu → Icon… (image files only — there is no SF Symbol picker,
   since no public API enumerates the symbols) / Reset Appearance.
+- `workspace root <dir|clear> [--target] [--window W]` — set the workspace's ROOT directory; returns the
+  workspace id. Every NEW session created in that workspace opens there (the GUI New Session, the sidebar
+  `+`, and `session new` with no `--cwd`) — a HARD override of the global new-session-directory setting.
+  `clear` (or no dir) drops it, falling back to that global setting. PERSISTED, so it survives a relaunch
+  and a reopen from Open Recent. The path is stored verbatim (it can be set before the directory exists);
+  a root that has since been moved or deleted is skipped at spawn time, falling back to the global setting,
+  so a new session never fails to open. Read back from the tree workspace node's `root`, so a script can
+  record-then-restore. An explicit `session new --cwd DIR` still wins over the workspace root. The GUI
+  equivalent is the workspace row's context menu → Set Root Directory… / Clear Root Directory.
 
 ## session
 

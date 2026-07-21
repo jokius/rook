@@ -17,25 +17,32 @@ public struct Workspace: Identifiable {
     public var colorHex: String?
     /// The sidebar icon (SF Symbol / emoji / image file), or nil for the default workspace glyph.
     public var icon: WorkspaceIcon?
+    /// The workspace's root directory: when set, every NEW session created in this workspace opens here
+    /// (a hard override of the global new-session-directory mode). nil = no root, so new sessions fall back
+    /// to the global policy. Set from the row's context menu or `workspace.root`; read back on the `tree`
+    /// node. Persisted via `WorkspaceSnapshot.root`.
+    public var root: String?
 
     public init(name: String, sessions: [Session] = [], isExpanded: Bool = true, colorHex: String? = nil,
-                icon: WorkspaceIcon? = nil) {
+                icon: WorkspaceIcon? = nil, root: String? = nil) {
         id = UUID()
         self.name = name
         self.sessions = sessions
         self.isExpanded = isExpanded
         self.colorHex = colorHex
         self.icon = icon
+        self.root = root
     }
 
     public init(id: UUID, name: String, sessions: [Session] = [], isExpanded: Bool = true, colorHex: String? = nil,
-                icon: WorkspaceIcon? = nil) {
+                icon: WorkspaceIcon? = nil, root: String? = nil) {
         self.id = id
         self.name = name
         self.sessions = sessions
         self.isExpanded = isExpanded
         self.colorHex = colorHex
         self.icon = icon
+        self.root = root
     }
 
     /// Total unseen-notification count across this workspace's sessions, for the badge on a

@@ -21,6 +21,7 @@ public enum Command: String, Codable, Sendable {
     case workspaceFocus = "workspace.focus"
     case workspaceColor = "workspace.color"
     case workspaceIcon = "workspace.icon"
+    case workspaceRoot = "workspace.root"
     case sessionType = "session.type"
     case sessionStatus = "session.status"
     case sessionAgent = "session.agent"
@@ -524,10 +525,13 @@ public struct ControlWorkspaceNode: Codable, Sendable, Equatable {
     public let icon: String?
     /// How to read `icon`: `symbol` | `emoji` | `image`. Omitted when there is no custom icon.
     public let iconKind: String?
+    /// The workspace's root directory (`Workspace.root`), or nil when unset (omitted from the JSON). The
+    /// read side of `workspace.root` — so a script can record a workspace's root, change it, and restore it.
+    public let root: String?
     public let sessions: [ControlSessionNode]
 
     public init(id: String, name: String, active: Bool, focused: Bool? = nil, color: String? = nil,
-                icon: String? = nil, iconKind: String? = nil,
+                icon: String? = nil, iconKind: String? = nil, root: String? = nil,
                 sessions: [ControlSessionNode]) {
         self.id = id
         self.name = name
@@ -536,6 +540,7 @@ public struct ControlWorkspaceNode: Codable, Sendable, Equatable {
         self.color = color
         self.icon = icon
         self.iconKind = iconKind
+        self.root = root
         self.sessions = sessions
     }
 }

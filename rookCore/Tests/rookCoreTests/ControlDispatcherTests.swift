@@ -591,6 +591,31 @@ struct ControlDispatcherTests {
         #expect(actions.calls.isEmpty) // a bad color must leave the workspace untouched
     }
 
+    @Test func workspaceRootPassesPathThrough() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let set = await dispatcher.dispatch(ControlRequest(
+            cmd: .workspaceRoot,
+            target: "workspace",
+            args: ControlArgs(window: "win", path: "/Users/me/proj")
+        ))
+
+        #expect(set == ControlResponse(ok: true))
+        #expect(actions.calls == [.workspaceRoot(target: "workspace", window: "win", path: "/Users/me/proj")])
+    }
+
+    @Test func workspaceRootClearsOnClearAndOnMissingPath() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .workspaceRoot, target: "a", args: ControlArgs(path: "clear")))
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .workspaceRoot, target: "b"))
+
+        #expect(actions.calls == [.workspaceRoot(target: "a", window: nil, path: nil),
+                                  .workspaceRoot(target: "b", window: nil, path: nil)])
+    }
+
     @Test func workspaceIconClassifiesSymbolEmojiAndPath() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)

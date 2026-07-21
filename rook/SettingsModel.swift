@@ -287,8 +287,17 @@ final class SettingsModel {
     /// Persist whether closing a session from the GUI first asks for confirmation (nil = off). Not a ghostty
     /// key and nothing renders it continuously — `AppActions` reads it on demand at close time — so it just saves.
     func setConfirmCloseSession(_ value: Bool?) { settings.confirmCloseSession = value; try? settingsStore.save(settings) }
+    /// Persist whether the close confirmation only fires for a session with a running agent (nil = off,
+    /// i.e. prompt for every close). Sub-option of `confirmCloseSession`, read on demand by `AppActions`.
+    func setConfirmCloseOnlyRunningAgent(_ value: Bool?) { settings.confirmCloseOnlyRunningAgent = value; try? settingsStore.save(settings) }
     /// Persist whether GUI closes use the short undo grace period. nil = on; false = close immediately.
     func setCloseGraceUndoEnabled(_ value: Bool?) { settings.closeGraceUndoEnabled = value; try? settingsStore.save(settings) }
+    /// Persist the undo grace window in seconds a soft close keeps (nil = the 5s default). Read on demand
+    /// by `AppActions` at close time — not a ghostty key, nothing renders it continuously — so it just saves.
+    func setCloseGraceSeconds(_ value: Double?) { settings.closeGraceSeconds = value; try? settingsStore.save(settings) }
+    /// Persist whether the undo toast is shown after a GUI close (nil = on). Read live by `WindowContentView`
+    /// to gate the toast overlay; not a ghostty key, so it just saves.
+    func setShowUndoToast(_ value: Bool?) { settings.showUndoToast = value; try? settingsStore.save(settings) }
     /// Persist the user-idle auto-follow timeout (nil = off) and fan it out to every open window's store.
     /// Not a ghostty key — a per-window `AppStore` behavior — so it just saves, then pushes the resolved
     /// timeout into the live stores (a newly opened window seeds itself via `applyAutoFollow(to:)`).

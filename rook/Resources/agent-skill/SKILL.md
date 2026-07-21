@@ -16,7 +16,7 @@ description: >
 when_to_use: >
   Trigger on: rook, rookctl, rook control socket, session.new, session.close, session.type,
   session.split, session.scratch, session.filetree, session.markdown, markdown preview, session.focus, session.resize, surface.zoom, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status, session.agent, resume agent conversation,
-  session.flag, session.seen, session.reveal, session.background, session.overlay, workspace.new, workspace.select, workspace.move, workspace.focus, window.new, window.list,
+  session.flag, session.seen, session.reveal, session.background, session.overlay, workspace.new, workspace.select, workspace.move, workspace.focus, workspace.root, window.new, window.list,
   window.select, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, flagged, notify, font.inc, keymap.reload, config.reload,
   theme.set, theme.list, select theme, edit keymap, show an image, display an image inline, show-image,
   ROOK_SESSION_ID, ROOK_SOCKET, and asks to drive or script rook. Also: troubleshoot rook,
@@ -120,7 +120,7 @@ you work. For any session-scoped command meant to act on *this* session — `ove
 `type`, `text`, `background`, `status`, `copy`, … — pass `--target "$ROOK_SESSION_ID"`. Omit it and
 you open overlays / type into whatever the user has selected, not your own session.
 
-## Command summary (66 commands)
+## Command summary (67 commands)
 
 Run `rookctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
 **examples.md**.
@@ -168,7 +168,10 @@ sidebar icon; persisted, read back from the tree workspace node's `color`) ·
 `icon <symbol|emoji|path|clear>` (set the workspace's sidebar icon — an SF Symbol name like `hammer.fill`,
 a single emoji, or a path to an svg/png/jpeg, which is copied into the state dir; read back from the tree
 workspace node's `icon` + `iconKind`. The color applies only to a symbol or a monochrome image — a colored
-image and an emoji keep their own colors).
+image and an emoji keep their own colors) ·
+`root <dir|clear>` (set the workspace's ROOT directory — new sessions of that workspace open there (a hard
+override of the global new-session-directory setting; a stale/removed dir falls back to it), persisted, read
+back from the tree workspace node's `root`).
 
 **session**
 - `new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--name NAME] [--no-select] [--wait] [--after SID | --before SID]` —

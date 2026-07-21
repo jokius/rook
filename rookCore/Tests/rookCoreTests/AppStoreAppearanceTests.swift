@@ -51,6 +51,21 @@ struct AppStoreAppearanceTests {
         #expect(store.controlTree().workspaces.allSatisfy { $0.color == nil })
     }
 
+    @Test func controlTreeReportsWorkspaceRoot() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "rooted")
+        // no root: the node omits it.
+        #expect(store.controlTree().workspaces.allSatisfy { $0.root == nil })
+        // set: only that workspace's node carries the path, so a script can read back what it set.
+        store.setWorkspaceRoot(ws.id, path: "/Users/me/proj")
+        let nodes = store.controlTree().workspaces
+        #expect(nodes.first { $0.id == ws.id.uuidString }?.root == "/Users/me/proj")
+        #expect(nodes.filter { $0.root != nil }.count == 1)
+        // cleared: omitted again.
+        store.setWorkspaceRoot(ws.id, path: nil)
+        #expect(store.controlTree().workspaces.allSatisfy { $0.root == nil })
+    }
+
     @Test func setWorkspaceIconPersistsAndClears() {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("rook-tests-\(UUID().uuidString)")
         let persistence = PersistenceStore(directory: dir)

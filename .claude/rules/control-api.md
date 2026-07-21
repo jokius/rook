@@ -272,9 +272,9 @@ paths:
   rules, then remaining targets resolve inside that same store so one command never mutates multiple windows.
   The top-level `target` also carries the first explicit batch target so a new CLI talking to a still-running
   pre-batch server degrades to a named session instead of accidentally acting on `active`.
-- **Command catalog (66 commands):**
+- **Command catalog (67 commands):**
   - `tree`
-  - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.color`/`workspace.icon`
+  - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.color`/`workspace.icon`/`workspace.root`
   - `session.new`/`session.close`/`session.select`/`session.rename`/`session.duplicate`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.agent`/`session.flag`/`session.seen`/`session.background`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
   - `surface.zoom`
   - `dashboard`
@@ -300,7 +300,7 @@ paths:
   Setting echoes the resulting effective side in `result.text`; the BARE form (no name) reads the side
   the last config feed applied (`SettingsModel.lastAppliedIsDark`), which the test polls to prove the
   flip actually drove the reload.
-  `AppearanceFlipUITests` is its only consumer; the public command count stays 66.
+  `AppearanceFlipUITests` is its only consumer; the public command count stays 67.
 
   `workspace.delete` honors keep-at-least-one and returns an error instead of the GUI confirm alert (nothing
   blocks on a modal).
@@ -1299,6 +1299,33 @@ paths:
   replace, tree read-back, reopen-from-Recent) + `PersistenceTests` (a poisoned `icon.kind` decodes lossily
   to nil instead of wiping the tree) + CLI mapping in `CommandsTests` + the e2e
   `testWorkspaceIconSetAndClear` in `ControlSidebarStatusUITests`.
+  `workspace.root` (target = workspace) sets that workspace's START DIRECTORY — the positional arg is a
+  directory path or the literal `clear`/`--clear` (which, like an omitted path, resets it to nil).
+  When set, EVERY new session created in that workspace opens in `root` — a HARD override of the global
+  `newSessionDirectory` mode (home/currentSession/custom); when nil, new-session cwd falls through to the
+  existing `AppSettings.resolveNewSessionCwd` logic unchanged.
+  UNLIKE the ephemeral status tint, it is PERSISTED (`Workspace.root` → `WorkspaceSnapshot.root`, an
+  Optional field so an existing `workspaces.json` decodes with NO `Snapshot` version bump), surviving a
+  relaunch and a close/reopen from Open Recent.
+  The path is stored VERBATIM (settable before the directory exists); a non-existent root is handled at
+  SPAWN time app-side (`existingDirectory` falls back to the global logic / `$HOME`), so the host-free
+  `resolveNewSessionCwd(workspaceRoot:currentSessionCwd:home:)` only CHOOSES the string, never touches the
+  filesystem.
+  Both new-session entry points consult it: the GUI `AppActions.resolvedNewSessionCwd(inWorkspace:)` (from
+  `newSession()` + the sidebar row's New Session / `+`) and the control `makeSessionResponse`
+  (`options.cwd ?? workspaceRoot ?? home`).
+  Its READ side is `ControlWorkspaceNode.root` on each `tree` workspace node (omitted when nil), so a
+  script can record a workspace's root, change it, and restore it.
+  GUI half: the workspace row's context menu — Set Root Directory… (an `NSOpenPanel` directory picker)
+  and Clear Root Directory (shown only when a root is set); no menu-bar/palette entry (per-row property,
+  like Color/Focus).
+  Four-point keep-in-sync audit: (1) `case workspaceRoot = "workspace.root"` in `ControlProtocol.swift`
+  (reuses `ControlArgs.path`; adds `root` to `ControlWorkspaceNode`), (2) the `.workspaceRoot` arm in
+  `ControlDispatcher` (the `clear`/empty → nil idiom) → `ControlActions.setWorkspaceRoot` (app-side
+  `ControlServer+Appearance`), (3) the `workspace root <dir|--clear>` subcommand (`Root`, absolutizing a
+  relative/`~` path like `Icon`) in `rookctlKit`, (4) round-trip + omit-when-nil in `ControlProtocolTests`
+  + dispatcher routing in `ControlDispatcherTests` + `PersistenceTests` (disk round-trip + legacy snapshot
+  without the key) + `AppStoreAppearanceTests` (tree read-back) + the deferred e2e (XCUITest).
   `tree` now also surfaces, on each `ControlSessionNode`, `foreground`/`splitForeground` — the LIVE foreground-process
   argv of the main + split panes (nil/omitted at the shell prompt), the SAME `ForegroundProcess.command(for:shellBasename:)`
   capture the restore-running-command feature uses (`ghostty_surface_foreground_pid` → `sysctl(KERN_PROCARGS2)`
@@ -1449,4 +1476,4 @@ paths:
   (image/text/color set/clear + tree read-back).
   **Agent-skill mirror (HARD keep-in-sync, 4th surface):** all commands are documented in the bundled
   `rook/Resources/agent-skill/` (SKILL.md summary, reference.md detail,
-  examples.md recipes) and the command count there is bumped to 65 to match.
+  examples.md recipes) and the command count there is bumped to 67 to match.

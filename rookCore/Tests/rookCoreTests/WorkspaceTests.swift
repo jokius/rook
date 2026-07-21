@@ -17,4 +17,12 @@ struct WorkspaceTests {
         let workspace = Workspace(name: "empty", sessions: [Session(initialCwd: "/a")])
         #expect(workspace.unseenCount == 0)
     }
+
+    @Test func rootDefaultsNilAndIsSettable() {
+        // the per-workspace start directory: absent by default, holds a path once set.
+        var workspace = Workspace(name: "proj", sessions: [])
+        #expect(workspace.root == nil)
+        workspace.root = "/Users/me/proj"
+        #expect(workspace.root == "/Users/me/proj")
+    }
 }

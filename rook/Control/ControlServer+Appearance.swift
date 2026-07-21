@@ -19,6 +19,18 @@ extension ControlServer {
         }
     }
 
+    /// Set (or clear, with a nil `path`) a workspace's root directory — the cwd new sessions of that
+    /// workspace open in (see `AppSettings.resolveNewSessionCwd`). The dispatcher already resolved the
+    /// `clear` idiom to nil; the path is stored verbatim (existence is checked at spawn time, not here, so
+    /// a root can be set before the directory exists — like the GUI Set Root Directory… item). The GUI
+    /// half is the workspace row's Set/Clear Root Directory context-menu items.
+    func setWorkspaceRoot(_ target: String?, window: String?, path: String?) -> ControlResponse {
+        resolver.resolveWorkspace(target, window: window) { store, id in
+            store.setWorkspaceRoot(id, path: path)
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+        }
+    }
+
     /// Set (or clear, with a nil `icon`) a workspace's sidebar icon. Two checks need the host:
     ///
     /// - `.symbol` — the name must RESOLVE, else the icon would silently fall back to the default glyph and

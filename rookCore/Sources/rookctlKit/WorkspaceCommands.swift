@@ -7,7 +7,8 @@ import rookCore
 struct Workspace: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Workspace commands.",
-        subcommands: [New.self, Rename.self, Delete.self, Select.self, Move.self, Focus.self, Color.self, Icon.self]
+        subcommands: [New.self, Rename.self, Delete.self, Select.self, Move.self, Focus.self, Color.self,
+                      Icon.self, Root.self]
     )
 
     struct New: RequestCommand {
@@ -124,6 +125,33 @@ struct Workspace: ParsableCommand {
             }
             return ControlRequest(cmd: .workspaceIcon, target: target.target,
                                   args: options.withWindow(ControlArgs(icon: value)))
+        }
+    }
+
+    struct Root: RequestCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Set a workspace's root directory (new sessions open there), or clear it."
+        )
+        @Argument(help: "A directory path, or `clear` to unset the root.") var dir: String?
+        @Flag(name: .long, help: "Clear the workspace's root directory.") var clear: Bool = false
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func validate() throws {
+            guard dir != nil || clear else {
+                throw ValidationError("provide a directory path, or --clear")
+            }
+        }
+
+        func makeRequest() throws -> ControlRequest {
+            // `--clear` (or a literal `clear`) sends no path; the dispatcher treats a nil/`clear` path as
+            // clear. Otherwise absolutize like Icon: the app resolves the path in its own working directory.
+            var path: String?
+            if !clear, let dir, dir != "clear" {
+                path = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath).standardizedFileURL.path
+            }
+            return ControlRequest(cmd: .workspaceRoot, target: target.target,
+                                  args: options.withWindow(ControlArgs(path: path)))
         }
     }
 }

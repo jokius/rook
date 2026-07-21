@@ -15,7 +15,7 @@ extension AppActions {
         guard confirmCloseSessions(sessions) else { return }
         withAnimation(.easeInOut(duration: 0.16)) {
             if closeGraceUndoEnabled {
-                _ = store.softCloseSessions(sessions.map(\.id))
+                _ = store.softCloseSessions(sessions.map(\.id), grace: effectiveCloseGraceSeconds)
             } else {
                 for session in sessions {
                     store.closeSession(session.id)
@@ -26,17 +26,23 @@ extension AppActions {
     }
 
     private func confirmCloseSessions(_ sessions: [Session]) -> Bool {
-        guard settingsModel?.settings.confirmCloseSession == true,
+        let settings = settingsModel?.settings
+        guard settings?.confirmCloseSession == true,
               !ContentView.shouldBypassCloseConfirmation else { return true }
+        // "only when a session is running an agent": prompt only if at least one of the batch has a live agent.
+        let runningAgent = sessions.compactMap(\.agentKind).first
+        if settings?.confirmCloseOnlyRunningAgent == true, runningAgent == nil { return true }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Close \(sessions.count) Sessions?"
-        alert.informativeText = closeGraceUndoEnabled
-            ? "The sessions will close after a short undo window."
-            : "The sessions will close immediately and can be reopened from File > Open Recent."
+        alert.informativeText = closeConfirmInformativeText(agent: runningAgent, count: sessions.count)
         alert.addButton(withTitle: "Close")
         alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Don't ask again"
+        let response = alert.runModal()
+        if alert.suppressionButton?.state == .on { settingsModel?.setConfirmCloseSession(false) }
+        return response == .alertFirstButtonReturn
     }
 
     /// sidebar context menus pass their own store so a background window never routes through the

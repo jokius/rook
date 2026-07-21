@@ -127,25 +127,13 @@ final class AppActions {
     func newSession() {
         guard uiActionsEnabled else { return }
         guard let store, let workspaceID = store.currentWorkspaceID,
-              let session = store.addSession(toWorkspace: workspaceID, cwd: resolvedNewSessionCwd())
+              let session = store.addSession(toWorkspace: workspaceID, cwd: resolvedNewSessionCwd(inWorkspace: workspaceID))
         else { return }
         // creating + selecting a session is a user-initiated selection: note activity so it buys the full
         // idle grace before auto-follow can pull the selection away from the just-made session.
         store.noteUserActivity()
         store.selectSession(session.id)
         focusActiveSession()
-    }
-
-    /// The working directory a new session should open in, resolved from the new-session-directory setting
-    /// (home / the current session's cwd / a fixed custom dir) against the active session's focused-pane
-    /// cwd. Shared by `newSession()` and the sidebar's workspace-row New Session so both entry points honor
-    /// the setting. Falls back to home when `settingsModel` isn't wired yet (before the scene `.task`) or
-    /// the setting resolves there. Read as the `addSession` argument, so it captures the active session's
-    /// cwd BEFORE the new session exists.
-    func resolvedNewSessionCwd() -> String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return settingsModel?.settings.resolveNewSessionCwd(
-            currentSessionCwd: store?.activeSession?.focusedCwd, home: home) ?? home
     }
 
     func openDirectory() {
@@ -242,20 +230,28 @@ final class AppActions {
     }
 
     /// A native warning confirm before closing `session`, gated by `AppSettings.confirmCloseSession`.
-    /// Returns whether to proceed with the close: true immediately (no prompt) when the setting is off, or
-    /// under an XCUITest launch (a modal would hang the test, like the clear-flagged/quit confirms).
+    /// Returns whether to proceed with the close: true immediately (no prompt) when the setting is off,
+    /// under an XCUITest launch (a modal would hang the test, like the clear-flagged/quit confirms), or —
+    /// with the "only when a session is running an agent" sub-option on — when no coding agent is running
+    /// in the session (an empty terminal closes silently). The alert carries a "Don't ask again"
+    /// suppression checkbox that turns the master `confirmCloseSession` off.
     private func confirmCloseSession(_ session: Session) -> Bool {
-        guard settingsModel?.settings.confirmCloseSession == true,
+        let settings = settingsModel?.settings
+        guard settings?.confirmCloseSession == true,
               !ContentView.shouldBypassCloseConfirmation else { return true }
+        // the sub-option narrows the prompt to sessions with a live agent; an empty terminal closes silently.
+        if settings?.confirmCloseOnlyRunningAgent == true, session.agentKind == nil { return true }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Close “\(session.displayName)”?"
-        alert.informativeText = closeGraceUndoEnabled
-            ? "The session will close after a short undo window."
-            : "The session will close immediately and can be reopened from File > Open Recent."
+        alert.informativeText = closeConfirmInformativeText(agent: session.agentKind, count: 1)
         alert.addButton(withTitle: "Close")
         alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Don't ask again"
+        let response = alert.runModal()
+        if alert.suppressionButton?.state == .on { settingsModel?.setConfirmCloseSession(false) }
+        return response == .alertFirstButtonReturn
     }
 
     var closeGraceUndoEnabled: Bool {
@@ -265,7 +261,7 @@ final class AppActions {
     private func closeSessionAfterConfirmation(_ id: UUID, in store: AppStore) {
         if closeGraceUndoEnabled {
             withAnimation(.easeInOut(duration: 0.16)) {
-                _ = store.softCloseSession(id)
+                _ = store.softCloseSession(id, grace: effectiveCloseGraceSeconds)
             }
         } else {
             store.closeSession(id)
@@ -409,7 +405,7 @@ final class AppActions {
         if !workspace.sessions.isEmpty, !confirmDeleteWorkspace(workspace) { return }
         if closeGraceUndoEnabled {
             withAnimation(.easeInOut(duration: 0.16)) {
-                _ = store.softRemoveWorkspace(workspaceID)
+                _ = store.softRemoveWorkspace(workspaceID, grace: effectiveCloseGraceSeconds)
             }
         } else {
             store.removeWorkspace(workspaceID)

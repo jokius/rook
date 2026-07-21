@@ -464,6 +464,36 @@ final class PersistenceTests {
         #expect(restored.workspaces.first { $0.id == ws.id }?.icon == icon)
     }
 
+    @Test func workspaceSnapshotRoundTripsRoot() throws {
+        // the per-workspace root persists like colorHex/icon — an optional field, no version bump.
+        let snap = WorkspaceSnapshot(id: UUID(), name: "work", sessions: [], root: "/Users/me/proj")
+        let decoded = try JSONDecoder().decode(WorkspaceSnapshot.self, from: JSONEncoder().encode(snap))
+        #expect(decoded == snap)
+        #expect(decoded.root == "/Users/me/proj")
+        // a nil root is omitted from the JSON (omit-when-nil), keeping the snapshot minimal.
+        let bare = WorkspaceSnapshot(id: UUID(), name: "work", sessions: [])
+        let json = String(decoding: try JSONEncoder().encode(bare), as: UTF8.self)
+        #expect(!json.contains("\"root\""))
+    }
+
+    @Test func workspaceSnapshotLegacyDecodesWithoutRoot() throws {
+        // a snapshot written before `root` existed (no version bump) still decodes, with root nil.
+        let json = #"{ "id": "\#(UUID().uuidString)", "name": "work", "sessions": [] }"#
+        let decoded = try JSONDecoder().decode(WorkspaceSnapshot.self, from: Data(json.utf8))
+        #expect(decoded.root == nil)
+    }
+
+    @Test func workspaceRootRoundTripsThroughDisk() throws {
+        let app = AppStore(persistence: store)
+        let ws = app.addWorkspace(name: "work")
+        app.setWorkspaceRoot(ws.id, path: "/Users/me/proj")
+        app.save() // flush in case the write is debounced
+
+        let restored = AppStore(persistence: store)
+        restored.restore(from: store.load())
+        #expect(restored.workspaces.first { $0.id == ws.id }?.root == "/Users/me/proj")
+    }
+
     @Test func explicitCollapsedFalseDecodesExpanded() throws {
         // an explicit `collapsed: false` (a hand-edit, or a snapshot from a future build that always writes
         // the field) must decode to expanded, same as an absent key — `!(false ?? false)` == expanded.

@@ -206,8 +206,9 @@ extension ControlServer: ControlActions {
             }
             let affected: Int
             if settingsModel.settings.closeGraceUndoEnabled ?? true {
-                // One grouped grace record is the batch behavior scripts cannot reproduce by looping.
-                affected = store.softCloseSessions(ids) ? ids.count : 0
+                // One grouped grace record is the batch behavior scripts cannot reproduce by looping. The
+                // grace window matches the user's Settings ▸ Interface ▸ Undo duration, like the GUI closes.
+                affected = store.softCloseSessions(ids, grace: settingsModel.settings.effectiveCloseGraceSeconds) ? ids.count : 0
             } else {
                 // Match the GUI's immediate batch-close path when grace undo is disabled.
                 affected = ids.reduce(into: 0) { count, id in

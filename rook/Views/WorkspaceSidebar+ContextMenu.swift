@@ -157,6 +157,17 @@ extension WorkspaceSidebar.Coordinator {
             icon.representedObject = node
             menu.addItem(icon)
             let workspace = store.workspaces.first(where: { $0.id == node.id })
+            // root directory: where new sessions of this workspace open (see AppSettings.resolveNewSessionCwd).
+            let setRoot = NSMenuItem(title: "Set Root Directory…", action: #selector(menuSetWorkspaceRoot(_:)), keyEquivalent: "")
+            setRoot.target = self
+            setRoot.representedObject = node
+            menu.addItem(setRoot)
+            if workspace?.root != nil {
+                let clearRoot = NSMenuItem(title: "Clear Root Directory", action: #selector(menuClearWorkspaceRoot(_:)), keyEquivalent: "")
+                clearRoot.target = self
+                clearRoot.representedObject = node
+                menu.addItem(clearRoot)
+            }
             if workspace?.colorHex != nil || workspace?.icon != nil {
                 let reset = NSMenuItem(title: "Reset Appearance", action: #selector(menuResetWorkspaceAppearance(_:)),
                                        keyEquivalent: "")
@@ -230,8 +241,8 @@ extension WorkspaceSidebar.Coordinator {
     @objc private func menuNewSession(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode else { return }
         // resolve the cwd via the same new-session-directory setting as AppActions.newSession(), so the
-        // workspace-row New Session honors it too (home / current session's cwd / a fixed custom dir).
-        addSession(toWorkspace: node.id, cwd: actions.resolvedNewSessionCwd())
+        // workspace-row New Session honors it too (workspace root, else home / current cwd / a fixed dir).
+        addSession(toWorkspace: node.id, cwd: actions.resolvedNewSessionCwd(inWorkspace: node.id))
     }
 
     /// Inline "+" button on a workspace row — same action as the right-click "New Session" menu item.
@@ -245,7 +256,7 @@ extension WorkspaceSidebar.Coordinator {
         guard let outline = outlineView else { return }
         let row = outline.row(for: sender)
         guard row >= 0, let node = outline.item(atRow: row) as? SidebarNode, node.kind == .workspace else { return }
-        addSession(toWorkspace: node.id, cwd: actions.resolvedNewSessionCwd())
+        addSession(toWorkspace: node.id, cwd: actions.resolvedNewSessionCwd(inWorkspace: node.id))
     }
 
     @objc private func menuDeleteWorkspace(_ sender: NSMenuItem) {
@@ -276,6 +287,29 @@ extension WorkspaceSidebar.Coordinator {
     @objc private func menuResetWorkspaceAppearance(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode else { return }
         actions.resetWorkspaceAppearance(node.id, in: store)
+    }
+
+    /// "Set Root Directory…": pick a folder that new sessions of this workspace open in (the control half
+    /// is `workspace.root`). Seeds the panel at the current root, else the active session's cwd.
+    @objc private func menuSetWorkspaceRoot(_ sender: NSMenuItem) {
+        guard let node = sender.representedObject as? SidebarNode else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        let current = store.workspaces.first(where: { $0.id == node.id })?.root
+        panel.directoryURL = DirectoryPanelDefaults.url(paths: current, store.activeSession?.focusedCwd)
+        panel.prompt = "Set Root"
+        panel.message = "Choose a root directory for new sessions in this workspace"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        store.setWorkspaceRoot(node.id, path: url.path)
+    }
+
+    /// "Clear Root Directory": drop the workspace root so new sessions fall back to the global new-session
+    /// directory setting again.
+    @objc private func menuClearWorkspaceRoot(_ sender: NSMenuItem) {
+        guard let node = sender.representedObject as? SidebarNode else { return }
+        store.setWorkspaceRoot(node.id, path: nil)
     }
 
     /// "Open Directory…": pick a folder and add a session rooted there.

@@ -884,6 +884,43 @@ struct ControlProtocolTests {
         #expect(decoded.iconKind == nil)
     }
 
+    @Test func workspaceRootRoundTrips() throws {
+        // the write side of workspace.root: the target workspace id + the start directory, carried on `path`.
+        let request = ControlRequest(cmd: .workspaceRoot, target: "work",
+                                     args: ControlArgs(window: "w1", path: "/Users/me/proj"))
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.cmd == .workspaceRoot)
+        #expect(decoded.args?.path == "/Users/me/proj")
+    }
+
+    @Test func workspaceRootClearRoundTrips() throws {
+        // the clear form a script sends to unset the root — the `clear` sentinel rides `path`, like color/icon.
+        let request = ControlRequest(cmd: .workspaceRoot, target: "work", args: ControlArgs(path: "clear"))
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.cmd == .workspaceRoot)
+        #expect(decoded.args?.path == "clear")
+    }
+
+    @Test func workspaceNodeRoundTripsWithRoot() throws {
+        // the read side of workspace.root: a script records a workspace's root, changes it, restores it.
+        let ws = ControlWorkspaceNode(id: "w1", name: "work", active: true, root: "/Users/me/proj", sessions: [])
+        let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(workspaces: [ws])))
+        let decoded = try roundTrip(response)
+        #expect(decoded == response)
+        #expect(decoded.result?.tree?.workspaces.first?.root == "/Users/me/proj")
+    }
+
+    @Test func workspaceNodeOmitsRootWhenNil() throws {
+        // no root (the default) — the key must be omitted, not emitted as null.
+        let ws = ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [])
+        let json = String(data: try JSONEncoder().encode(ws), encoding: .utf8) ?? ""
+        #expect(!json.contains("root"), "a nil root must be omitted from the JSON; got \(json)")
+        let decoded = try JSONDecoder().decode(ControlWorkspaceNode.self, from: Data(json.utf8))
+        #expect(decoded.root == nil)
+    }
+
     @Test func treeRoundTripsWithSidebarMode() throws {
         // the read side of sidebar.mode: the sidebar view mode (tree/flagged) rides the tree top level.
         let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(

@@ -42,4 +42,9 @@ extension MockControlActions {
         calls.append(.workspaceIcon(target: target, window: window, icon: icon))
         return ControlResponse(ok: true)
     }
+
+    func setWorkspaceRoot(_ target: String?, window: String?, path: String?) -> ControlResponse {
+        calls.append(.workspaceRoot(target: target, window: window, path: path))
+        return ControlResponse(ok: true)
+    }
 }

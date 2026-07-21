@@ -126,6 +126,10 @@ private struct GeneralSettingsView: View {
                             + "conversation in its directory.")
                 Toggle("Confirm before closing a session", isOn: confirmCloseSession)
                     .accessibilityIdentifier("settings-confirm-close-session")
+                Toggle("Only when a session is running an agent", isOn: confirmCloseOnlyRunningAgent)
+                    .accessibilityIdentifier("settings-confirm-close-running-agent")
+                    .disabled(model.settings.confirmCloseSession != true)
+                    .padding(.leading, 16)
                 Toggle("Allow undo after closing sessions and workspaces", isOn: closeGraceUndoEnabled)
                     .accessibilityIdentifier("settings-close-grace-undo")
             }
@@ -175,6 +179,13 @@ private struct GeneralSettingsView: View {
     private var confirmCloseSession: Binding<Bool> {
         Binding(get: { model.settings.confirmCloseSession ?? false },
                 set: { model.setConfirmCloseSession($0 ? true : nil) })
+    }
+
+    /// Sub-option of `confirmCloseSession`: nil (the default) reads as OFF, so on → true / off → nil keeps
+    /// settings.json minimal. When on, the confirm only fires for a session with a running coding agent.
+    private var confirmCloseOnlyRunningAgent: Binding<Bool> {
+        Binding(get: { model.settings.confirmCloseOnlyRunningAgent ?? false },
+                set: { model.setConfirmCloseOnlyRunningAgent($0 ? true : nil) })
     }
 
     /// nil (the default) reads as ON; turning it off stores false and makes GUI closes immediate.
@@ -456,9 +467,35 @@ private struct InterfaceSettingsView: View {
         Form {
             twoColumnSection("Title Bar", elements: InterfaceElement.allCases.filter { $0.section == .titleBar })
             twoColumnSection("Sidebar", elements: InterfaceElement.allCases.filter { $0.section == .sidebar })
+
+            // The undo toast's chrome + the grace-window length. Whether undo runs at all is the master
+            // "Allow undo…" toggle in General ▸ Sessions; these controls are dimmed while it is off.
+            Section("Undo") {
+                Toggle("Show undo toast", isOn: showUndoToast)
+                    .accessibilityIdentifier("settings-show-undo-toast")
+                Stepper(value: closeGraceSeconds, in: 2 ... 15, step: 1) {
+                    Text("Undo window: \(Int(model.settings.closeGraceSeconds ?? 5))s")
+                }
+                .accessibilityIdentifier("settings-undo-duration")
+            }
+            .disabled(model.settings.closeGraceUndoEnabled == false)
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    /// 1:1 with the toggle; nil (the default) reads as ON, so off → false / on → nil keeps settings.json
+    /// minimal. Gates only the visual toast — the undo window itself is the General "Allow undo…" master.
+    private var showUndoToast: Binding<Bool> {
+        Binding(get: { model.settings.showUndoToast ?? true },
+                set: { model.setShowUndoToast($0 ? nil : false) })
+    }
+
+    /// The undo grace window in seconds; the 5s default maps back to nil so settings.json stays minimal,
+    /// matching the other "unset = default" controls.
+    private var closeGraceSeconds: Binding<Double> {
+        Binding(get: { model.settings.closeGraceSeconds ?? 5 },
+                set: { model.setCloseGraceSeconds($0 == 5 ? nil : $0) })
     }
 
     /// A section whose toggles lay out TWO per row, so the tab keeps fitting the fixed Settings window

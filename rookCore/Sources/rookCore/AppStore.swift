@@ -103,6 +103,9 @@ public final class AppStore {
     @ObservationIgnored var pendingCloseRecords: [UUID: PendingCloseRecord] = [:]
     @ObservationIgnored var pendingCloseOrder: [UUID] = []
     @ObservationIgnored var pendingCloseTasks: [UUID: Task<Void, Never>] = [:]
+    /// The grace window each pending close was scheduled with, so the summary can carry its countdown and
+    /// a hover-pause can reschedule the FULL grace on resume. Keyed by close id, cleaned up on undo/finalize.
+    @ObservationIgnored var pendingCloseGrace: [UUID: TimeInterval] = [:]
 
     @ObservationIgnored let persistence: PersistenceStore
     @ObservationIgnored let recentClosedStore: RecentClosedStore?
@@ -246,6 +249,7 @@ public final class AppStore {
                                         focused: workspace.id == focusedWorkspaceID ? true : nil,
                                         color: workspace.colorHex,
                                         icon: workspace.icon?.value, iconKind: workspace.icon?.kind.rawValue,
+                                        root: workspace.root,
                                         sessions: sessions)
         }
         return ControlTree(workspaces: nodes, idleMs: idleMs(), autoFollowMs: autoFollowMs,
@@ -922,7 +926,7 @@ public final class AppStore {
     func workspaceSnapshot(_ workspace: Workspace) -> WorkspaceSnapshot {
         WorkspaceSnapshot(id: workspace.id, name: workspace.name, sessions: workspace.sessions.map(sessionSnapshot),
                           collapsed: workspace.isExpanded ? nil : true, colorHex: workspace.colorHex,
-                          icon: workspace.icon)
+                          icon: workspace.icon, root: workspace.root)
     }
 
     func session(from snapshot: SessionSnapshot) -> Session {
@@ -953,7 +957,8 @@ public final class AppStore {
 
     func workspace(from snapshot: WorkspaceSnapshot) -> Workspace {
         Workspace(id: snapshot.id, name: snapshot.name, sessions: snapshot.sessions.map(session(from:)),
-                  isExpanded: !(snapshot.collapsed ?? false), colorHex: snapshot.colorHex, icon: snapshot.icon)
+                  isExpanded: !(snapshot.collapsed ?? false), colorHex: snapshot.colorHex, icon: snapshot.icon,
+                  root: snapshot.root)
     }
 
 }

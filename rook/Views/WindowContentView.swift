@@ -283,6 +283,37 @@ struct WindowContentView: View {
             // the mode switch below is safe to animate — it swaps sidebar CONTENT, not the split width, so
             // the detail column (and the deck) never resize.
             .animation(.easeInOut(duration: 0.15), value: store.sidebarMode)
+            // the undo toast, bottom-centered over the WHOLE content (not confined to the sidebar, which can
+            // be hidden). Rides splitRoot, so it inherits the zoom hide/hit-testing gate above — no toast over
+            // a zoomed window; a dashboard-open window shows none either, but because close is gated while it
+            // is open (no soft-close → no pending summary), not via this opacity gate.
+            .overlay(alignment: .bottom) { pendingCloseToastLayer }
+            .animation(.easeInOut(duration: 0.2), value: store.pendingCloseSummary?.id)
+        }
+    }
+
+    /// The undo toast overlay: shown at the bottom-center after a grace-period close when the "Show undo
+    /// toast" setting is on (default). Bottom-centered over the full content rather than the sidebar (which
+    /// may be hidden); `.id(summary.id)` remounts it per close so its countdown restarts and the transition
+    /// re-runs. See [[PendingCloseToast]] for the theming + hover-pause behavior.
+    @ViewBuilder private var pendingCloseToastLayer: some View {
+        if actions.settingsModel?.settings.showUndoToast ?? true, let summary = store.pendingCloseSummary {
+            PendingCloseToast(
+                summary: summary,
+                terminalColor: terminalColor,
+                chromeText: chromeText,
+                onReopen: {
+                    let restored = withAnimation(.easeInOut(duration: 0.16)) {
+                        store.undoPendingClose(summary.id)
+                    }
+                    if restored { actions.focusActiveSession() }
+                },
+                onPause: { store.pausePendingCloseFinalization(summary.id) },
+                onResume: { store.resumePendingCloseFinalization(summary.id) }
+            )
+            .id(summary.id)
+            .padding(.bottom, 26)
+            .padding(.horizontal, 8)
         }
     }
 

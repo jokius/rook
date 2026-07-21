@@ -99,19 +99,25 @@ public struct WorkspaceSnapshot: Codable, Equatable, Sendable {
     /// The sidebar icon (symbol/emoji/image), or nil for the default glyph. Optional for the same
     /// forward-compat reason as the fields above, and decoded LOSSILY (see `init(from:)`).
     public var icon: WorkspaceIcon?
+    /// The workspace's root directory (`Workspace.root`), or nil for none. Optional so a snapshot already
+    /// on disk before this field was added still decodes (missing → nil → no root) instead of failing the
+    /// load and wiping the saved tree, like the fields above. Optionality is the forward-compat, so the
+    /// `Snapshot` version is NOT bumped.
+    public var root: String?
 
     public init(id: UUID, name: String, sessions: [SessionSnapshot], collapsed: Bool? = nil,
-                colorHex: String? = nil, icon: WorkspaceIcon? = nil) {
+                colorHex: String? = nil, icon: WorkspaceIcon? = nil, root: String? = nil) {
         self.id = id
         self.name = name
         self.sessions = sessions
         self.collapsed = collapsed
         self.colorHex = colorHex
         self.icon = icon
+        self.root = root
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, sessions, collapsed, colorHex, icon
+        case id, name, sessions, collapsed, colorHex, icon, root
     }
 
     /// Custom decode so `icon` is LOSSY: a present-but-invalid spec (an unknown `kind` — e.g. a DOWNGRADE
@@ -128,6 +134,7 @@ public struct WorkspaceSnapshot: Codable, Equatable, Sendable {
         collapsed = try c.decodeIfPresent(Bool.self, forKey: .collapsed)
         colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
         icon = (try? c.decodeIfPresent(WorkspaceIcon.self, forKey: .icon)) ?? nil
+        root = try c.decodeIfPresent(String.self, forKey: .root)
     }
 }
 

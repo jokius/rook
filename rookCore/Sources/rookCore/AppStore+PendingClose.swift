@@ -9,14 +9,24 @@ public enum PendingCloseKind: String, Sendable {
 
 /// Observable domain summary for the latest undoable close. The app target decides how to present it.
 public struct PendingCloseSummary: Identifiable, Equatable, Sendable {
+    /// The soft-close default grace window, in seconds. The single source of truth: `AppStore`'s own
+    /// `pendingCloseGraceInterval` re-exports it (a nonisolated constant, so it is also usable as the init
+    /// default below, which `AppStore.pendingCloseGraceInterval` — being `@MainActor` — could not).
+    public static let defaultGraceInterval: TimeInterval = 3
+
     public let id: UUID
     public let kind: PendingCloseKind
     public let title: String
+    /// The grace window in seconds this close was scheduled with, so the undo toast can draw a countdown to
+    /// expiry. Defaults to `defaultGraceInterval` (the soft-close default grace).
+    public let graceInterval: TimeInterval
 
-    public init(id: UUID, kind: PendingCloseKind, title: String) {
+    public init(id: UUID, kind: PendingCloseKind, title: String,
+                graceInterval: TimeInterval = PendingCloseSummary.defaultGraceInterval) {
         self.id = id
         self.kind = kind
         self.title = title
+        self.graceInterval = graceInterval
     }
 }
 
@@ -46,7 +56,7 @@ struct PendingWorkspaceClose {
 }
 
 extension AppStore {
-    public static let pendingCloseGraceInterval: TimeInterval = 3
+    public static let pendingCloseGraceInterval: TimeInterval = PendingCloseSummary.defaultGraceInterval
 
     /// Hide a session from the visible tree but keep its surfaces alive for a short undo window.
     /// If the grace expires, `finalizePendingClose` performs the same teardown as `closeSession`.
@@ -81,7 +91,7 @@ extension AppStore {
         } else {
             pruneSidebarSelection()
         }
-        showPendingCloseSummary(id: closeID)
+        showPendingCloseSummary(id: closeID, grace: grace)
         schedulePendingCloseFinalization(id: closeID, grace: grace)
         cancelPendingSave()
         return true
@@ -147,7 +157,7 @@ extension AppStore {
             selectedSessionID: removingActive ? previousSelection : closes.first?.session.id
         ))
         pendingCloseOrder.append(closeID)
-        showPendingCloseSummary(id: closeID)
+        showPendingCloseSummary(id: closeID, grace: grace)
         schedulePendingCloseFinalization(id: closeID, grace: grace)
         cancelPendingSave()
         return true
@@ -181,7 +191,7 @@ extension AppStore {
         ))
         pendingCloseOrder.append(closeID)
         recordRecentClosedWorkspace(workspace, selectedSessionID: restoringSelection, id: closeID)
-        showPendingCloseSummary(id: closeID)
+        showPendingCloseSummary(id: closeID, grace: grace)
         schedulePendingCloseFinalization(id: closeID, grace: grace)
         cancelPendingSave()
         return true
@@ -193,6 +203,7 @@ extension AppStore {
         let closeID = id ?? pendingCloseSummary?.id
         guard let closeID, let record = pendingCloseRecords.removeValue(forKey: closeID) else { return false }
         pendingCloseTasks.removeValue(forKey: closeID)?.cancel()
+        pendingCloseGrace.removeValue(forKey: closeID)
         pendingCloseOrder.removeAll { $0 == closeID }
         switch record {
         case .sessions(let close):
@@ -210,6 +221,7 @@ extension AppStore {
     func finalizePendingClose(_ id: UUID) {
         guard let record = pendingCloseRecords.removeValue(forKey: id) else { return }
         pendingCloseTasks.removeValue(forKey: id)?.cancel()
+        pendingCloseGrace.removeValue(forKey: id)
         pendingCloseOrder.removeAll { $0 == id }
         switch record {
         case .sessions(let close):
@@ -227,8 +239,23 @@ extension AppStore {
         }
     }
 
-    private func showPendingCloseSummary(id: UUID) {
+    /// Pause a pending close's countdown: cancel its scheduled finalize, leaving the record, its held
+    /// surfaces, and the summary in place. The app calls this while the undo toast is hovered so the grace
+    /// window does not expire out from under the pointer. A no-op when the record is already gone.
+    public func pausePendingCloseFinalization(_ id: UUID) {
+        pendingCloseTasks.removeValue(forKey: id)?.cancel()
+    }
+
+    /// Resume a paused pending close: reschedule its finalize for the FULL grace again (a fresh countdown
+    /// from the moment the pointer leaves the toast). A no-op when the record is already gone.
+    public func resumePendingCloseFinalization(_ id: UUID) {
+        guard pendingCloseRecords[id] != nil else { return }
+        schedulePendingCloseFinalization(id: id, grace: pendingCloseGrace[id] ?? AppStore.pendingCloseGraceInterval)
+    }
+
+    private func showPendingCloseSummary(id: UUID, grace: TimeInterval) {
         guard let record = pendingCloseRecords[id] else { return }
+        pendingCloseGrace[id] = grace
         pendingCloseSummary = summary(for: id, record: record)
     }
 
@@ -241,14 +268,18 @@ extension AppStore {
     }
 
     private func summary(for id: UUID, record: PendingCloseRecord) -> PendingCloseSummary {
+        let grace = pendingCloseGrace[id] ?? AppStore.pendingCloseGraceInterval
         switch record {
         case .sessions(let close):
             if let session = close.sessions.first, close.sessions.count == 1 {
-                return PendingCloseSummary(id: id, kind: .session, title: session.session.displayName)
+                return PendingCloseSummary(id: id, kind: .session, title: session.session.displayName,
+                                           graceInterval: grace)
             }
-            return PendingCloseSummary(id: id, kind: .sessions, title: "\(close.sessions.count) sessions")
+            return PendingCloseSummary(id: id, kind: .sessions, title: "\(close.sessions.count) sessions",
+                                       graceInterval: grace)
         case .workspace(let close):
-            return PendingCloseSummary(id: id, kind: .workspace, title: close.workspace.name)
+            return PendingCloseSummary(id: id, kind: .workspace, title: close.workspace.name,
+                                       graceInterval: grace)
         }
     }
 
@@ -257,6 +288,10 @@ extension AppStore {
         let delay = UInt64(max(0, grace) * 1_000_000_000)
         pendingCloseTasks[id] = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: delay)
+            // A cancelled sleep throws, which `try?` swallows — so without this guard a paused/rescheduled
+            // timer would still fall through and finalize. `pause` cancels the task to hold the close;
+            // `resume` schedules a fresh one.
+            guard !Task.isCancelled else { return }
             self?.finalizePendingClose(id)
         }
     }
@@ -274,6 +309,7 @@ extension AppStore {
             guard case .workspace(let close)? = pendingCloseRecords[closeID], close.workspace.id == workspace.id else { continue }
             pendingCloseRecords.removeValue(forKey: closeID)
             pendingCloseTasks.removeValue(forKey: closeID)?.cancel()
+            pendingCloseGrace.removeValue(forKey: closeID)
             let present = Set(folded.sessions.map(\.id))
             folded.sessions.append(contentsOf: close.workspace.sessions.filter { !present.contains($0.id) })
         }
@@ -305,11 +341,12 @@ extension AppStore {
         for closeID in pendingCloseOrder.reversed() {
             guard case .workspace(let close)? = pendingCloseRecords[closeID], close.workspace.id == id else { continue }
             return Workspace(id: id, name: close.workspace.name, isExpanded: close.workspace.isExpanded,
-                             colorHex: close.workspace.colorHex, icon: close.workspace.icon)
+                             colorHex: close.workspace.colorHex, icon: close.workspace.icon,
+                             root: close.workspace.root)
         }
         if let snapshot = recentClosedStore?.load().compactMap(\.workspace).first(where: { $0.snapshot.id == id })?.snapshot {
             return Workspace(id: id, name: snapshot.name, isExpanded: !(snapshot.collapsed ?? false),
-                             colorHex: snapshot.colorHex, icon: snapshot.icon)
+                             colorHex: snapshot.colorHex, icon: snapshot.icon, root: snapshot.root)
         }
         return Workspace(id: id, name: name)
     }

@@ -17,6 +17,15 @@ public extension AppStore {
         scheduleSave()
     }
 
+    /// Sets (or clears, with nil) a workspace's root directory — the folder every NEW session in the
+    /// workspace opens in. Delta-guarded, so a repeated set is a clean no-op. A plain `save()` (unlike the
+    /// color): setting the root is a single directory-picker event, not a continuous drag.
+    func setWorkspaceRoot(_ id: UUID, path: String?) {
+        guard let index = workspaces.firstIndex(where: { $0.id == id }), workspaces[index].root != path else { return }
+        workspaces[index].root = path
+        save()
+    }
+
     /// Sets (or clears, with nil) a workspace's sidebar icon. For an `.image` icon, `icon.value` must
     /// ALREADY point at the copy in `WorkspaceIconStorage` — the caller installs the file (the control
     /// server and the GUI both go through `WorkspaceIconStorage.install`), so this only swaps the spec.

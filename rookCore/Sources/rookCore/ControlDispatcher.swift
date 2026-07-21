@@ -29,6 +29,10 @@ public protocol ControlActions {
     /// argument and checked what it can host-free; the app still owns the two AppKit/filesystem steps —
     /// validating an SF Symbol name (`NSImage(systemSymbolName:)`) and copying an image into the state dir.
     func setWorkspaceIcon(_ target: String?, window: String?, icon: WorkspaceIcon?) -> ControlResponse
+    /// Sets the workspace's root directory, or clears it with nil. The dispatcher owns the clear-semantics
+    /// (a literal `clear` or an omitted path clears); this only resolves the target, mutates, and — at
+    /// spawn time, not here — falls back to home when the directory does not exist.
+    func setWorkspaceRoot(_ target: String?, window: String?, path: String?) -> ControlResponse
     func setSessionFlag(_ target: String?, window: String?, mode: String?) -> ControlResponse
     func markSessionSeen(_ target: String?, window: String?) -> ControlResponse
     func setSessionStatus(_ target: String?, window: String?, update: ControlSessionStatusUpdate) -> ControlResponse
@@ -166,7 +170,7 @@ public struct ControlDispatcher {
                 .sessionText:
             return await dispatchSessionSurfaceCommand(request)
         case .workspaceNew, .workspaceSelect, .workspaceRename, .workspaceDelete,
-                .workspaceMove, .workspaceFocus, .workspaceColor, .workspaceIcon:
+                .workspaceMove, .workspaceFocus, .workspaceColor, .workspaceIcon, .workspaceRoot:
             return dispatchWorkspaceCommand(request)
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarExpand,
@@ -379,6 +383,8 @@ public struct ControlDispatcher {
             return dispatchWorkspaceColor(request)
         case .workspaceIcon:
             return dispatchWorkspaceIcon(request)
+        case .workspaceRoot:
+            return dispatchWorkspaceRoot(request)
         default:
             preconditionFailure("unexpected workspace command: \(request.cmd.rawValue)")
         }
@@ -423,6 +429,18 @@ public struct ControlDispatcher {
         }
         return actions.setWorkspaceIcon(request.target, window: request.args?.window,
                                         icon: WorkspaceIcon(kind: kind, value: raw))
+    }
+
+    /// `workspace.root <target> <dir|clear>` — the literal `clear` (and an omitted path) clears the root,
+    /// mirroring the `clear` idiom the other workspace set/clear commands use. Any other value passes
+    /// through as the root directory. Whether the directory EXISTS is decided at spawn time (app-side, a
+    /// fallback to home), so the dispatcher stays host-free and does no filesystem check.
+    private func dispatchWorkspaceRoot(_ request: ControlRequest) -> ControlResponse {
+        let raw = request.args?.path?.trimmedOrNil
+        guard let raw, raw != "clear" else {
+            return actions.setWorkspaceRoot(request.target, window: request.args?.window, path: nil)
+        }
+        return actions.setWorkspaceRoot(request.target, window: request.args?.window, path: raw)
     }
 
     private func dispatchSessionSurfaceCommand(_ request: ControlRequest) async -> ControlResponse {

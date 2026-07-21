@@ -30,6 +30,7 @@ final class MockControlActions: ControlActions {
         case workspaceFocus(target: String?, window: String?, String?)
         case workspaceColor(target: String?, window: String?, hex: String?)
         case workspaceIcon(target: String?, window: String?, icon: WorkspaceIcon?)
+        case workspaceRoot(target: String?, window: String?, path: String?)
         case sessionFlag(target: String?, window: String?, String?)
         case markSessionSeen(target: String?, window: String?)
         case sessionStatus(target: String?, window: String?, ControlSessionStatusUpdate)

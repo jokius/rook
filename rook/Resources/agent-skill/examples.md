@@ -334,6 +334,23 @@ The color applies only to a symbol or a MONOCHROME image (one color over transpa
 templates the color can repaint). A colored image of any format and an emoji carry their own colors, so the
 color is ignored for them.
 
+## Give a workspace a root directory (new sessions open there)
+
+Set a workspace's root so every new session in it opens in your project directory instead of the global
+default. It is a HARD override of the new-session-directory setting; an explicit `session new --cwd` still
+wins. Persisted and read back on the tree workspace node's `root`, so record-then-restore is safe.
+
+```bash
+rookctl workspace root ~/src/rook --target "$ROOK_WORKSPACE_ID"  # new sessions here open in ~/src/rook
+rookctl session new                                              # → opens in ~/src/rook
+rookctl workspace root clear --target "$ROOK_WORKSPACE_ID"       # back to the global setting
+
+# record the current root, change it, restore it
+old=$(rookctl tree --json | jq -r '.workspaces[] | select(.id | startswith("a1b2")) | .root // "clear"')
+rookctl workspace root /tmp/scratch --target a1b2
+rookctl workspace root "$old" --target a1b2
+```
+
 ## Expand or collapse the sidebar tree
 
 Open every workspace at once, or collapse all but the active one (the workspace of the active session,

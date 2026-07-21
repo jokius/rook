@@ -230,9 +230,22 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// app-level behavior flag read on demand by `AppActions`, NOT a ghostty key — it never appears in
     /// `ghosttyConfigLines()`; the control channel's `session.close` closes without a prompt.
     public var confirmCloseSession: Bool?
+    /// Narrows `confirmCloseSession` to sessions actually RUNNING an agent (`Session.agentKind != nil`):
+    /// nil/false means the default (confirm every close, when `confirmCloseSession` is on), true means an
+    /// empty terminal closes silently and only an agent session prompts. Only meaningful under
+    /// `confirmCloseSession`. An app-level behavior flag read on demand by `AppActions`, NOT a ghostty key.
+    public var confirmCloseOnlyRunningAgent: Bool?
     /// Whether GUI closes keep a short undo grace period before final teardown. nil means the default
     /// (on). When off, GUI closes are immediate but still enter File > Open Recent.
     public var closeGraceUndoEnabled: Bool?
+    /// The undo grace window in seconds a soft close keeps before final teardown; nil means the default
+    /// (`effectiveCloseGraceSeconds`, 5). An app-level behavior value read on demand by `AppActions`, NOT a
+    /// ghostty key — it never appears in `ghosttyConfigLines()`.
+    public var closeGraceSeconds: Double?
+    /// Whether the visual "Closed X / Reopen" undo toast is shown during the grace window. nil means the
+    /// default (on); the undo MECHANISM (⌘Z / Reopen Closed Item) works either way. An app-level chrome
+    /// flag, NOT a ghostty key — it never appears in `ghosttyConfigLines()`.
+    public var showUndoToast: Bool?
     /// The user-idle timeout that auto-follows the window's selection to the oldest blocked session, as an
     /// `AutoFollowAttention` raw value; nil means the default (`off` — disabled). An app-level per-window
     /// behavior value driving `AppStore`'s idle controller, NOT a ghostty key — it never appears in
@@ -278,7 +291,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 dockBounce: String? = nil, notificationSoundName: String? = nil,
                 blockedStatusSoundName: String? = nil, rightClickPaste: Bool? = nil,
                 newSessionDirectory: String? = nil, newSessionCustomDirectory: String? = nil,
-                confirmCloseSession: Bool? = nil, closeGraceUndoEnabled: Bool? = nil,
+                confirmCloseSession: Bool? = nil, confirmCloseOnlyRunningAgent: Bool? = nil,
+                closeGraceUndoEnabled: Bool? = nil,
+                closeGraceSeconds: Double? = nil, showUndoToast: Bool? = nil,
                 autoFollowAttention: String? = nil,
                 autoFollowStayOnActive: Bool? = nil, sidebarFontSize: Double? = nil,
                 editorApp: String? = nil, statusRowHighlightEnabled: Bool? = nil,
@@ -312,7 +327,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.newSessionDirectory = newSessionDirectory
         self.newSessionCustomDirectory = newSessionCustomDirectory
         self.confirmCloseSession = confirmCloseSession
+        self.confirmCloseOnlyRunningAgent = confirmCloseOnlyRunningAgent
         self.closeGraceUndoEnabled = closeGraceUndoEnabled
+        self.closeGraceSeconds = closeGraceSeconds
+        self.showUndoToast = showUndoToast
         self.autoFollowAttention = autoFollowAttention
         self.autoFollowStayOnActive = autoFollowStayOnActive
         self.sidebarFontSize = sidebarFontSize
@@ -349,12 +367,20 @@ public struct AppSettings: Codable, Equatable, Sendable {
         dockBounce.flatMap(DockBounce.init(rawValue:)) ?? .off
     }
 
-    /// The working directory a new session should open in, resolving the `newSessionDirectory` mode
-    /// against the active session's focused-pane cwd and the home directory. An unknown/nil mode, a
-    /// nil/blank `currentSessionCwd`, or a nil/blank custom path all fall back to `home`: `home` → home;
-    /// `currentSession` → `currentSessionCwd` (else home); `custom` → `newSessionCustomDirectory` (else
-    /// home). Host-free so `AppActions.newSession()` and the tests share one resolution.
-    public func resolveNewSessionCwd(currentSessionCwd: String?, home: String) -> String {
+    /// The undo grace window in seconds a soft close keeps before final teardown; `closeGraceSeconds`
+    /// when set, else the default of 5 (the fork's longer-than-upstream window). The single read point the
+    /// app target uses.
+    public var effectiveCloseGraceSeconds: TimeInterval { closeGraceSeconds ?? 5 }
+
+    /// The working directory a new session should open in. A non-blank `workspaceRoot` is a HARD override
+    /// (the target workspace's own root directory wins over the global mode); otherwise it resolves the
+    /// `newSessionDirectory` mode against the active session's focused-pane cwd and the home directory. An
+    /// unknown/nil mode, a nil/blank `currentSessionCwd`, or a nil/blank custom path all fall back to
+    /// `home`: `home` → home; `currentSession` → `currentSessionCwd` (else home); `custom` →
+    /// `newSessionCustomDirectory` (else home). Host-free so `AppActions.newSession()` and the tests share
+    /// one resolution.
+    public func resolveNewSessionCwd(workspaceRoot: String?, currentSessionCwd: String?, home: String) -> String {
+        if let root = workspaceRoot, !root.isEmpty { return root }
         switch NewSessionDirectory(rawValue: newSessionDirectory ?? "") ?? .home {
         case .home:
             return home

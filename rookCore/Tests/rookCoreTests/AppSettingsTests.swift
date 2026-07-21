@@ -27,6 +27,33 @@ struct AppSettingsTests {
         #expect(AppSettings().closeGraceUndoEnabled == nil)
     }
 
+    @Test func closeGraceSecondsRoundTripsAndEffectiveDefaultsToFive() throws {
+        // unset → the effective grace is the widened 5s default (up from the old hard-coded 3s).
+        #expect(AppSettings().closeGraceSeconds == nil)
+        #expect(AppSettings().effectiveCloseGraceSeconds == 5)
+        // set → the effective value is the stored one.
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(AppSettings(closeGraceSeconds: 8)))
+        #expect(decoded.closeGraceSeconds == 8)
+        #expect(decoded.effectiveCloseGraceSeconds == 8)
+        // absent in a legacy file decodes to nil (→ effective 5).
+        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"theme":"Nord"}"#.utf8))
+        #expect(legacy.closeGraceSeconds == nil)
+        #expect(legacy.effectiveCloseGraceSeconds == 5)
+        // an app-level timing value, never a ghostty config key — only the always-on defaults are emitted.
+        #expect(AppSettings(closeGraceSeconds: 8).ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
+    }
+
+    @Test func showUndoToastRoundTripsAndDefaultsOn() throws {
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(AppSettings(showUndoToast: false)))
+        #expect(decoded.showUndoToast == false)
+        // absent in a legacy file decodes to nil, which the app reads as ON (the toast is default-on).
+        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"theme":"Nord"}"#.utf8))
+        #expect(legacy.showUndoToast == nil)
+        #expect((legacy.showUndoToast ?? true) == true)
+        // an app-level render toggle, never a ghostty config key — only the always-on defaults are emitted.
+        #expect(AppSettings(showUndoToast: false).ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
+    }
+
     @Test func emptySettingsEmitOnlyAlwaysOnDefaults() {
         // every other field is unset (omitted); only the two always-on keys emit — mouse-scroll-multiplier
         // at its default of 3 and right-click-action at its default of paste.
@@ -189,6 +216,17 @@ struct AppSettingsTests {
         #expect(legacy.confirmCloseSession == nil)
         // an app-level behavior flag, never a ghostty config key — only the always-on defaults (scroll + right-click) are emitted.
         #expect(AppSettings(confirmCloseSession: true).ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
+    }
+
+    @Test func confirmCloseOnlyRunningAgentRoundTripsAndIsNotAConfigLine() throws {
+        // the sub-option under the confirm-close master: gate the prompt to sessions running an agent.
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(AppSettings(confirmCloseOnlyRunningAgent: true)))
+        #expect(decoded.confirmCloseOnlyRunningAgent == true)
+        // absent in a legacy file decodes to nil (off — opt-in; confirm still fires for every close by default).
+        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"theme":"Nord"}"#.utf8))
+        #expect(legacy.confirmCloseOnlyRunningAgent == nil)
+        // an app-level behavior flag, never a ghostty config key — only the always-on defaults are emitted.
+        #expect(AppSettings(confirmCloseOnlyRunningAgent: true).ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
     }
 
     @Test func blockedStatusSoundNameRoundTripsAndIsNotAConfigLine() throws {
@@ -446,28 +484,47 @@ struct AppSettingsTests {
 
     @Test func resolveNewSessionCwdHomeIsDefault() {
         // nil mode (default) and an explicit "home" both resolve to home, ignoring the session cwd.
-        #expect(AppSettings().resolveNewSessionCwd(currentSessionCwd: "/proj", home: "/home") == "/home")
-        #expect(AppSettings(newSessionDirectory: "home").resolveNewSessionCwd(currentSessionCwd: "/proj", home: "/home") == "/home")
+        #expect(AppSettings().resolveNewSessionCwd(workspaceRoot: nil, currentSessionCwd: "/proj", home: "/home") == "/home")
+        #expect(AppSettings(newSessionDirectory: "home").resolveNewSessionCwd(workspaceRoot: nil, currentSessionCwd: "/proj", home: "/home") == "/home")
         // an unknown future mode falls back to home rather than crashing.
-        #expect(AppSettings(newSessionDirectory: "future").resolveNewSessionCwd(currentSessionCwd: "/proj", home: "/home") == "/home")
+        #expect(AppSettings(newSessionDirectory: "future").resolveNewSessionCwd(workspaceRoot: nil, currentSessionCwd: "/proj", home: "/home") == "/home")
     }
 
     @Test func resolveNewSessionCwdCurrentSessionInheritsOrFallsBack() {
         let settings = AppSettings(newSessionDirectory: "currentSession")
-        #expect(settings.resolveNewSessionCwd(currentSessionCwd: "/proj", home: "/home") == "/proj")
+        #expect(settings.resolveNewSessionCwd(workspaceRoot: nil, currentSessionCwd: "/proj", home: "/home") == "/proj")
         // no active session (nil cwd) or a blank cwd falls back to home.
-        #expect(settings.resolveNewSessionCwd(currentSessionCwd: nil, home: "/home") == "/home")
-        #expect(settings.resolveNewSessionCwd(currentSessionCwd: "", home: "/home") == "/home")
+        #expect(settings.resolveNewSessionCwd(workspaceRoot: nil, currentSessionCwd: nil, home: "/home") == "/home")
+        #expect(settings.resolveNewSessionCwd(workspaceRoot: nil, currentSessionCwd: "", home: "/home") == "/home")
     }
 
     @Test func resolveNewSessionCwdCustomUsesPathElseHome() {
         #expect(AppSettings(newSessionDirectory: "custom", newSessionCustomDirectory: "/fixed")
-            .resolveNewSessionCwd(currentSessionCwd: "/proj", home: "/home") == "/fixed")
+            .resolveNewSessionCwd(workspaceRoot: nil, currentSessionCwd: "/proj", home: "/home") == "/fixed")
         // custom mode with an unset or blank path falls back to home.
         #expect(AppSettings(newSessionDirectory: "custom")
-            .resolveNewSessionCwd(currentSessionCwd: "/proj", home: "/home") == "/home")
+            .resolveNewSessionCwd(workspaceRoot: nil, currentSessionCwd: "/proj", home: "/home") == "/home")
         #expect(AppSettings(newSessionDirectory: "custom", newSessionCustomDirectory: "")
-            .resolveNewSessionCwd(currentSessionCwd: "/proj", home: "/home") == "/home")
+            .resolveNewSessionCwd(workspaceRoot: nil, currentSessionCwd: "/proj", home: "/home") == "/home")
+    }
+
+    @Test func resolveNewSessionCwdWorkspaceRootOverridesEveryMode() {
+        // a non-empty workspace root is a HARD override — it wins over every newSessionDirectory mode,
+        // even a set custom directory (the per-workspace root is the whole point of the feature).
+        let modes: [String?] = [nil, "home", "currentSession", "custom"]
+        for mode in modes {
+            let settings = AppSettings(newSessionDirectory: mode, newSessionCustomDirectory: "/fixed")
+            #expect(settings.resolveNewSessionCwd(workspaceRoot: "/root", currentSessionCwd: "/proj", home: "/home") == "/root")
+        }
+    }
+
+    @Test func resolveNewSessionCwdBlankWorkspaceRootFallsThroughToTheMode() {
+        // nil or empty workspace root defers to the existing per-setting resolution (behavior preserved).
+        #expect(AppSettings().resolveNewSessionCwd(workspaceRoot: nil, currentSessionCwd: "/proj", home: "/home") == "/home")
+        #expect(AppSettings().resolveNewSessionCwd(workspaceRoot: "", currentSessionCwd: "/proj", home: "/home") == "/home")
+        let current = AppSettings(newSessionDirectory: "currentSession")
+        #expect(current.resolveNewSessionCwd(workspaceRoot: "", currentSessionCwd: "/proj", home: "/home") == "/proj")
+        #expect(current.resolveNewSessionCwd(workspaceRoot: nil, currentSessionCwd: "/proj", home: "/home") == "/proj")
     }
 
     @Test func autoFollowAttentionUnknownDecodesToOff() {

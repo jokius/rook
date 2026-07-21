@@ -15,7 +15,7 @@ extension AppStore {
             // tree serializes identically to a legacy snapshot.
             return WorkspaceSnapshot(id: workspace.id, name: workspace.name, sessions: sessions,
                                      collapsed: workspace.isExpanded ? nil : true, colorHex: workspace.colorHex,
-                                     icon: workspace.icon)
+                                     icon: workspace.icon, root: workspace.root)
         }
         return Snapshot(selectedSessionID: selectedSessionID, workspaces: workspaceSnapshots,
                         sidebarWidth: sidebarWidth, fileTreeWidth: fileTreeWidth, markdownWidth: markdownWidth,
@@ -47,7 +47,8 @@ extension AppStore {
             // absent/nil collapsed → expanded (back-compat with snapshots written before the field existed).
             restored.append(Workspace(id: workspaceSnapshot.id, name: workspaceSnapshot.name, sessions: sessions,
                                       isExpanded: !(workspaceSnapshot.collapsed ?? false),
-                                      colorHex: workspaceSnapshot.colorHex, icon: workspaceSnapshot.icon))
+                                      colorHex: workspaceSnapshot.colorHex, icon: workspaceSnapshot.icon,
+                                      root: workspaceSnapshot.root))
         }
         // clamp on restore (not just nil-default) so a corrupt or hand-edited snapshot can't drive an
         // out-of-range frame width; the drag path clamps to the same bounds.

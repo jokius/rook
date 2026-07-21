@@ -366,7 +366,7 @@ final class ControlServer {
         case .tree, .sessionNew, .sessionDuplicate, .sessionSelect, .sessionGo, .sessionClose, .sessionRename,
                 .sessionReveal, .sessionMove,
                 .workspaceNew, .workspaceSelect, .workspaceRename, .workspaceDelete, .workspaceMove, .workspaceFocus,
-                .workspaceColor, .workspaceIcon,
+                .workspaceColor, .workspaceIcon, .workspaceRoot,
                 .sessionSplit, .sessionScratch, .sessionFileTree, .sessionMarkdown, .sessionFocus, .sessionResize,
                 .surfaceZoom,
                 .sessionStatus, .sessionAgent, .sessionFlag, .sessionSeen, .notify,
@@ -492,7 +492,10 @@ final class ControlServer {
     /// session open after the command exits.
     func makeSessionResponse(in store: AppStore, workspaceID: UUID,
                              options: ControlSessionCreateOptions, at index: Int? = nil) -> ControlResponse {
-        let cwd = options.cwd ?? FileManager.default.homeDirectoryForCurrentUser.path
+        // an explicit --cwd wins; else the destination workspace's root (when set and still a real
+        // directory); else $HOME. Mirrors the GUI path (AppActions.resolvedNewSessionCwd).
+        let root = AppActions.existingDirectory(store.workspaces.first { $0.id == workspaceID }?.root)
+        let cwd = options.cwd ?? root ?? FileManager.default.homeDirectoryForCurrentUser.path
         guard let session = store.addSession(toWorkspace: workspaceID, cwd: cwd,
                                              command: options.command, name: options.name,
                                              wait: options.wait ?? false, at: index,
