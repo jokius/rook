@@ -149,6 +149,12 @@ never two bundles in one window.
   it to `WindowRegistry.raise` else `enqueueClaim` + `openWindow(id:)`),
   polls for the store to load, then `selectSession` + focus the pane (stale-safe:
   unknown window/session → just activate).
+  **The OPEN-window branch RAISES the owning window too** (`WindowRegistry.shared.raise(windowID)` in
+  `revealSession`), which makes it symmetric with the closed branch.
+  `makeFirstResponder` does not raise, and the notification handler's `NSApp.activate` brings the APP
+  forward — not a window minimized to the Dock or sitting behind another one — so without this a banner
+  click into such a window changed the selection INVISIBLY.
+  `window.minimize` is what makes that state routinely reachable, which is why the two landed together.
   `reveal` stays a keep-in-sync exemption (internal click-routing, not on toolbar/menu/palette).
 - **Spawned-shell `ROOK_*` env (per surface).**
   `GhosttySurfaceView.init` takes `env: [String: String] = [:]`; it strdups each key/value into the existing
@@ -159,6 +165,12 @@ never two bundles in one window.
   Tree surfaces (main/split/overlay, via `rookApp.surfaceEnv(for:)`) inject `ROOK_ENABLED=1`,
   `ROOK_WINDOW_ID` (`library.windowID(forSession:)`), `ROOK_WORKSPACE_ID` (`store.workspace(forSession:)`),
   `ROOK_SESSION_ID`, `ROOK_SOCKET`; split/overlay inherit the parent session's ids.
+  A session-owned PANE (main/split/scratch — not the overlay, which passes `pane: nil`) additionally gets
+  `ROOK_PANE` (the role) and `ROOK_PANE_ID` (a fresh per-surface `UUID` token, stable for that surface's
+  life — see [[notifications]] for why the role alone is not enough).
+  Any doc or recipe that enumerates the spawned-shell `ROOK_*` set, or scrubs it for a daemon/tmux
+  (`env -u ROOK_ENABLED -u ROOK_PANE …`, tmux `set-environment -g -r`), must carry `ROOK_PANE_ID` too —
+  a scrub that misses it leaves a stale token the status handler will happily resolve.
   The quick terminal (`quickTerminalEnv(for:)`) gets only `ROOK_ENABLED` + `ROOK_WINDOW_ID` + `ROOK_SOCKET`
   (scratch, not in the tree).
   `ROOK_SOCKET` is the path `ControlServer` *actually bound* (`ControlServer.boundSocketPath`,
@@ -223,15 +235,84 @@ never two bundles in one window.
   `windowCommandsRoundTrip` (`ControlProtocolTests`) +
   `windowCommandsRouteParsedInputsAndKeepActionResponses` (`ControlDispatcherTests`) + the CLI mapping in
   `CommandsTests` + the e2e `testWindowFullscreen` in `ControlWindowUITests`.
-- **`window.*` control additions (eight commands, plus `window.zoom`/`window.fullscreen`).**
-  `window.new` (returns the new id + opens its window), `window.list` (returns `windows` with each window's
+- **`window.minimize` (park in the Dock — control-native; the GUI half is ⌘M, the yellow traffic light,
+  and the Minimize title-bar double-click action).**
+  `WindowRegistry.minimize(_:mode:)` drives the standard `NSWindow.miniaturize`/`deminiaturize`.
+  The mode is EXPLICIT — `on`/`off`/`toggle`, default `toggle` — and resolves against the window's CURRENT
+  state, so `on`/`off` are idempotent and only `toggle` flips.
+  CLI: `rookctl window minimize [id] [on|off|toggle]`; both positionals are optional, so the subcommand
+  recovers a bare `window minimize on` by re-binding the mode word to `target: active`
+  (a window address is a UUID prefix or `active`, so it can never BE a mode word — the recovery is
+  unambiguous).
+  Requires the window OPEN (closed → `window not open — window.select it first`).
+  **A natively FULL-SCREEN window is REJECTED**, not answered ok:
+  `cannot minimize a full-screen window — window.fullscreen it first`.
+  AppKit silently no-ops `miniaturize` on a full-screen window, and a silent no-op is the worst possible
+  reply — a script would report success and then wait forever for a state that never changes.
+  Miniaturize/deminiaturize are ANIMATED, so the arm settle-polls `WindowRegistry.isMinimized` before
+  replying; without that the `defer`-ed window-cache refresh captures the OLD value and the very next
+  `window.list` reports the state the caller just changed away from.
+  **`window.new --minimized`** (`ControlArgs.minimized`) creates the window and THEN parks it, so a script
+  can build a set of project windows without each one flashing on screen and stealing focus.
+  It sleeps ~50 ms before minimizing on purpose: `WindowAccessor` presents a window on attach BOTH
+  synchronously and again on the next main-queue turn, and that second present would deminiaturize it
+  right back.
+  Its READ side is `ControlWindowNode.minimized` on `window.list` (via `WindowRegistry.windowFlags(for:)`
+  → `NSWindow.isMiniaturized`), which is what makes record-then-restore possible;
+  `ControlServer` observes `didMiniaturize`/`didDeminiaturize` next to the `didMove`/`didResize`/fullscreen
+  pair, so a ⌘M or a Dock click keeps the cache honest too.
+  **A minimized window still reports its `geometry`, so record-then-restore works while it is parked.**
+  `NSWindow.screen` is nil for ANY off-screen window, so the old `guard let screen = window.screen` in
+  `geometry(for:)` returned nil for a minimized one and the frame was unrecoverable;
+  `WindowRegistry.resolvedScreen(for:)` falls back to the display the frame overlaps most
+  (`WindowGeometry.bestDisplayIndex`), then `NSScreen.main`.
+  `geometry`, `move`, and `resize` ALL share it deliberately — a read resolved by overlap against a write
+  resolved by `NSScreen.main` would disagree on the display index and the reported frame would stop
+  round-tripping back through `window.move`.
+  Four-point keep-in-sync audit: (1) `case windowMinimize = "window.minimize"` + `ControlArgs.minimized` in
+  `ControlProtocol.swift`, (2) the `.windowMinimize` dispatch arm in `ControlServer+WindowCommands`
+  (mode parsed by the dispatcher → `invalid window minimize mode: <mode>`),
+  (3) the `window minimize` subcommand + the `window new --minimized` flag in `rookctlKit`,
+  (4) `windowCommandsRoundTrip` (`ControlProtocolTests`) + `ControlDispatcherTests` + the CLI mapping in
+  `CommandsTests`.
+  Note the coverage is host-free ONLY — there is NO XCUITest e2e, unlike `window.zoom`/`window.fullscreen`.
+  Defect 5 below is the reason to be careful if you add one: the UITest present path actively deminiaturizes
+  windows, so an e2e must not fight it.
+- **Five plumbing defects fixed alongside `window.minimize`** — worth knowing because each one silently
+  mis-routed a command rather than failing:
+  (1) `window.new` replied BEFORE its NSWindow attached, so an immediate `resize`/`move`/`zoom` on the
+  fresh id failed with `window not open`; it now settles on `WindowRegistry.isRegistered`, NOT
+  `library.isOpen` — `newWindow()` loads the store synchronously, so `isOpen` is already true and would
+  prove nothing.
+  (2) `window.list` served a cache nothing refreshed on window ATTACH, so a brand-new window reported no
+  geometry; `WindowRegistry.register`/`unregister` now post `.rookWindowAttachmentChanged` and
+  `ControlServer` refreshes on it (load-bearing for every opener, including GUI New Window and launch
+  reopen-all, which run no control command at all).
+  (3) Minimizing the FRONTMOST window left `frontmostWindowID` pointing into the Dock —
+  `activeWindowID` only falls back when the window's STORE is gone, and a minimized window keeps its
+  store — so `handOffFrontmost(from:)` re-points it at a still-visible open window (nothing to hand to =
+  the pointer stays put rather than being cleared).
+  (4) **The nastiest: `window.select` never took frontmost while the app was INACTIVE.**
+  `frontmostWindowID`'s only writer was `WindowAccessor.reportFrontmost`, on the `didBecomeKey`/`didBecomeMain`
+  notifications AppKit does NOT deliver to an inactive app — so a background `window select` replied ok
+  while every LATER UNTARGETED command (`tree`, `session.new`, `quick`, the palette, the menu bar) kept
+  routing into the previously-active window.
+  `windowSelect` now calls `takeFrontmost(id)` explicitly, the control-side twin of `reportFrontmost`.
+  (5) Ours, not upstream's: `WindowAccessor.bringForwardForUITests` armed six deferred presents on EVERY
+  window attach and latched on only ONE branch, so a `window.new --minimized` got dragged back out of the
+  Dock; the already-on-screen branch now latches too.
+- **`window.*` control additions (eight commands, plus `window.zoom`/`window.fullscreen`/`window.minimize`).**
+  `window.new` (returns the new id + opens its window, polling for the NSWindow to ATTACH before it
+  replies; `--minimized` parks it — see the `window.minimize` bullet),
+  `window.list` (returns `windows` with each window's
   `open`/`active` flag, plus `autoFollowMs` and `sidebarVisible` read from the open window's store, and
   `geometry` — the live NSWindow frame `{x, y, width, height, display}` in `window.move`/`window.resize`'s
   own coordinate system (top-left relative to the display, y down) so a read-back round-trips through them,
-  read app-side via `WindowRegistry.geometry(for:)` — plus `fullscreen`/`zoomed` (the read side of
-  `window.fullscreen`/`window.zoom`, read via `WindowRegistry.windowFlags(for:)` so a script can make
-  those toggles idempotent) — all omitted for a closed window),
-  `window.select` (raise-or-open), `window.close` (`WindowRegistry.close` →
+  read app-side via `WindowRegistry.geometry(for:)` — plus `fullscreen`/`zoomed`/`minimized` (the read side of
+  `window.fullscreen`/`window.zoom`/`window.minimize`, read via `WindowRegistry.windowFlags(for:)` so a
+  script can make those toggles idempotent) — all omitted for a closed window),
+  `window.select` (raise-or-open, and it TAKES frontmost — see defect 4 above),
+  `window.close` (`WindowRegistry.close` →
   standard teardown), `window.rename`, `window.delete` (`canRemoveWindow` keep-at-least-one → error,
   not a GUI confirm).
   `window.list` is answered from the background-thread `cachedWindowNodes` cache (see the fast-path note
@@ -241,12 +322,18 @@ never two bundles in one window.
   posts `.rookSidebarVisibilityChanged` and `ControlServer` observes it to `refreshWindowCache`.
   The live, never-cached copy of `sidebarVisible` is on `tree`'s top level (main-actor per request);
   prefer it for read-then-act scripts.
-  The node's `geometry`/`fullscreen`/`zoomed` are the SAME problem writ larger — live NSWindow state that a
-  user drag/resize/zoom/fullscreen changes with no command, and (unlike `sidebarVisible`) with NO live tree
+  The node's `geometry`/`fullscreen`/`zoomed`/`minimized` are the SAME problem writ larger — live NSWindow
+  state that a user drag/resize/zoom/fullscreen/⌘M/Dock-click changes with no command, and (unlike
+  `sidebarVisible`) with NO live tree
   copy, so a polling `window.list` would read them stale forever. `ControlServer` therefore observes the
-  NSWindow `didMove`/`didResize`/`didEnterFullScreen`/`didExitFullScreen` notifications (object nil) and
+  NSWindow `didMove`/`didResize`/`didEnterFullScreen`/`didExitFullScreen`/`didMiniaturize`/`didDeminiaturize`
+  notifications (object nil) and
   `refreshWindowCache`s on each — the fullscreen enter/exit fire AFTER the async transition, so the settled
   `styleMask` is captured; a drag's storm just keeps the cache current.
+  A window's NSWindow ATTACHES a render pass or two after its store loads, and none of those notifications
+  fire on that path (a brand-new window has no saved frame to restore, and `newWindow()` pre-sets
+  `frontmostWindowID` so the first `didBecomeKey` is a no-change), so `WindowRegistry` posts its own
+  `.rookWindowAttachmentChanged` on register/unregister and `ControlServer` refreshes on that too.
   The notification is IGNORED (`_ in`), NOT captured: a non-Sendable `Notification` can't cross into the
   `MainActor.assumeIsolated` region under Swift 6 (the `sending 'note'` error — which a Debug build compiles
   clean but the Release WMO rejects, so verify app-target concurrency changes with a Release build), so the
@@ -268,6 +355,6 @@ never two bundles in one window.
   *specific* window's tree: with `args.window` set, the window must be open (else `window not open — window.select it first`);
   without it, `active`/placement default to the frontmost store, but an id/prefix session/workspace target
   is matched across ALL open stores (`resolveTargetAcrossWindows`) and mapped back to its owning `AppStore`.
-  See the Control API section for the catalog and the keep-in-sync four-point audit (all eight window
+  See the Control API section for the catalog and the keep-in-sync four-point audit (all eleven window
   commands satisfy it).
 

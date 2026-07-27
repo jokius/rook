@@ -55,8 +55,8 @@ paths:
   or quick terminal), else the active session's surface.
   A menu-driven font change still rides the CELL_SIZE → persist path, like the keybind.
 - **In-terminal search (⌘F).**
-  `BuiltinAction.toggleSearch` (`defaultChord` = ⌘F, expressible/rebindable — NOT one of the arrow-bound
-  exceptions) drives `AppActions.toggleSearch()` → `focusedSurface().startSearch()` (the `start_search`
+  `BuiltinAction.toggleSearch` (`defaultChord` = ⌘F, expressible/rebindable) drives
+  `AppActions.toggleSearch()` → `focusedSurface().startSearch()` (the `start_search`
   binding action).
   It is a real View ▸ Find… menu item (reading `equivalent(for: .toggleSearch)`,
   no hardcoded shortcut) plus a ⌃⇧P palette "Find…" entry. libghostty replies with a `START_SEARCH` action;
@@ -233,6 +233,24 @@ paths:
   Pane" (left/right = panes, up/down = sessions), and first/last need no dedicated key.
   They are real menu items (the Navigate menu — see the menu-split note below),
   so AppKit menu dispatch swallows the shortcut before libghostty and nothing leaks to the shell.
+  **The six arrow-bound actions resolve through the ORDINARY `shortcut(for:)` path, like every other
+  built-in.**
+  `focus_left_pane` ⌥⌘←, `focus_right_pane` ⌥⌘→, `previous_session` ⌥⌘↑, `next_session` ⌥⌘↓,
+  `previous_attention_session` ⌃⌥↑, and `next_attention_session` ⌃⌥↓ each return that chord from
+  `BuiltinAction.defaultChord`, because `left`/`right`/`up`/`down` are part of the chord grammar
+  (`bindableNamedKeys`) — so the defaults round-trip through `keymap.conf` and are rebindable like any
+  other action.
+  The two workarounds that predated that are DELETED: `arrowShortcut(for:)` in the menu builder and
+  `BuiltinAction.arrowGlyphFallback`.
+  Do NOT reintroduce a hardcoded arrow shortcut or glyph anywhere — the point of the deletion is that
+  every keyed built-in resolves through exactly one path.
+  `rookApp.toShortcut` maps the four names to their `KeyEquivalent`s (its `default` arm builds a
+  `KeyEquivalent` from a single `Character` and would TRAP on a multi-character key, so it is the first
+  site to update when a new named key joins the grammar).
+  A modifier-LESS arrow is refused when parsing a `map` line — the same hazard the bare ⌘+arrow cluster is
+  avoided for, one step worse: a menu key-equivalent has no text-field pass-through, so a bare arrow would
+  swallow the key in the inline rename field, the palette search field, and every Settings field.
+  See [[keymap]] for the grammar and the diagnostics.
   The pure logic is `AppStore.navigateSession(_:)` (host-free, unit-tested):
   it flattens the tree (`workspaces.flatMap(\.sessions)`), WRAPS around on next/prev (an end lands on the opposite end),
   jumps to the ends for first/last, falls to first on no/invalid selection,
@@ -245,13 +263,13 @@ paths:
   the target so an off-screen row is revealed.
   Distinct from the ⌃Tab MRU switcher (recency order) and the ⌃P fuzzy palette (search) — this is predictable
   spatial stepping in the sidebar's visual order.
-  **Attention navigation** (⌃⌥↑/⌃⌥↓ — the SAME arrow-fallback as the session nav,
-  since arrows aren't keymap-expressible) is the variant that steps through ONLY the sessions needing
+  **Attention navigation** (⌃⌥↑/⌃⌥↓ — real `defaultChord`s, resolved the same way as the session nav
+  above) is the variant that steps through ONLY the sessions needing
   attention (`AgentStatus.needsAttention` = `blocked`/`completed`), WRAPPING around and skipping idle/active.
   It reuses `AppStore.navigateSession` (the `.nextAttention`/`.previousAttention` cases — host-free,
   unit-tested) and is driven by Navigate ▸ Previous/Next Attention Session,
-  the action palette, and `session.go next-attention|prev-attention`; the two new `BuiltinAction`s (`previous_attention_session`/`next_attention_session`)
-  join the arrow-bound set (nil `defaultChord`, hardcoded ⌃⌥↑/↓ via `arrowShortcut`).
+  the action palette, and `session.go next-attention|prev-attention`; the two `BuiltinAction`s
+  (`previous_attention_session`/`next_attention_session`) carry ⌃⌥↑/⌃⌥↓ as their shipped `defaultChord`.
   EVERY user-initiated GUI selection now REVEALS the blocked PANE, not just the session: the shared
   `AppActions.revealActiveBlockedPane()` (formerly private, now called on all selection paths) reads the
   landed session's `agentIndicator.statusPane` and focuses that pane — for `right`, the split surface via
@@ -288,7 +306,8 @@ paths:
   opens the session switcher, ⌃⇧P the action palette (the session/action shortcut split is deliberate).
 - **Built-in shortcut hints are one resolver, shared by the palette AND the toolbar/sidebar tooltips.**
   `AppActions.shortcutGlyph(for:)` (formerly `paletteHint`) → the host-free `Keymap.glyphHint(for:)`
-  (`equivalent(for:)?.glyphString ?? BuiltinAction.arrowGlyphFallback`, nil = no shortcut) renders an
+  (plain `equivalent(for:)?.glyphString`, nil = no shortcut — there is NO fallback arm any more,
+  since the arrow defaults render through `Chord.glyphString` like every other chord) renders an
   action's CURRENT chord as macOS glyphs (`⌃⌘S`), tracking a `keymap.conf` rebind live.
   `paletteActions()` reads it for the right-aligned palette hint; `WindowContentView.helpHint(_:_:)`
   appends `" (<glyph>)"` to the `.help(…)` tooltip of the 8 `BuiltinAction`-backed toolbar/sidebar buttons
@@ -309,7 +328,7 @@ paths:
   user types); `.attention` needs no theme-preview wiring (`syncThemeSession` guards on `.themes`).
   Opened three keyboard/menu ways: `BuiltinAction.showAttention` (rawValue `show_attention`,
   `defaultChord` ⌃⇧I — a distinct chord swallowed before the terminal like ⌃⇧P/⌃⇧O,
-  expressible/pure-`defaultChord`, NOT an arrow exception) → `AppActions.toggleAttentionPalette()` →
+  expressible/pure-`defaultChord`) → `AppActions.toggleAttentionPalette()` →
   `palette.toggle(.attention)`, the **Navigate ▸ "Go to Attention…"** menu item (reading `equivalent(for: .showAttention)`),
   and a **"Show Attention"** entry in `paletteActions()` (the ⌃⇧P launcher).
   The fourth opener is the title-bar bell (see the Notifications section).

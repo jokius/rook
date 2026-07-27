@@ -36,7 +36,7 @@ paths:
   Pure types: `Modifier`/`Chord`/`Keybind`/`parseKeybind`/`keybindConflicts`/`reservedMonitorChords`
   (`Keybind.swift`), `KeybindMatcher` (leader state machine), `CustomCommand`/`CommandContext` (the `{AGT_X}`
   token table — single source of truth for both `{AGT_X}` expansion and the `$AGT_X` env),
-  `BuiltinAction` (the 36 rebindable actions + `defaultChord`), `Keymap`/`parseKeymap` (`Keymap.swift`),
+  `BuiltinAction` (the 42 rebindable actions + `defaultChord`), `Keymap`/`parseKeymap` (`Keymap.swift`),
   `ConfigPaths` (the path resolver).
   All unit-tested under `rookCoreTests`.
 - **MENU-driven built-in override vs MONITOR-driven custom commands — two different mechanisms.** Built-ins
@@ -133,20 +133,53 @@ paths:
   NOT system/standard menu items (⌘Q/⌘C/⌘,); binding a custom command to one of those resolves by AppKit's
   own dispatch — documented, not validated.
 - **`BuiltinAction.defaultChord` is the single source of truth for the built-in shortcuts (keep-in-sync
-  surface).** Task 9 collapsed the old `BuiltinAction` ↔ menu keep-in-sync convention:
-  30 of the 36 built-in menu items now read `equivalent(for:)` (override else `defaultChord`) with NO
-  hardcoded `.keyboardShortcut` literal, so adding/changing a default chord happens in `defaultChord`
-  alone (`toggle_search` ⌘F, `toggle_sidebar` ⌃⌘S, `toggle_fullscreen` ⌃⌘F, `custom_command_palette` ⌃⇧O,
-  and `show_attention` ⌃⇧I are among these — expressible, so pure-`defaultChord`-driven,
-  not arrow exceptions).
-  The EXCEPTION is the six arrow-bound actions (`focus_left_pane` ⌘⌥←, `focus_right_pane` ⌘⌥→,
-  `previous_session` ⌥⌘↑, `next_session` ⌥⌘↓, `previous_attention_session` ⌃⌥↑,
-  `next_attention_session` ⌃⌥↓): `parseKeybind` accepts only single-char keys or `tab`/`space`/`return`/`delete`
-  — arrows are not expressible as a parsed `Chord`, so `defaultChord` returns nil for them and the menu
-  keeps its hardcoded arrow `.keyboardShortcut` as the FALLBACK when `equivalent(for:)` is nil (a user
-  can still `map` these to a parseable chord, which then wins).
-  So the six arrow actions are NOT pure-`defaultChord`-driven by design;
-  the other 29 are.
+  surface), with NO exceptions left.** Task 9 collapsed the old `BuiltinAction` ↔ menu keep-in-sync
+  convention, and the arrow port finished the job: ALL 42 built-in menu items now read `equivalent(for:)`
+  (override else `defaultChord`) with NO hardcoded `.keyboardShortcut` literal, so adding or changing a
+  default chord happens in `defaultChord` alone.
+  30 of the 42 ship with a key; the other 12 (`rename_*`/`delete_*`/`duplicate_session`/`clear_status`/
+  `first_session`/`last_session`/`select_theme`/`toggle_flagged_view`/`focus_workspace`) return nil and
+  stay keyless until the user `map`s one.
+- **Arrows are ordinary bindable keys — `map cmd+shift+left previous_session` works (upstream `30581c1c`).**
+  `bindableNamedKeys` is `tab`/`space`/`return`/`delete` UNION `bindableArrowKeys`
+  (`left`/`right`/`up`/`down`), so `parseKeybind` spells an arrow like any other named key.
+  The six arrow-bound actions therefore return their REAL `defaultChord` — `focus_left_pane` ⌥⌘←,
+  `focus_right_pane` ⌥⌘→, `previous_session` ⌥⌘↑, `next_session` ⌥⌘↓, `previous_attention_session` ⌃⌥↑,
+  `next_attention_session` ⌃⌥↓ — instead of nil.
+  **Both workarounds are DELETED**: `arrowShortcut(for:)` in the menu builder and
+  `BuiltinAction.arrowGlyphFallback`, along with `glyphHint`'s `?? arrowGlyphFallback` term.
+  Every keyed built-in now resolves through exactly ONE path (`equivalent(for:)` → `Chord`), which is what
+  makes `keymap.list`'s model-vs-menu diff meaningful, and the starter `keymap.conf` prints these six their
+  real chords instead of `(no default)`.
+  `Chord.glyphString` renders the four arrows as ←/→/↑/↓.
+  **A modifier-less arrow in a `map` line is REJECTED** — `bare arrow chord '<chord>' needs a modifier;
+  map skipped` — because a menu key equivalent is always-on and has NO text-field pass-through (unlike the
+  custom-command monitor, which skips text fields): a bare arrow would swallow the key in the inline rename
+  field, the palette search field, the dashboard grid, and every Settings field at once.
+  This is the same rule `command` lines already enforce for every chord, which is why a palette-only
+  `command "X" up <shell…>` now gets the familiar
+  `command 'X' shortcut 'up' must include a modifier; treating the line as palette-only` diagnostic that
+  `tab`/`space` already produced.
+  **Both conflict checks now SEE the six arrow defaults** — they were invisible while `defaultChord` was
+  nil, so an arrow chord could be claimed twice with no diagnostic.
+  Built-in vs built-in: `resolveBuiltinOverrides` computes each action's final resolved chord, so
+  `map cmd+opt+up new_session` now collides with `previous_session`'s default and is DIAGNOSED — the
+  unmoved default owner keeps the chord and the override is dropped — instead of silently double-binding.
+  Custom vs built-in: `validateCommands` builds the active built-in chord set from `equivalent(for:)` over
+  every action, and the arrow defaults are now IN that set, so a custom command can no longer shadow one
+  (its shortcut is cleared to `""`, the palette entry survives, and a diagnostic says so).
+  **The keyCode→name table is one host-free `namedKey(forKeyCode:)` in `Keybind.swift`**, shared by
+  `CustomCommandRunner` and `UndoCloseShortcut`, which each carried a private copy — the copies are exactly
+  how a name can parse in the file yet never fire at runtime.
+  Its character counterpart `namedKey(forKeyEquivalent:)` (AppKit spells arrows with the 0xF700–0xF703
+  private-use scalars) is what lets `keymap.list` project a live `NSMenuItem` back into keymap syntax; a
+  test pins both against `bindableNamedKeys` as SET EQUALITY, guarding the parses-but-never-fires failure
+  from both directions.
+  **Adding a name to `bindableNamedKeys` means updating four sites** (documented on the constant): the two
+  inbound `NSEvent` resolvers via `namedKey(forKeyCode:)`, `Chord.glyphString` (cosmetic — it degrades to
+  the raw name), and `rookApp.toShortcut`, whose `default` arm builds a `KeyEquivalent` from a single
+  `Character` and TRAPS on a multi-character key — a crash on the first menu render, not a degradation, so
+  it is the site to fix FIRST.
 - **Shifted symbols bind as `shift+<base>` — the runner normalizes to the UNSHIFTED base key.**
   `charactersIgnoringModifiers` KEEPS shift (shift+/ → "?", shift+= → "+"), and the old
   `.lowercased()` only undid that for letters (shift+u → "u"), so punctuation landed on the shifted glyph
@@ -161,8 +194,6 @@ paths:
   `chord(from:)`, which is exactly why the earlier parser-only version shipped a runtime that never fired.
 - **v1 scope cut (confirmed).**
   Built-in rebinds are single-chord only (leaders only for custom commands).
-  The arrows aren't expressible as a parsed `Chord` (the six arrow actions keep their defaults unless
-  mapped to a parseable chord).
   The literal `+`/`>` still can't be a bare key TOKEN (they are the chord-joiner / leader separator), but
   those keys ARE bindable as `shift+=`/`shift+.` (see the shift-symbol note above).
   `increase_font_size`'s default ⌘+ still renders `(not expressible)` in the STARTER file: its stored
@@ -191,6 +222,29 @@ paths:
   is exposed as File ▸ Reload Keymap, an action-palette entry, AND the `keymap.reload` control command
   — all ONE path.
   See the Control API catalog for the `keymap.reload` four-point audit.
+- **`keymap.list` is the diagnostic half — and its point is the DIFF, not the listing.**
+  `keymap.reload` only ever answered with a diagnostic COUNT, so nothing could read what a keymap actually
+  resolved to.
+  `rookctl keymap list` returns two halves that are meant to be COMPARED: the MODEL half (the config path,
+  every `BuiltinAction` with its resolved chord + an `overridden` flag, the custom commands, the
+  diagnostics as `{line, message}`) — a host-free `ControlKeymap.project` over the same parsed `Keymap` the
+  menu and the monitor read — and the MENU half, an app-side walk of `NSApp.mainMenu` reporting the LIVE
+  key equivalents in the SAME kitty syntax.
+  The two disagree exactly where this rule's ⌘W note says they can: SwiftUI defers its menu rebuild to the
+  next app ACTIVATION, so right after a `keymap reload` a chord can be correct in the model while the live
+  `NSMenuItem` still carries the old one, or while a stock AppKit item has taken it (the `selector` field
+  reads `menuAction:` for rook's own items and `performClose:`/`closeAll:`/… for an AppKit-supplied
+  competitor), or while the item is DISABLED and its chord therefore inert — most File/View/Navigate items
+  carry a `modalActive` gate, so with the dashboard open the menu holds every chord and fires none.
+  That is the same failure class `AppDelegate+CloseChord.swift` reconciles by hand for ⌘W; `keymap.list` is
+  how you SEE it for any other action instead of discovering it by pressing keys.
+  `overridden` compares CHORDS, not the presence of a `map` line, so a redundant `map cmd+w close_session`
+  is correctly reported as un-overridden.
+  Reach for it first when a binding "doesn't work": if the action's chord is right but the `menu` row is
+  missing, different, or `(disabled)`, the keymap parsed fine and the problem is menu resolution — activate
+  another app and come back, or look for the competing item — whereas a wrong chord or a `diagnostics` row
+  means the file itself.
+  See the Control API rule for the payload/CLI details and the four-point audit.
 - **Edit Keymap (GUI-only).**
   `AppActions.editKeymap()` (File ▸ Edit Keymap… + the ⌃⇧P palette) opens `keymap.conf` in the user's
   editor inside a 95% FLOATING overlay over the active session via `AppStore.openOverlay(…, sizePercent: 95)`.

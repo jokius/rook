@@ -16,8 +16,8 @@ description: >
 when_to_use: >
   Trigger on: rook, rookctl, rook control socket, session.new, session.close, session.type,
   session.split, session.scratch, session.filetree, session.markdown, markdown preview, session.focus, session.resize, surface.zoom, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status, session.agent, resume agent conversation,
-  session.flag, session.seen, session.reveal, session.background, session.overlay, workspace.new, workspace.select, workspace.move, workspace.focus, workspace.root, window.new, window.list,
-  window.select, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, flagged, notify, font.inc, keymap.reload, config.reload,
+  session.flag, session.seen, session.reveal, session.background, session.overlay, workspace.new, workspace.select, workspace.move, workspace.focus, workspace.root, workspace.collapse, workspace.expand, window.new, window.list,
+  window.select, window.resize, window.move, window.zoom, window.fullscreen, window.minimize, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, flagged, notify, font.inc, keymap.reload, keymap.list, config.reload,
   theme.set, theme.list, select theme, edit keymap, show an image, display an image inline, show-image,
   ROOK_SESSION_ID, ROOK_SOCKET, and asks to drive or script rook. Also: troubleshoot rook,
   keymap editor won't open, custom action / custom command not working, rook logs, file a rook
@@ -43,6 +43,12 @@ the control channel is available:
 - `ROOK_SESSION_ID` — the current session's UUID (the session this shell belongs to).
 - `ROOK_WINDOW_ID` / `ROOK_WORKSPACE_ID` — the owning window / workspace UUIDs.
 - `ROOK_SOCKET` — the absolute path to the control socket this app bound.
+- `ROOK_PANE` — which pane this shell runs in: `left` (main), `right` (split), or `scratch`. It is the
+  shell's ROLE at spawn time and can go stale (a split survivor promoted into the main slot keeps its
+  baked `right`); unset in an overlay and in the quick terminal.
+- `ROOK_PANE_ID` — an opaque, STABLE per-surface token for the same pane. Unlike `ROOK_PANE` it never
+  goes stale: the app resolves it against the session's live surfaces to get the pane's CURRENT slot.
+  The agent-status hook forwards it as `session status --pane-id`; scripts normally just leave it alone.
 
 Every spawned shell also identifies its host terminal as `TERM_PROGRAM=rook` (with the app version in
 `TERM_PROGRAM_VERSION`), overriding the `ghostty` identity embedded libghostty would otherwise report.
@@ -56,7 +62,7 @@ any background service started from inside a session captures the spawning sessi
 passes it to every child it ever creates, so status hooks running in those children resolve
 `$ROOK_SESSION_ID` to the session that happened to start the daemon and report to the WRONG session.
 Before starting such a process from inside Rook, scrub the variables
-(`env -u ROOK_ENABLED -u ROOK_PANE -u ROOK_SESSION_ID -u ROOK_SOCKET -u ROOK_WINDOW_ID -u ROOK_WORKSPACE_ID <cmd>`);
+(`env -u ROOK_ENABLED -u ROOK_PANE -u ROOK_PANE_ID -u ROOK_SESSION_ID -u ROOK_SOCKET -u ROOK_WINDOW_ID -u ROOK_WORKSPACE_ID <cmd>`);
 see troubleshooting.md ("agent-status glyph updates the wrong session") for diagnosing and fixing an
 already-poisoned tmux server.
 
@@ -97,8 +103,10 @@ sidebar is currently shown — the read side of the write-only `sidebar` command
 terminal is shown — the read side of the write-only `quick` command). List windows with
 `rookctl window list --json`; each window also reports `autoFollowMs`, `sidebarVisible`, `geometry`
 (the live frame `{x, y, width, height, display}` in the units `window move`/`window resize` take — the
-read side, so record it then restore the exact frame), and `fullscreen`/`zoomed` (the read side of
-`window fullscreen`/`window zoom`, so a script can make those toggles idempotent) — all omitted for a
+read side, so record it then restore the exact frame), `fullscreen`/`zoomed` (the read side of
+`window fullscreen`/`window zoom`, so a script can make those toggles idempotent), and `minimized`
+(whether the window sits in the Dock — the read side of `window minimize`; a minimized window still
+reports its `geometry`, so record-then-restore works while it is parked) — all omitted for a
 closed window, but not the live `idleMs`, which is `tree`-only.
 
 ## Addressing
@@ -120,10 +128,11 @@ you work. For any session-scoped command meant to act on *this* session — `ove
 `type`, `text`, `background`, `status`, `copy`, … — pass `--target "$ROOK_SESSION_ID"`. Omit it and
 you open overlays / type into whatever the user has selected, not your own session.
 
-## Command summary (67 commands)
+## Command summary (71 commands)
 
 Run `rookctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
-**examples.md**.
+**examples.md**. (The count excludes `debug.appearance`, a UI-test-only seam with no `rookctl`
+subcommand — don't re-derive the number from the raw `Command` enum, which has one case more.)
 
 **tree** — print the workspace/session tree (`--json` for structured). Each session node carries
 `foreground`/`splitForeground` (the live argv of each pane's foreground process, omitted when the pane
@@ -161,7 +170,9 @@ a split pane, so a split session appears as both), `dashboardHighlighted` (the h
 the one Enter jumps into, focusing that exact pane), `dashboardFontSize` (the absolute font size in points
 applied to the cells, omitted when untouched), and `dashboardFontMode` (`auto`|`fixed`|`untouched`).
 
-**workspace** — `new [name]` · `rename <name>` · `delete` · `select` · `move --to up|down|top|bottom` ·
+**workspace** — `new [name] [--collapsed]` (`--collapsed` creates it already closed in the sidebar, so a
+script can fill it with `session new --no-select` without it popping open) ·
+`rename <name>` · `delete` · `select` · `move --to up|down|top|bottom` ·
 `focus [on|off|toggle]` (collapse the sidebar tree to a single workspace; read back which workspace is
 focused from the tree workspace node's `focused` flag) · `color <#rrggbb|clear>` (tint the workspace's
 sidebar icon; persisted, read back from the tree workspace node's `color`) ·
@@ -171,7 +182,10 @@ workspace node's `icon` + `iconKind`. The color applies only to a symbol or a mo
 image and an emoji keep their own colors) ·
 `root <dir|clear>` (set the workspace's ROOT directory — new sessions of that workspace open there (a hard
 override of the global new-session-directory setting; a stale/removed dir falls back to it), persisted, read
-back from the tree workspace node's `root`).
+back from the tree workspace node's `root`) ·
+`collapse` / `expand` (close or open ONE workspace's row in the sidebar tree — the per-workspace analogue
+of `sidebar collapse`/`sidebar expand`, honoring `--window`; read back from the tree workspace node's
+`collapsed` flag, which is `true` when collapsed and omitted when expanded).
 
 **session**
 - `new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--name NAME] [--no-select] [--wait] [--after SID | --before SID]` —
@@ -226,7 +240,7 @@ back from the tree workspace node's `root`).
   equivalent — bind it via a `command "rookctl session resize …"` custom action). `--split-ratio` sets
   the absolute left-pane fraction (0..1, clamped to 0.05..0.95); `--grow-left`/`--grow-right` nudge it by
   a fraction. Prints the applied (clamped) fraction.
-- `status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--pane left|right|scratch]` — set the sidebar agent glyph (`--sound default` or a system sound name plays a one-shot sound; `--color` tints the glyph for this call only, reverting on the next status set without it; `--pane` records which pane set it — `left`=main, `right`=split, `scratch` — so foreground typing in another pane won't clear it and any user-initiated GUI selection (auto-follow, attention-nav ⌃⌥↑/↓, plain session nav, the command palettes, a sidebar row click) reveals the blocking pane, read back as the tree `statusPane` field; the socket `session go next-attention` only steps the selection, it does not itself reveal the pane).
+- `status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--pane left|right|scratch] [--pane-id TOKEN]` — set the sidebar agent glyph (`--sound default` or a system sound name plays a one-shot sound; `--color` tints the glyph for this call only, reverting on the next status set without it; `--pane` records which pane set it — `left`=main, `right`=split, `scratch` — so foreground typing in another pane won't clear it and any user-initiated GUI selection (auto-follow, attention-nav ⌃⌥↑/↓, plain session nav, the command palettes, a sidebar row click) reveals the blocking pane, read back as the tree `statusPane` field; the socket `session go next-attention` only steps the selection, it does not itself reveal the pane; `--pane-id` takes the shell's stable `$ROOK_PANE_ID` token and OVERRIDES a stale `--pane` — the agent-status hook forwards it for you, so scripts normally leave it to the hook).
 - `agent <claude|codex> [--id ID] [--from-hook] [--clear] [--config-dir DIR] [--pane left|right]` —
   remember which agent CONVERSATION the pane is on, so a restart can RESUME it instead of opening a blank
   agent (needs Settings ▸ General ▸ Resume agent conversations). Normally called by the agent's own
@@ -263,10 +277,15 @@ back from the tree workspace node's `root`).
   overlay is a real terminal (pty), which is also how you **display an image inline** — via the bundled
   `scripts/show-image.sh` (see below).
 
-**window** — `new [name]` · `list` · `select <id>` · `close <id>` · `rename <id> <name>` ·
+**window** — `new [name] [--minimized]` · `list` · `select <id>` · `close <id>` · `rename <id> <name>` ·
 `delete <id>` · `resize <id> --width W --height H` · `move <id> --x X --y Y [--display N]` ·
 `zoom <id>` (maximize-to-screen toggle, the double-click-header gesture; a plain green-button click does full screen) ·
-`fullscreen <id>` (toggle native macOS full screen, the green-button / ⌃⌘F action).
+`fullscreen <id>` (toggle native macOS full screen, the green-button / ⌃⌘F action) ·
+`minimize [id] [on|off|toggle]` (park a window in the Dock or bring it back — no mode means toggle; read
+back from `window list`'s `minimized`. Minimizing a natively full-screen window is REJECTED with an error
+rather than answered ok, because AppKit silently ignores it there).
+`new --minimized` creates the window already parked, so a script can build a set of project windows
+without each one flashing on screen and stealing focus.
 
 **surface** — `zoom [show|hide|toggle] [--target surface:<session-id>:left|right|scratch|overlay|quick] [--window W]`
 — zoom a terminal surface to fill the window (sidebar hidden; a slim title-bar strip with an exit
@@ -311,7 +330,12 @@ Visibility/mode act on the frontmost window; `expand`/`collapse` default to the 
 
 **font** — `font inc|dec|reset [--pane left|right|scratch]` — change a session pane's font size (omitted/`left` = main pane, `right` = the split pane, `scratch` = the scratch terminal). Read the resulting size back from `tree` (`fontSize`/`splitFontSize`/`scratchFontSize` per pane).
 
-**keymap** — `keymap reload` — re-read `keymap.conf` (prints the parse-diagnostic count).
+**keymap** — `keymap reload` — re-read `keymap.conf` (prints the parse-diagnostic count) ·
+`keymap list` — the READ side: the config path, every built-in with the chord the keymap resolved for it
+(`*` marks an overridden one, `-` a keyless one), the custom commands, the parse diagnostics, and the key
+equivalents the MENU BAR is actually carrying. Compare the two halves — SwiftUI rebuilds the menu only on
+the next app activation, so a chord can be right in the keymap and stale, hijacked, or on a `(disabled)`
+item in the menu.
 
 **config** - `config reload` - re-read the rook-scoped `ghostty.conf` (prints the diagnostic count).
 
@@ -344,7 +368,8 @@ it render. Outside Rook (`ROOK_ENABLED` unset) there is no overlay — fall back
 
 When the user hits a problem (a keymap editor that will not open, a custom action that does nothing,
 notifications missing), diagnose it from inside the session first: inspect `rookctl tree --json`,
-run `rookctl keymap reload` for the parse-diagnostic count, and read the unified logs under
+run `rookctl keymap reload` for the parse-diagnostic count, `rookctl keymap list` to see what each
+chord actually resolved to (and what the menu bar carries), and read the unified logs under
 subsystem `com.rook.app`. If it turns out to be a bug, offer to help file it.
 
 **Filing is opt-in and draft-first.** Never run a `gh` command without the user's explicit approval.

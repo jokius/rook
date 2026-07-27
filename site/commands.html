@@ -6,7 +6,7 @@
     <title>Command reference — rook | rookctl control API</title>
     <meta
       name="description"
-      content="Complete rookctl reference: all 65 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, themes, and keymaps, with arguments and return values."
+      content="Complete rookctl reference: all 71 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, themes, and keymaps, with arguments and return values."
     />
     <meta
       name="keywords"
@@ -18,7 +18,7 @@
     <meta property="og:title" content="Command reference — rook" />
     <meta
       property="og:description"
-      content="All 65 rookctl control commands with arguments, return values, and errors."
+      content="All 71 rookctl control commands with arguments, return values, and errors."
     />
     <meta property="og:url" content="https://rook.app/commands" />
     <meta property="og:image" content="https://rook.app/assets/rook-og.png" />
@@ -30,7 +30,7 @@
     <meta name="twitter:title" content="Command reference — rook" />
     <meta
       name="twitter:description"
-      content="All 65 rookctl control commands with arguments, return values, and errors."
+      content="All 71 rookctl control commands with arguments, return values, and errors."
     />
     <meta name="twitter:image" content="https://rook.app/assets/rook-og.png" />
     <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
@@ -192,13 +192,15 @@
             Command reference
           </h1>
           <p style="font-size: 19px; line-height: 1.6; color: #bfbab0; margin: 0 0 8px">
-            All 66 commands of the rook control API, with arguments and return values. Every one is reachable from the
+            All 71 commands of the rook control API, with arguments and return values. Every one is reachable from the
             <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl</span> CLI and from the local
             control socket.
           </p>
           <p style="font-size: 16px; line-height: 1.7; color: #949ba4; margin: 16px 0 0">
             For the narrative introduction — what the socket is, how to install the CLI, and worked recipes — see the
-            <a href="/docs#rookctl" style="color: #7ece8f">rookctl section of the docs</a>.
+            <a href="/docs#rookctl" style="color: #7ece8f">rookctl section of the docs</a>. The count excludes one
+            UI-test-only command, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">debug.appearance</span>, which
+            has no CLI subcommand.
           </p>
 
           <!-- OVERVIEW -->
@@ -415,7 +417,12 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">sessions</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">focused</span> (the read side of
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace focus</span>, distinct from
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span>), and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span>),
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">collapsed</span> (the read side of
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace collapse</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">expand</span>
+                and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace new --collapsed</span>;
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">true</span> when closed in the sidebar, omitted when
+                expanded — the default), and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">color</span> (the sidebar icon tint, the read side of
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace color</span>; omitted when the
                 workspace uses the theme default), and
@@ -457,13 +464,20 @@
 
             <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
-                rookctl workspace new [name] [--window W]
+                rookctl workspace new [name] [--collapsed] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.new</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
                 Create a workspace. The name defaults to an auto-generated one.
                 <strong style="color: #bfbab0">Returns</strong>
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.id</span>.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--collapsed</span> creates it already closed in the
+                sidebar, so a script can fill it with
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session new --no-select</span> without it
+                springing open. Read back via the workspace node's
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">collapsed</span> field.
               </p>
             </div>
 
@@ -577,6 +591,41 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">no such image file</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">unsupported icon image</span>. The GUI equivalent is the
                 row's context menu → Icon… (image files only; there is no SF Symbol picker).
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl workspace collapse [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.collapse</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Collapse one workspace in the sidebar tree, hiding its sessions — the per-workspace analogue of the window-wide
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">sidebar collapse</span>. Persisted, so it
+                survives a relaunch.
+                <strong style="color: #bfbab0">Returns</strong>
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.id</span>.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                Unlike <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">sidebar collapse</span>, this
+                writes the workspace's own state first and only then nudges the on-screen tree, so it applies even when the target
+                window's sidebar is hidden. Read back via the workspace node's
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">collapsed</span> field.
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl workspace expand [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.expand</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Expand one workspace in the sidebar tree — the inverse of
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace collapse</span>, with the same
+                window-hidden behavior and the same
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">collapsed</span> read-back.
+                <strong style="color: #bfbab0">Returns</strong>
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.id</span>.
               </p>
             </div>
           </section>
@@ -977,7 +1026,7 @@
             <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
                 rookctl session status &lt;idle|active|completed|blocked&gt; [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb]
-                [--pane left|right|scratch] [--target T] [--window W]
+                [--pane left|right|scratch] [--pane-id TOKEN] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.status</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1009,6 +1058,15 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusPane</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusBlink</span>, and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusColor</span>.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--pane-id</span> takes a shell's
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">$ROOK_PANE_ID</span> — a stable per-surface token — and
+                is normally left to the agent-status hook, which forwards it. Unlike the
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--pane</span> role, the token does not go stale when a
+                surviving split is promoted into the main pane, so the pane is resolved against the session's live surfaces at
+                report time. A token that resolves overrides
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--pane</span>; a missing or unknown one falls back to it.
               </p>
             </div>
 
@@ -1242,13 +1300,22 @@
 
             <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
-                rookctl window new [name]
+                rookctl window new [name] [--minimized]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">window.new</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
-                Create and open a window.
+                Create and open a window. It replies once the window has actually attached, so an immediate
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">window resize</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">move</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">zoom</span>
+                on the returned id works.
                 <strong style="color: #bfbab0">Returns</strong>
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.id</span>.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--minimized</span> parks it in the Dock as soon as it
+                is created and hands frontmost back to a window that is still visible — so a script can build a set of project
+                windows without each one flashing on screen and stealing focus. Read back via
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">window list</span>'s
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">minimized</span>.
               </p>
             </div>
 
@@ -1270,13 +1337,18 @@
                 (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">{x, y, width, height, display}</span>, the read side
                 of <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">window move</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">resize</span>,
                 in the same units they take), plus
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">fullscreen</span> and
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">zoomed</span>. The last three are omitted for a closed
-                window.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">fullscreen</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">zoomed</span>, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">minimized</span> (parked in the Dock — the read side of
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">window minimize</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">window new --minimized</span>). The last
+                four are omitted for a closed window; a minimized window still reports the
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">geometry</span> it will come back to, so
+                record-then-restore works while it is parked.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">geometry</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">fullscreen</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">zoomed</span>
-                stay current across hand-drags and GUI toggles. Unlike
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">geometry</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">fullscreen</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">zoomed</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">minimized</span>
+                stay current across hand-drags and GUI toggles (⌘M and a Dock click included). Unlike
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span>, this does not carry
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">idleMs</span> — a live metric would freeze in the
                 cache.
@@ -1368,6 +1440,32 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">zoom</span>. Read back via
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">window list</span>'s
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">fullscreen</span>.
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl window minimize [id] [on|off|toggle]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">window.minimize</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Park a window in the Dock, or bring it back.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">on</span> minimizes,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">off</span> restores, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">toggle</span> (the default) flips — so it is idempotent
+                with an explicit mode. The id defaults to
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span>, and a bare
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">window minimize on</span> is read as a
+                mode, not an id. The window must be open. This is the control half of ⌘M, the yellow traffic-light button, and the
+                Minimize title-bar double-click action.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                Minimizing a natively full-screen window is an error —
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">cannot minimize a full-screen window — window.fullscreen it first</span>
+                — rather than a silent ok, because AppKit ignores the request there. Parking the frontmost window hands frontmost to
+                another visible one, so later untargeted commands do not route into the Dock. Read back via
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">window list</span>'s
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">minimized</span>.
               </p>
             </div>
           </section>
@@ -1512,6 +1610,12 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--window</span> selector and defaults as
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">expand</span>. Idempotent; a graceful no-op in flagged
                 mode.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                Both act on the mounted sidebar, so with the target window's sidebar <em>hidden</em> they change nothing readable —
+                the workspace node's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">collapsed</span> field is not a
+                reliable read-back for this pair. To set a state a script can query, address one workspace with
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace collapse</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">expand</span>.
               </p>
             </div>
           </section>
@@ -1680,6 +1784,38 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.count</span> — the number of parse diagnostics
                 (0 is a clean reload). App-global; the same path as File ▸ Reload Keymap. See
                 <a href="/docs#keymap" style="color: #7ece8f">Customizing keys</a> for the file format.
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl keymap list
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">keymap.list</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                The read half of <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">keymap reload</span>,
+                which only ever answered with a count.
+                <strong style="color: #bfbab0">Returns</strong>
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.keymap</span> with
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">path</span> (the file that produced this),
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">actions</span> (every built-in with its resolved
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">chord</span> and an
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">overridden</span> flag when it differs from the shipped
+                default), <span style="font-family: &quot;JetBrains Mono&quot;, monospace">commands</span> (the custom commands),
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">diagnostics</span> as
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{line, message}</span>, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">menu</span> — the key equivalents the menu bar is
+                <em>actually</em> carrying. App-global, no
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--window</span>.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                The two halves are meant to be compared. The menu is rebuilt only on the next app activation, so a chord can be
+                right in the keymap and still be stale, hijacked by a stock macOS item, or sitting on a disabled item — and only the
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">menu</span> half shows that. In the plain-text output
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">*</span> marks an overridden action,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">-</span> an action with no key,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">(disabled)</span> an inert menu item; a diagnostic that
+                belongs to no single line prints without a line number.
               </p>
             </div>
           </section>

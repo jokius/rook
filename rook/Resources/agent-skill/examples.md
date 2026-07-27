@@ -74,6 +74,29 @@ b=$(rookctl session new --workspace "$ws" --json | jq -r '.result.id')
 rookctl session rename "logs" --target "$b"
 ```
 
+## Build a workspace without it popping open
+
+Creating a workspace normally opens its row in the sidebar and the first session steals the selection.
+`workspace new --collapsed` plus `session new --no-select` builds the whole thing quietly, leaving the
+user exactly where they were.
+
+```bash
+ws=$(rookctl workspace new "nightly" --collapsed --json | jq -r '.result.id')
+for d in api web worker; do
+  rookctl session new --workspace "$ws" --cwd "$HOME/proj/$d" --name "$d" --no-select
+done
+
+# read the state back (true = collapsed; the field is omitted once it is expanded)
+rookctl tree --json | jq -r --arg ws "$ws" \
+  '.result.tree.workspaces[] | select(.id == $ws) | .collapsed'
+
+rookctl workspace expand --target "$ws"     # open it when the user should see it
+rookctl workspace collapse --target "$ws"   # ...and fold it away again
+```
+
+`workspace collapse`/`expand` address ONE workspace and honor `--window`; the window-wide
+`sidebar collapse`/`sidebar expand` are the all-workspace version.
+
 ## Place a session next to another instead of appending
 
 `session new` appends at the end of the workspace by default. `--after`/`--before` place it directly
@@ -526,8 +549,44 @@ rookctl window resize "$w" --width 1200 --height 800
 rookctl window move "$w" --x 100 --y 100 --display 0
 rookctl window zoom "$w"                 # maximize-to-screen toggle (call again to restore)
 rookctl window fullscreen "$w"           # native macOS full screen toggle (⌃⌘F / green button)
+rookctl window minimize "$w" on          # park it in the Dock (off restores; no mode = toggle)
 rookctl window select "$w"
 ```
+
+Build a set of windows without any of them flashing on screen and stealing focus:
+
+```bash
+for p in api web worker; do
+  rookctl window new "$p" --minimized >/dev/null
+done
+```
+
+## Park a window and restore it exactly (record-then-restore)
+
+`window list`'s `minimized` is the read side of `window minimize`, so a script can put a window away and
+put it back only if it was visible to begin with. A minimized window still reports its `geometry` (the
+frame it will come back to), so the frame round-trips while it is parked.
+
+```bash
+w=$(rookctl window list --json | jq -r '.result.windows[] | select(.active) | .id')
+
+# record BOTH bits of state before touching anything
+was_min=$(rookctl window list --json | jq -r --arg w "$w" \
+  '.result.windows[] | select(.id == $w) | .minimized // false')
+frame=$(rookctl window list --json | jq -c --arg w "$w" \
+  '.result.windows[] | select(.id == $w) | .geometry')
+
+rookctl window minimize "$w" on          # ...do the work with it out of the way...
+
+# restore: only un-minimize if it was not already parked, then put the frame back
+[ "$was_min" = "true" ] || rookctl window minimize "$w" off
+rookctl window move "$w" --x "$(echo "$frame" | jq -r .x)" --y "$(echo "$frame" | jq -r .y)" \
+  --display "$(echo "$frame" | jq -r .display)"
+```
+
+Because the mode is explicit (`on`/`off`), this is idempotent without reading first — the read is only
+needed to know whether restoring is wanted at all. `window minimize` on a natively full-screen window is
+an ERROR, not a silent no-op, so check `fullscreen` first if that is reachable in your flow.
 
 ## Reload the keymap after editing it
 
@@ -535,6 +594,42 @@ rookctl window select "$w"
 $EDITOR ~/.config/rook/keymap.conf
 rookctl keymap reload          # prints the parse-diagnostic count (0 = clean)
 ```
+
+## Diagnose a shortcut that "should work but doesn't"
+
+`keymap reload` only gives you a count. `keymap list` shows what each chord actually resolved to AND what
+the menu bar is really carrying — the two halves are meant to be compared, because SwiftUI rebuilds the
+menu only on the next app activation.
+
+```bash
+rookctl keymap list            # actions (* = overridden, - = keyless), commands, diagnostics, menu
+```
+
+```bash
+# what did the keymap resolve for this action?
+rookctl keymap list --json | jq -r \
+  '.result.keymap.actions[] | select(.action == "next_session") | .chord'
+
+# who is holding that chord in the LIVE menu bar? (more than one row = a hijack)
+rookctl keymap list --json | jq -r \
+  '.result.keymap.menu[] | select(.chord == "cmd+opt+down")
+   | "\(.menu) ▸ \(.title)  \(.selector // "-")  enabled=\(.enabled != false)"'
+
+# every action whose resolved chord no NON-disabled menu item is carrying
+rookctl keymap list --json | jq -r '
+  (.result.keymap.menu // [] | map(select(.enabled != false) | .chord)) as $live
+  | .result.keymap.actions[] | select(.chord != null and (.chord | IN($live[]) | not))
+  | "\(.action)  \(.chord)"'
+
+# parse problems, line 0 = a whole-file / cross-section problem (e.g. a chord collision)
+rookctl keymap list --json | jq -r '.result.keymap.diagnostics[] | "\(.line): \(.message)"'
+```
+
+Read the mismatches like this: a `selector` that is not `menuAction:` is a stock AppKit item that took
+the chord; `enabled=false` means the item is disabled and its chord is INERT (AppKit consumes the key and
+fires nothing, not even a same-chord enabled sibling — with the dashboard open most items are gated this
+way); and an action whose chord appears in no live menu row at all usually just means the menu has not
+rebuilt yet — switch away from Rook and back, then re-run.
 
 ## Change a ghostty setting Rook does not expose
 

@@ -14,6 +14,9 @@ You are inside Rook (`ROOK_ENABLED=1`). Use:
 - **Live state** — `rookctl tree --json`, `rookctl window list --json`.
 - **Keymap problems** — `rookctl keymap reload` prints the parse-diagnostic count (`0` = clean). A
   non-zero count means `keymap.conf` has problems; the user sees the list in Settings ▸ Key Mapping.
+  `rookctl keymap list` is the read side: the config path, every built-in with the chord it resolved to,
+  the custom commands, the diagnostics themselves, and the LIVE menu-bar key equivalents — compare the
+  last two sections when a chord looks right but does not fire.
 - **Ghostty settings** - `rookctl config reload` re-reads the ghostty config and prints the diagnostic
   count (`0` = clean). The count covers every config source, not just `ghostty.conf` (libghostty does not
   record which file a diagnostic came from), so check the Console log for the offending line. `ghostty.conf`
@@ -52,6 +55,38 @@ every session is closed); it runs in a non-interactive
 `/bin/sh -c` (no aliases/functions, a smaller `PATH` — use absolute paths or `$SHELL -lc '…'`); a
 non-zero exit posts a failure banner (meaning it DID fire and failed). Reload after edits:
 `rookctl keymap reload`.
+
+### "The chord is right in keymap.conf but pressing it does nothing"
+
+`keymap reload` says `0` diagnostics and the file looks correct, yet the key does nothing (or runs the
+wrong thing). Use `rookctl keymap list`, which reports TWO halves that are meant to be compared: what the
+keymap RESOLVED (`actions`) and what the menu bar is actually carrying (`menu`).
+
+```bash
+rookctl keymap list
+```
+
+Read it in this order:
+
+1. **Is the action on the chord you expect?** In `actions`, `*` marks an overridden built-in and `-` a
+   keyless one. A chord you thought you set but that is not here means the `map` line was skipped — check
+   `diagnostics` (a line-0 entry is a whole-file / cross-section problem, e.g. a chord collision between
+   two sections, so it prints without a line number).
+2. **Is any menu item holding it?** If the chord is in `actions` but appears on NO `menu` row, the menu
+   has not rebuilt: SwiftUI defers that to the next app activation. Switch away from Rook and back, then
+   re-check.
+3. **Is something ELSE holding it?** A `menu` row whose selector is not `menuAction:` is a stock AppKit
+   item (`performClose:`, `closeAll:`, …) that won the chord.
+4. **Is the item inert?** A row tagged `(disabled)` still CONSUMES the key and fires nothing — not even a
+   same-chord enabled sibling. Most File/View/Navigate items are gated, so with the dashboard open the
+   menu is largely inert while still holding every chord.
+
+Arrow chords are ordinary chords now (`map cmd+shift+left previous_session` works), with one rule: a
+built-in `map` on a bare, modifier-less arrow is rejected (`bare arrow chord … needs a modifier; map
+skipped`) — an always-on menu key equivalent has no text-field pass-through, so it would swallow the arrow
+in the rename field, the palettes, and Settings. And since the six arrow-bound defaults are now visible to
+the conflict checker, re-using one (e.g. `map cmd+opt+up new_session`) is reported as a collision instead
+of silently double-binding.
 
 ### "An overlay or --command session opens then instantly closes"
 
@@ -109,10 +144,33 @@ session — a tmux server captures the spawning shell's `ROOK_*` into its GLOBAL
 matter which client attaches. Diagnose: find the agent's pid and check its real environment —
 `ps eww <pid> | tr ' ' '\n' | grep ROOK_SESSION_ID` — if the id is not the session the process
 lives in, it leaked. Fix a poisoned tmux server without restarting it:
-`for v in ROOK_ENABLED ROOK_PANE ROOK_SESSION_ID ROOK_SOCKET ROOK_WINDOW_ID ROOK_WORKSPACE_ID; do tmux set-environment -g -r "$v"; done`,
+`for v in ROOK_ENABLED ROOK_PANE ROOK_PANE_ID ROOK_SESSION_ID ROOK_SOCKET ROOK_WINDOW_ID ROOK_WORKSPACE_ID; do tmux set-environment -g -r "$v"; done`,
 then restart the affected panes/processes (a respawn is enough; existing processes keep their
 inherited copy). Prevent it: start daemons and session managers with the variables scrubbed
 (`env -u ROOK_SESSION_ID … <cmd>`, full list in SKILL.md), or from a shell outside rook.
+
+### "The blocked glyph lands on the wrong PANE of the right session"
+
+The session is correct but the status is attributed to the other pane — so the attention navigation and
+auto-follow reveal the wrong half of the split. It shows up after a specific sequence: the session's MAIN
+pane exits, the split survivor is promoted into the main slot, and you split again. `ROOK_PANE` is baked
+into a shell's environment when it spawns and is never rewritten, so the promoted shell still carries
+`ROOK_PANE=right`; after the re-split BOTH shells think they are the right pane.
+
+The fix is `ROOK_PANE_ID`, a stable per-surface token the app resolves to the pane's CURRENT slot at the
+moment the status is reported. The installed hook forwards it as `session status --pane-id`, and a token
+that resolves overrides the stale `--pane`.
+
+**An installed hook is a COPY, so an older installation does not have it.** Re-run Rook ▸ Help ▸ Install
+Agent Status Hooks… (idempotent) and restart the affected shells. Check a shell has the token at all:
+
+```bash
+echo "${ROOK_PANE:-unset} ${ROOK_PANE_ID:-unset}"     # a pane shell should print a role AND a token
+grep -c pane-id ~/.config/rook/agent-status/rook-agent-status.sh   # 0 = the old hook, re-install
+```
+
+A shell spawned before the token existed simply falls back to `--pane`, i.e. the old behavior — nothing
+breaks, it just stays stale until that shell is restarted.
 
 ### "Clicking a path in the terminal does nothing / opens Finder instead of the preview"
 

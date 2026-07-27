@@ -591,6 +591,24 @@
                 flat working-set view (a flag is durable and survives a move), or <strong style="color: #e6e1d7">focus</strong> a
                 single workspace to collapse the tree to just its sessions. The two are independent.
               </li>
+              <li style="font-size: 15.5px; line-height: 1.65; color: #cbc6bc; padding-left: 22px; position: relative">
+                <span
+                  style="
+                    position: absolute;
+                    left: 0;
+                    top: 2px;
+                    color: #7ece8f;
+                    font-family: &quot;JetBrains Mono&quot;, monospace;
+                  "
+                  >›</span
+                >Open and close workspace rows by hand, or from a script:
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl workspace collapse</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl workspace expand</span> act on
+                one named workspace (even in a background window), and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl workspace new --collapsed</span>
+                creates one already closed, so a setup script can fill it without the tree jumping around. The state is per
+                workspace and persisted.
+              </li>
             </ul>
             <figure
               style="
@@ -938,6 +956,15 @@
               library of windows, open one per screen, and create, rename, or delete them from the File menu (New Window ⌥⌘N) or the
               action palette. The set of windows open at quit reopens on the next launch, frames restored.
             </p>
+            <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 16px 0 0">
+              A script can drive the same set:
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl window minimize</span> parks a
+              window in the Dock or brings it back (⌘M's counterpart), and
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl window new --minimized</span>
+              creates one already parked — so setting up a window per project doesn't flash each one on screen and steal your
+              focus. <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl window list</span> reports
+              which windows are parked, so a script can put a set away and restore exactly the ones it moved.
+            </p>
           </section>
 
           <!-- NOTIFICATIONS -->
@@ -1087,7 +1114,8 @@
               "
             >
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 0">
-                Looking for the full list? All 66 commands, with every argument, return value, and error, live on the
+                Looking for the full list? All 71 commands (the count excludes one UI-test-only command with no CLI
+                subcommand), with every argument, return value, and error, live on the
                 <a href="/commands" style="color: #7ece8f; font-weight: 500">Command reference →</a>
               </p>
             </div>
@@ -1168,6 +1196,8 @@
               <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# tint the workspace's sidebar icon (or clear)</span
               ><br />rookctl workspace icon hammer.fill
               <span style="color: #6b727a">&nbsp;&nbsp;# set its icon (SF Symbol, emoji, or image file)</span>
+              <br />rookctl workspace collapse --target <span style="color: #f2b45c">"$ws"</span>
+              <span style="color: #6b727a">&nbsp;&nbsp;# close just that row (expand reopens it)</span>
               <br />rookctl session reveal --target <span style="color: #f2b45c">9f3c</span>
               <span style="color: #6b727a">&nbsp;# reveal the focused pane's cwd in Finder</span>
             </div>
@@ -1344,7 +1374,10 @@
               ><br />rookctl window rename <span style="color: #f2b45c">"$w"</span> personal<br />rookctl window close
               <span style="color: #f2b45c">"$w"</span> <span style="color: #6b727a">&nbsp;&nbsp;# close its window (bundle kept)</span
               ><br />rookctl window delete <span style="color: #f2b45c">"$w"</span>
-              <span style="color: #6b727a">&nbsp;# delete (last window can't be deleted)</span><br /><br /><span
+              <span style="color: #6b727a">&nbsp;# delete (last window can't be deleted)</span><br />rookctl window minimize
+              <span style="color: #f2b45c">"$w"</span> on
+              <span style="color: #6b727a">&nbsp;# park it in the Dock (on|off|toggle; default toggle)</span><br />rookctl window
+              new proj --minimized <span style="color: #6b727a">&nbsp;# create one already parked, keeping your focus</span><br /><br /><span
                 style="color: #6b727a"
                 ># --window targets a specific window's tree on session/workspace/tree/font</span
               ><br />rookctl tree --window <span style="color: #f2b45c">"$w"</span><br />rookctl session new --window
@@ -1376,7 +1409,8 @@
               "
             >
               rookctl keymap reload
-              <span style="color: #6b727a">&nbsp;# re-read keymap.conf, returns the diagnostic count</span><br />rookctl config
+              <span style="color: #6b727a">&nbsp;# re-read keymap.conf, returns the diagnostic count</span><br />rookctl keymap
+              list <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# resolved chords, diagnostics, and the live menu shortcuts</span><br />rookctl config
               reload <span style="color: #6b727a">&nbsp;# re-read the ghostty config, returns the diagnostic count</span
               ><br />rookctl notify --title <span style="color: #f2b45c">Build</span> --body
               <span style="color: #f2b45c">"tests passed"</span>
@@ -1403,8 +1437,13 @@
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ROOK_PANE</span> (which pane the shell runs in —
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">left</span> (main),
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">right</span> (split), or
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">scratch</span>; unset in an overlay), so a
-              script can drive its own window without hard-coding ids.
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">scratch</span>; unset in an overlay), plus
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ROOK_PANE_ID</span> — a stable token for the pane's own
+              surface, which (unlike the
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ROOK_PANE</span> role) does not go stale when a split is
+              promoted into the main pane. So a script can drive its own window without hard-coding ids. If you scrub the rook
+              environment before handing it to a daemon or a tmux server, strip
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ROOK_PANE_ID</span> along with the rest.
             </div>
           </section>
 
@@ -1474,6 +1513,12 @@
               >/<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">return</span>/<span
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
                 >delete</span
+              >/<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">left</span>/<span
+                style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
+                >right</span
+              >/<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">up</span>/<span
+                style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
+                >down</span
               >). A Shift-typed symbol is written
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">shift+&lt;base&gt;</span>
               (e.g. <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">shift+/</span> for
@@ -1483,6 +1528,17 @@
               shifted symbol. Custom commands may also use a leader sequence
               (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ctrl+a&gt;g</span>), and their chord
               must include a modifier — a bare key can't shadow a plain terminal key.
+            </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              Arrows are part of the grammar, so
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">map cmd+shift+left previous_session</span>
+              works. The six arrow-bound actions now have real, writable defaults — ⌥⌘←/→ for pane focus, ⌥⌘↑/↓ to step sessions,
+              ⌃⌥↑/↓ to step the ones needing attention — and the commented starter file lists those chords instead of
+              <em>(no default)</em>, so they can be copied and changed like any other. A
+              <strong style="color: #e6e1d7">bare</strong> arrow is refused
+              (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">bare arrow chord '…' needs a modifier; map skipped</span>):
+              a menu shortcut has no way to let the key through to a text field, so an unmodified arrow would swallow the key in
+              inline rename, the palette search field, and every Settings field at once.
             </p>
 
             <h3
@@ -1606,8 +1662,7 @@
                 <span
                   style="position: absolute; left: 0; top: 1px; color: #7ece8f; font-family: &quot;JetBrains Mono&quot;, monospace"
                   >›</span
-                >The arrow keys can't be written as a chord, so the arrow-bound actions keep their defaults unless
-                mapped to a parseable chord. The literal
+                >The literal
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">+</span> and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">&gt;</span> can't be a bare
                 key token (they are the separators), but those keys are bindable as
@@ -1996,6 +2051,9 @@
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rook-agent-session.sh</span> on both
               agents' <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">SessionStart</span> event —
               the hook that makes resuming conversations work. If you installed the hooks before that landed, re-run the installer.
+              The status wrapper now also forwards the pane's stable surface token, so a status set from a split that was promoted
+              into the main pane still lands on the right row — an older installed copy keeps the previous behavior until you
+              re-run the installer, and a shell that was already open needs a fresh one.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               <strong style="color: #e6e1d7">Resume agent conversations.</strong> A restored pane that was running an agent gets

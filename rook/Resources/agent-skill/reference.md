@@ -95,6 +95,12 @@ from the top-level `zoomedSurface`. Workspace nodes carry
 `id`, `name`, `active`, `sessions`, `focused` (whether the sidebar
 tree is collapsed to this workspace — the read side of `workspace focus`, distinct from `active` the
 SELECTED workspace; omitted unless this is the focused one, and absent entirely when nothing is focused),
+`collapsed` (whether this workspace's row is CLOSED in the sidebar tree — `true` when collapsed, omitted
+when expanded, since expanded is the default. The read side of `workspace collapse`/`workspace expand` and
+`workspace new --collapsed`, so a script can record a workspace's open/closed state and restore it, or
+toggle by reading it first. It reports the persisted model state, so it is honest even with the sidebar
+hidden — but it is NOT a reliable read-back for the window-wide `sidebar expand`/`sidebar collapse`, which
+only poke a MOUNTED sidebar and therefore change nothing readable while that window's sidebar is hidden),
 `color` (the workspace's sidebar icon tint as `#rrggbb` — the read side of `workspace color`; omitted
 when it uses the theme default, so a script can record a color, change it, and restore it),
 `icon` + `iconKind` (the sidebar icon and how to read it — `symbol` = an SF Symbol name, `emoji` = the
@@ -128,8 +134,10 @@ All ten are read-only projections of GUI state.
 
 ## workspace
 
-- `workspace new [name] [--window W]` — create a workspace; returns its id. Name defaults to an
-  auto-generated one.
+- `workspace new [name] [--collapsed] [--window W]` — create a workspace; returns its id. Name defaults
+  to an auto-generated one. `--collapsed` creates it already CLOSED in the sidebar tree instead of the
+  default expanded state, so a script can build a workspace and fill it with `session new --no-select`
+  without it popping open in front of the user. Read back from the tree workspace node's `collapsed`.
 - `workspace rename <name> [--target] [--window W]`.
 - `workspace delete [--target] [--window W]` — keep-at-least-one; deleting the last workspace errors.
 - `workspace select [--target] [--window W]`.
@@ -174,6 +182,13 @@ All ten are read-only projections of GUI state.
   so a new session never fails to open. Read back from the tree workspace node's `root`, so a script can
   record-then-restore. An explicit `session new --cwd DIR` still wins over the workspace root. The GUI
   equivalent is the workspace row's context menu → Set Root Directory… / Clear Root Directory.
+- `workspace collapse [--target] [--window W]` / `workspace expand [--target] [--window W]` — close or
+  open ONE workspace's row in the sidebar tree; returns the workspace id. This is the per-workspace
+  analogue of the window-wide `sidebar collapse`/`sidebar expand`, and it honors `--window` like the other
+  workspace commands. Idempotent (delta-guarded). It writes the persisted `collapsed` state FIRST and only
+  then pokes the live sidebar, so it works — and reads back — even while that window's sidebar is hidden.
+  Read it back from the tree workspace node's `collapsed` (`true` when collapsed, omitted when expanded).
+  There is no GUI twin beyond clicking the row's disclosure triangle.
 
 ## session
 
@@ -319,7 +334,7 @@ All ten are read-only projections of GUI state.
   `0.05..0.95` and persisted, and the applied (clamped) fraction is printed (and returned as `result.ratio`
   under `--json`). Errors when the session has no split. Resizing a hidden split updates the stored
   fraction; it takes effect when the split is next shown.
-- `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--pane left|right|scratch] [--target] [--window W]` —
+- `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--pane left|right|scratch] [--pane-id TOKEN] [--target] [--window W]` —
   set the sidebar agent-status glyph. `--blink` pulses it (for attention). `--auto-reset` clears it
   back to idle once the session is visited (use for a one-shot completion flash). `--sound` plays a
   one-shot sound when the status is set: `default` (the system alert sound) or a system sound name
@@ -345,6 +360,14 @@ All ten are read-only projections of GUI state.
   reveal is a GUI/auto-follow concern.) An agent that runs in a split or scratch should set its own pane so
   the user lands on it. The value is read back on `tree` as the session node's `statusPane`. An invalid
   value errors (`--pane must be left, right, or scratch`).
+  `--pane-id TOKEN` is the STABLE form of the same thing: the shell's baked `$ROOK_PANE_ID`, which the app
+  resolves against the session's LIVE surfaces to get the pane's CURRENT slot. A token that resolves
+  OVERRIDES `--pane`; an absent or unknown one falls back to `--pane`, so shells spawned before the token
+  existed keep working exactly as before. It exists because `--pane` is a role baked at spawn time and can
+  go stale — a split survivor promoted into the main slot keeps its baked `right`, so after a re-split both
+  shells claim to be the right pane and a `blocked` lands on the wrong one. The token is opaque and
+  validated only by whether it resolves. **The installed agent-status hook forwards it for you**, so
+  scripts normally pass neither and leave the pane to the hook.
   An unknown state errors. Setting non-idle is for agents/hooks; `idle` clears it (also available in the GUI).
 - `session agent <claude|codex> [--id ID] [--from-hook] [--clear] [--config-dir DIR] [--pane left|right] [--target] [--window W]` —
   remember which agent CONVERSATION the pane is on, so a restart RESUMES it instead of coming back on a
@@ -451,7 +474,12 @@ shell (no controlling terminal — `/dev/tty` errors). See examples.md for usage
 
 ## window
 
-- `window new [name]` — create and open a window; returns its id.
+- `window new [name] [--minimized]` — create and open a window; returns its id. It waits for the window
+  to actually attach before replying, so an immediate `window resize`/`move`/`zoom` on the returned id
+  works instead of racing it. `--minimized` parks the new window in the Dock right after creating it and
+  hands frontmost back to a still-visible window — so a script can build a set of project windows without
+  each one flashing on screen and stealing focus, and untargeted commands do not route into the Dock.
+  Read it back from `window list`'s `minimized`.
 - `window list` — `result.windows`, each with `id`, `name`, `open`, `active`, `autoFollowMs` (the
   window's Auto-follow timeout in milliseconds, omitted when the setting is Disabled), and
   `sidebarVisible` (whether that window's sidebar is shown, read from the open window's store — omitted
@@ -460,12 +488,19 @@ shell (no controlling terminal — `/dev/tty` errors). See examples.md for usage
   `display`, y down — omitted for a closed window; the read side of `window move`/`window resize`, so
   record it, move/resize, then restore the exact frame), plus `fullscreen` and `zoomed` (whether the
   window is in native full screen / zoomed-to-screen — the read side of `window fullscreen` / `window
-  zoom`, so a script can make those toggles idempotent; both omitted for a closed window). The
-  `geometry`/`fullscreen`/`zoomed` fields stay current — the cache is refreshed when a window
-  moves/resizes/zooms/enters or exits full screen, so a hand-drag or GUI toggle is reflected without needing
-  another command. (`autoFollowMs` still reflects the last cache refresh, since a settings change is rare;
+  zoom`, so a script can make those toggles idempotent; both omitted for a closed window), plus
+  `minimized` (whether the window is parked in the Dock — the read side of `window minimize`, so a script
+  can skip a redundant minimize or restore exactly the set of windows it put away; omitted for a closed
+  window). A MINIMIZED window still reports its `geometry` — the frame it will come back to — so
+  record-then-restore works while it is parked. The
+  `geometry`/`fullscreen`/`zoomed`/`minimized` fields stay current — the cache is refreshed when a window
+  moves/resizes/zooms/enters or exits full screen/miniaturizes or deminiaturizes, so a hand-drag, a ⌘M, or
+  a Dock click is reflected without needing another command. (`autoFollowMs` still reflects the last cache refresh, since a settings change is rare;
   and unlike `tree`, `window.list` does NOT carry `idleMs` — the live idle metric would freeze in the cache.)
-- `window select <id>` — raise it if open, else open it.
+- `window select <id>` — raise it if open, else open it. It also takes frontmost explicitly, so every
+  later UNTARGETED command (`tree`, `session new`, `quick`, …) routes into that window — including while
+  the app itself is in the background, when AppKit delivers no key/main notification of its own. It waits
+  for the window to attach before replying, so a frame command right after it does not race.
 - `window close <id>` — close the on-screen window (the bundle is kept; reopen with select).
 - `window rename <id> <name>`.
 - `window delete <id>` — keep-at-least-one; deleting the last errors.
@@ -484,6 +519,17 @@ shell (no controlling terminal — `/dev/tty` errors). See examples.md for usage
   via `NSWindow.toggleFullScreen`. A second call exits. The window must be open. This is the control half
   of the View ▸ Toggle Full Screen menu item (⌃⌘F, rebindable as `toggle_fullscreen`) and the green
   traffic-light button — distinct from `zoom`, which only maximizes the frame in the same Space.
+- `window minimize [id] [on|off|toggle]` — park the window in the Dock (`on`), bring it back (`off`), or
+  flip (`toggle`, the default when no mode is given); returns the window id. The mode is EXPLICIT, so a
+  script can be idempotent without reading first. Both positionals are optional and a window address is
+  always a hex prefix or `active`, so a bare `rookctl window minimize on` is understood as the active
+  window. The window must be open (`window not open — window.select it first`), and minimizing a
+  NATIVELY FULL-SCREEN window is REJECTED with
+  `cannot minimize a full-screen window — window.fullscreen it first` rather than answered `ok`: AppKit
+  silently ignores `miniaturize` there, and a silent no-op is the worst possible reply. Parking the
+  frontmost window hands frontmost to another visible window, so untargeted commands do not follow it into
+  the Dock. This is the control half of ⌘M / the yellow traffic light / the Minimize title-bar
+  double-click. Read it back from `window list`'s `minimized`.
 
 `window resize`/`move` are control-native (no GUI equivalent — the title bar already drags-to-resize).
 
@@ -648,6 +694,35 @@ isn't realized.
 `rookctl keymap reload` — re-read and apply `keymap.conf`; returns `result.count` = the number of
 parse diagnostics (0 = clean). App-global (no `--window`).
 
+`rookctl keymap list` — the READ side of `keymap.reload`, which only ever answers with a diagnostic
+COUNT. Returns `result.keymap` with:
+
+- `path` — the `keymap.conf` this state was parsed from (which file to edit).
+- `actions[]` — every built-in as `{action, chord?, overridden?}`: the chord the keymap RESOLVED for it in
+  kitty syntax, omitted when the action is keyless; `overridden: true` when that chord differs from the
+  shipped default (a redundant `map` that re-states the default is not "overridden").
+- `commands[]` — the `command` lines as `{name, shortcut?}`; no `shortcut` means palette-only.
+- `diagnostics[]` — `{line, message}`, the same list Settings ▸ Key Mapping shows. Line `0` is the
+  sentinel for a whole-file or cross-section problem (e.g. a chord collision between two sections) that
+  belongs to no single line.
+- `menu[]` — the LIVE key equivalents the menu bar is carrying, as
+  `{menu, title, chord, selector?, enabled?}`, in menu-bar order and including nested submenus. `chord` is
+  rendered in the same kitty syntax so it compares directly against an action's `chord`; `selector` is the
+  item's ObjC action (rook's own items report `menuAction:` — anything else is an AppKit-supplied item such
+  as `performClose:`, i.e. what a stock item competing for a rook chord looks like); `enabled: false` marks
+  a DISABLED item, whose chord is inert (AppKit consumes the key and fires nothing, not even a same-chord
+  enabled sibling).
+
+**The point is diffing the two halves.** `actions` is what the keymap resolved; `menu` is what the menu bar
+is really dispatching, and they can disagree — SwiftUI defers its menu rebuild to the next app activation,
+so a chord can be correct in the model while the menu carries it elsewhere, on a stock AppKit item, or on a
+disabled one. Only the `menu` half shows that.
+
+Human (non-`--json`) output prints the path, then `actions:` (an overridden action marked `*`, a keyless
+one printing `-` rather than being dropped), then `commands:`, `diagnostics:` (a line-0 diagnostic prints
+with no line number), and `menu:` (a disabled item tagged `(disabled)`). App-global (no `--window`), like
+`keymap.reload`.
+
 ### keymap.conf format
 
 The file lives at `<config dir>/keymap.conf` (default `~/.config/rook`; the dir is set in Settings ▸
@@ -660,11 +735,23 @@ Key Mapping). Two verbs, line-based; blank lines and `#` comments ignored:
   sequence (chords joined by `>`, e.g. `ctrl+a>g`). No chord → palette-only.
 
 A **chord** is modifier words joined by `+` then a base key: modifiers `ctrl`, `cmd`, `opt`, `shift`;
-base key is a single character or `tab`/`space`/`return`/`delete`. A key typed with Shift is written
+base key is a single character or one of `tab`/`space`/`return`/`delete`/`left`/`right`/`up`/`down`.
+A key typed with Shift is written
 `shift+<base>` (`shift+/` = `?`, `shift+=` = `+`, `shift+5` = `%`) — the base key, not the shifted glyph.
-Arrows aren't expressible, and `+`/`>` can't be a bare key token (they are the separators), though those
+Arrows ARE bindable (`map cmd+shift+left previous_session` works), but a `map` chord on a **bare,
+modifier-less arrow is rejected** (`bare arrow chord '<chord>' needs a modifier; map skipped`): a built-in
+becomes an always-on menu key equivalent with no text-field pass-through, so an unmodified arrow would
+swallow the key in the inline rename field, the palette search box, and every Settings field at once.
+`+`/`>` can't be a bare key token (they are the separators), though those
 keys are bindable via `shift+=`/`shift+.`. Some chords are reserved (the Ctrl-Tab switcher, Ctrl-1/2 pane
 focus) and cannot be bound.
+
+Because arrows are part of the grammar, the six arrow-bound built-ins ship REAL defaults that the file can
+spell — `focus_left_pane` `cmd+opt+left`, `focus_right_pane` `cmd+opt+right`, `previous_session`
+`cmd+opt+up`, `next_session` `cmd+opt+down`, `previous_attention_session` `ctrl+opt+up`,
+`next_attention_session` `ctrl+opt+down` — so `keymap list` reports them like any other action, and the
+conflict checker SEES them: `map cmd+opt+up new_session` is now diagnosed instead of silently
+double-binding, and a `command` line can no longer shadow one of those defaults.
 
 Custom-command tokens (expanded into the `/bin/sh -c` line, raw — prefer the quoted `$AGT_*` env form
 for untrusted content). A remote host can set the session title (OSC) and working directory (OSC 7),
@@ -762,8 +849,10 @@ user-edited file read at launch — there is no control command for it.
 `invalid color (expected #rrggbb)` (workspace color — the CLI rejects it locally too),
 `unknown SF Symbol: <name>` / `no such image file: <path>` / `unsupported icon image (svg, png, or jpeg)` (workspace icon),
 `no open window` (quick/sidebar), `quick terminal not open` / `quick terminal not realized` (quick type) /
-`failed to read surface buffer` (quick text / session text), `window not open`
-(resize/move/`--window`), `unknown theme: <name>` (theme set), `unknown sound: <name>` (session status --sound),
+`failed to read surface buffer` (quick text / session text), `window not open — window.select it first`
+(resize/move/minimize/`--window`),
+`cannot minimize a full-screen window — window.fullscreen it first` (window minimize),
+`unknown theme: <name>` (theme set), `unknown sound: <name>` (session status --sound),
 `invalid color (expected #rrggbb)` (session status --color),
 `--pane must be left, right, or scratch` (the `--pane` value check — the `rookctl` CLI rejects a bad pane
 with this for session status/type/text, and over the raw socket `session.status` returns this same string;

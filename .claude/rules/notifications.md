@@ -225,8 +225,41 @@ paths:
   A conversation id exists nowhere in the process table, which is exactly why (3) needs a hook while (1)
   does not — and (3) says nothing about the agent's turn state, so a session can carry any of the three
   without the others.
+- **WHICH pane a status belongs to is RESOLVED at report time, from a stable surface token.**
+  Every session-owned surface (main/split/scratch) bakes two things into its shell env:
+  `ROOK_PANE`, the ROLE (`left`/`right`/`scratch`), and `ROOK_PANE_ID`, a fresh per-surface UUID token that
+  never changes for that surface's life (`SurfaceEnvironment.session(…, pane:, paneToken:)`; the surface
+  reads it back through `TerminalSurface.paneToken`, a protocol requirement with NO default so a future
+  surface fails to COMPILE rather than silently returning an empty token).
+  The bundled agent-status hook forwards BOTH — `--pane "$ROOK_PANE"` and `--pane-id "$ROOK_PANE_ID"`
+  (`ControlArgs.paneID` → `rookctl session status --pane-id`); a script normally leaves this to the hook.
+  **The baked ROLE goes stale, which is the whole reason for the token.**
+  When the primary pane exits, `closePrimaryPane` PROMOTES the split survivor into the main slot — but that
+  shell keeps its baked `ROOK_PANE=right`.
+  Re-split the session and BOTH shells report `right`, so a `blocked` lands on the wrong pane, and the
+  `!hasSplit` coercion in `AppStore.setAgentIndicator` cannot tell them apart (it only knows whether there
+  is a split AT ALL).
+  `ControlServer`'s `session.status` arm therefore resolves the token against the session's LIVE surfaces
+  FIRST — the host-free `Session.paneRole(forToken:)` returns the slot the token currently occupies
+  (`surface` → `.left`, `splitSurface` → `.right`, `scratchSurface` → `.scratch`) — and a resolved role
+  OVERRIDES `--pane`; an absent, empty, or unknown token falls back to it.
+  So the role is COMPUTED when the status is reported, not baked when the shell started.
+  **The `.right`→`.left` normalization in `AppStore.setAgentIndicator` STAYS, and is NOT a duplicate of
+  this.**
+  They are two layers of one contract: the token is the resolution, the coercion is the safety net on the
+  FALLBACK path — a shell spawned before the token existed, or a hook copy that sends no `--pane-id`.
+  They cannot fight, because a token resolving `.right` implies a live `splitSurface`, hence `hasSplit`,
+  which is exactly the condition the coercion is gated on.
+  **Installing the hook is a COPY, so an ALREADY-INSTALLED hook does not forward the token** until the user
+  re-runs Help ▸ Install Agent Status Hooks… — until then those sessions keep the pre-token behavior, which
+  is precisely the fallback the code preserves (nothing breaks, the promote+re-split case just stays wrong).
+  **`session.agent` did NOT get a token path.**
+  `AppStore.setAgentSession` still takes the baked role and does its own `.right`-when-no-split
+  normalization, so the same class of staleness remains for the agent CONVERSATION pane.
+  Upstream is identical here — that is parity, not an oversight; fixing it is a separate change.
 - **Pane-aware selection reveal.**
-  The same `AgentIndicator.statusPane` tag (set via `session.status --pane`, see the Control API rule) also
+  The same `AgentIndicator.statusPane` tag (set via `session.status --pane`/`--pane-id`, see the bullet
+  above and the Control API rule) also
   decides WHERE a GUI selection lands: EVERY user-initiated selection — attention-nav (⌃⌥↑/⌃⌥↓),
   plain session nav (⌥⌘↑/↓/first/last), the ⌃P/attention command palette, a sidebar row click,
   and idle auto-follow — reveals and focuses the pane that set the block — flipping `splitFocused` to the

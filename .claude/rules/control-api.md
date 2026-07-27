@@ -59,6 +59,13 @@ paths:
   NOT add fresh validation/response logic inline in the `ControlServer` switch.
   (This is the control-channel case of the root `CLAUDE.md` "hoist host-free logic down into `rookCore`"
   module-boundary rule.)
+  **Where the app-side arm goes: NOT `ControlServer+SessionActions.swift` any more — it is FULL** (994 of
+  the 1000-line swiftlint budget), which is why the last two ports landed their `ControlActions` witnesses
+  in fresh per-family files, `ControlServer+WorkspaceCommands.swift` (`workspace.new --collapsed`,
+  `workspace.collapse`/`workspace.expand`) and `ControlServer+KeymapCommands.swift` (`keymap.list`).
+  The conformance declaration stays in `+SessionActions.swift`; an extension in any file can satisfy it.
+  Add the next arm to the matching family file (`+WindowCommands`/`+Appearance`/`+SurfaceIO`/`+WorkspaceCommands`/`+KeymapCommands`)
+  or start a new one — do not grow `+SessionActions.swift`.
 - **The four-point audit is the WRITE path; a state-mutating command also owes a READ-BACK field.**
   Whenever a command SETS or MUTATES per-session state, surface that state on `ControlSessionNode` (or
   the tree top-level) so a script can query the value it just wrote: record-then-restore, read-modify-write,
@@ -72,12 +79,18 @@ paths:
   `session.markdown`/`markdownPath` (the open file IS the panel's visibility, so one field covers both),
   `session.focus`/`splitFocused`, `session.resize`/`splitRatio`,
   `session.overlay.resize`/`overlaySizePercent`, `sidebar`/`sidebarVisible` (top-level),
-  `sidebar.mode`/`sidebarMode`, `workspace.focus`/`focused` (workspace node), `quick`/`quickVisible` (top-level),
+  `sidebar.mode`/`sidebarMode`, `workspace.focus`/`focused` (workspace node),
+  `workspace.collapse`+`workspace.expand`+`workspace.new --collapsed`/`collapsed` (workspace node),
+  `quick`/`quickVisible` (top-level),
   `font.*`/`fontSize`+`splitFontSize`+`scratchFontSize` (the per-pane LIVE font size — the split/scratch
   panes' fonts are otherwise unobservable, being live-only; supplied to `controlTree` by app-side closures
   reading `GhosttySurfaceView.currentFontSize()`, since the host-free tree can't read a surface),
-  `window.move`+`window.resize`/`geometry`, `window.fullscreen`+`window.zoom`/`fullscreen`+`zoomed`
-  (the last three on `window.list`).
+  `window.move`+`window.resize`/`geometry`, `window.fullscreen`+`window.zoom`/`fullscreen`+`zoomed`,
+  `window.minimize`+`window.new --minimized`/`minimized` (the last four on `window.list`).
+  The obligation is scoped to per-session/per-window state, so an APP-GLOBAL command owes no tree field:
+  `keymap.list` is itself the read leg of `keymap.reload` (the keymap is one app-wide `SettingsModel`, not
+  per-session state), the same way `theme.list` reads back `theme.set` — a sibling READ COMMAND satisfies
+  the rule as well as a node field does.
   This is a SEPARATE obligation from the four-point audit (Command + arg + CLI + tests) and easy to forget:
   `session.overlay.resize` shipped write-only and `overlaySizePercent` was added only later, when a
   tmux-zoom script needed to restore an overlay's exact size.
@@ -287,9 +300,14 @@ paths:
   rules, then remaining targets resolve inside that same store so one command never mutates multiple windows.
   The top-level `target` also carries the first explicit batch target so a new CLI talking to a still-running
   pre-batch server degrades to a named session instead of accidentally acting on `active`.
-- **Command catalog (67 commands):**
+- **Command catalog (71 commands):**
+  The count is every `Command` case MINUS `debug.appearance` (the UI-test-only seam below, which has no
+  `rookctl` subcommand and is not in the skill) — `awk '/^public enum Command/,/^}/' rookCore/Sources/rookCore/ControlProtocol.swift | grep -cE '^\s+case '`
+  minus one.
+  The same number must appear in `README.md`, `site/docs.html`, and the bundled `agent-skill/SKILL.md`;
+  those four surfaces drifted apart once (67 here vs 66 there) precisely because each was edited alone.
   - `tree`
-  - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.color`/`workspace.icon`/`workspace.root`
+  - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.color`/`workspace.icon`/`workspace.root`/`workspace.collapse`/`workspace.expand`
   - `session.new`/`session.close`/`session.select`/`session.rename`/`session.duplicate`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.agent`/`session.flag`/`session.seen`/`session.background`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
   - `surface.zoom`
   - `dashboard`
@@ -297,8 +315,8 @@ paths:
   - `sidebar`/`sidebar.mode`/`sidebar.expand`/`sidebar.collapse`
   - `notify`
   - `font.inc`/`font.dec`/`font.reset`
-  - `window.new`/`window.list`/`window.select`/`window.close`/`window.rename`/`window.delete`/`window.resize`/`window.move`/`window.zoom`/`window.fullscreen` (see the Windows section)
-  - `keymap.reload` (see the Keymap section)
+  - `window.new`/`window.list`/`window.select`/`window.close`/`window.rename`/`window.delete`/`window.resize`/`window.move`/`window.zoom`/`window.fullscreen`/`window.minimize` (see the Windows section)
+  - `keymap.reload`/`keymap.list` (see the Keymap section)
   - `config.reload` (see the Settings section)
   - `theme.set`/`theme.list` (see the Theme picker section)
   - `restore.clear` (see the Settings section)
@@ -315,7 +333,7 @@ paths:
   Setting echoes the resulting effective side in `result.text`; the BARE form (no name) reads the side
   the last config feed applied (`SettingsModel.lastAppliedIsDark`), which the test polls to prove the
   flip actually drove the reload.
-  `AppearanceFlipUITests` is its only consumer; the public command count stays 67.
+  `AppearanceFlipUITests` is its only consumer; the public command count stays 71.
 
   `workspace.delete` honors keep-at-least-one and returns an error instead of the GUI confirm alert (nothing
   blocks on a modal).
@@ -668,6 +686,10 @@ paths:
   promoted shell keeps its baked `ROOK_PANE=right`, so its hook keeps sending `--pane right`) — gated on
   `hasSplit`, NOT `splitSurface == nil`, so a scripted `session.split` + immediate `session.status --pane
   right` inside the surface-realization window keeps the correct forward `.right` tag.
+  The coercion is now the FALLBACK layer: the hook also forwards the surface's stable `ROOK_PANE_ID` as
+  `session.status --pane-id`, which resolves the pane's CURRENT slot and overrides the stale role — see the
+  `session.status` section, which is also where the coercion's remaining job (a promote + re-split, where
+  both shells were baked `right`) is spelled out.
   It is deliberately NOT focus-aware (unlike `activeSurface`) — a shown split keeps addressing the main
   pane, which is what keeps `session.selectall` and its `session.copy` read-back on the SAME surface.
   READ-BACK: neither adds a `ControlSessionNode` field — `session.selectall`'s read-back is `session.copy`
@@ -1036,6 +1058,39 @@ paths:
   + `AgentStatusTests` (the `clearedBy` truth table) + `SurfaceEnvironmentTests` + `AgentStatusWrapperTests`
   + CLI mapping in `CommandsTests` + the e2e in `PaneAwareStatusUITests`.
   It is control-native for the tag itself (no GUI sets a pane), the same keep-in-sync footing as `--color`/`--sound`.
+  **`args.paneID` (`session.status --pane-id TOKEN`) is the STABLE companion to the mutable `--pane` role.**
+  The role is BAKED into the shell at spawn and goes stale: when the primary pane exits and the split
+  survivor is promoted into the main slot (`closePrimaryPane`), that shell keeps its baked
+  `ROOK_PANE=right` — re-split the session and BOTH shells believe they are the right pane, so a `blocked`
+  lands on the wrong one, and the `!hasSplit` coercion cannot tell them apart because it only knows whether
+  a split exists at all.
+  So each session-owned surface (main/split/scratch) now ALSO gets a fresh per-surface token baked as
+  `ROOK_PANE_ID` (`SurfaceEnvironment.session(…, paneToken:)`, a `UUID` minted in `rookApp.surfaceEnv`;
+  the overlay and quick terminal pass nil and get none), exposed as the `TerminalSurface.paneToken`
+  protocol requirement — no default, so a future surface fails to COMPILE rather than silently returning
+  an empty token.
+  The app-side arm resolves it against the session's LIVE surfaces via `Session.paneRole(forToken:)`
+  (`surface` → `.left`, `splitSurface` → `.right`, `scratchSurface` → `.scratch`), so the role is computed
+  when the status is REPORTED rather than baked when the shell started.
+  Precedence: a token that RESOLVES overrides `--pane`; an empty or unknown one falls back to it — which is
+  what keeps shells spawned before the token existed, AND an older installed copy of the hook, working
+  exactly as before.
+  That fallback is also why the `!hasSplit` coercion stays: it is the safety net on precisely that path, and
+  a resolved `.right` always implies a live `splitSurface`, hence `hasSplit`, so the two layers cannot fight.
+  The token is opaque — validated only by whether it resolves — and needs no read-back field of its own
+  (`statusPane` already reports the resolved role).
+  The installed `rook-agent-status.sh` forwards BOTH (`--pane "$ROOK_PANE"` and `--pane-id "$ROOK_PANE_ID"`,
+  each appended only when set), so scripts normally leave `--pane-id` to the hook.
+  **Because installing the hooks is a COPY, an existing install does NOT forward the token until the user
+  re-runs Help ▸ Install Agent Status Hooks…** — the merge is idempotent and upgrades the managed block.
+  Keep-in-sync: `ControlArgs.paneID` + `ControlSessionStatusUpdate.paneID` + `TerminalSurface.paneToken` +
+  `Session.paneRole(forToken:)` + `SurfaceEnvironment`'s `ROOK_PANE_ID` in `rookCore`, the
+  `GhosttySurfaceView.paneToken` witness (reading its own baked env back) + the `resolvedPane` line in
+  `ControlServer+SessionActions.setSessionStatus`, the `session status --pane-id` option in `rookctlKit`,
+  and `SessionTests`/`SurfaceEnvironmentTests`/`AgentStatusWrapperTests`/`ControlProtocolTests`/`ControlDispatcherTests`/`CommandsTests`.
+  **Any doc that lists the spawned shell's `ROOK_*` variables, or shows scrubbing them for a daemon/tmux
+  (`env -u ROOK_ENABLED -u ROOK_PANE …`, tmux `set-environment -g -r`), MUST include `ROOK_PANE_ID`** — a
+  recipe that misses it no longer cleans everything the app bakes, which is functional, not cosmetic.
   Visibility is keep-state vs one-time, decided by `autoReset` alone: `AppStore.selectSession` resets
   an `autoReset` indicator (the `completed` flash) to idle on BOTH the session visited AND the one left
   (right after `clearUnseen`), so it never lingers on a row you switch away from,
@@ -1104,6 +1159,49 @@ paths:
   in `ControlServer`, (3) the `keymap reload` subcommand in `rookctlKit`,
   (4) round-trip tests in `ControlProtocolTests` plus the e2e in `ControlAPIUITests`.
   See the Keymap section for the parser/menu/monitor design.
+  `keymap.list` is the READ half of `keymap.reload`, which only ever answered with a diagnostic COUNT — a
+  script could apply a keymap but never read what it resolved to, or why it broke.
+  It takes no target/args and, like `keymap.reload`, has NO `--window` selector (app-global).
+  `result.keymap` (`ControlKeymap` in the new `rookCore/Sources/rookCore/ControlKeymap.swift`) carries four
+  things: `path` (which `keymap.conf` produced this), `actions` — every `BuiltinAction` in `allCases`
+  declaration order with its resolved `chord` (kitty syntax, omitted when keyless) and `overridden: true`
+  when that chord DIFFERS from the shipped `defaultChord`, `commands` (each custom command's `name` +
+  `shortcut`, the latter omitted for a palette-only one), and `diagnostics` as `{line, message}` pairs.
+  **`overridden` compares CHORDS, not the presence of a `map` line** — a redundant `map cmd+w close_session`
+  parses fine and leaves the action on its default, and flagging that would report a difference the caller
+  can see nowhere else.
+  **The fifth field, `menu`, is the point of the command**: an app-side walk of `NSApp.mainMenu`
+  (`ControlServer+KeymapCommands.swift`) reporting the LIVE key equivalents in the SAME kitty syntax, so
+  each row compares directly against an `actions` row — `{menu, title, chord, selector, enabled}`, omitted
+  entirely when the menu bar could not be read.
+  The two halves are meant to be DIFFED: SwiftUI defers its menu rebuild to the next app activation, so a
+  chord can be correct in the model and stale, hijacked by a stock AppKit item, or sitting on a DISABLED
+  item — and only the `menu` half shows that (`selector` is `menuAction:` for rook's own SwiftUI items,
+  anything else — `performClose:`, `closeAll:` — is an AppKit-supplied competitor).
+  `enabled: false` is reported because a disabled item's chord is INERT: AppKit consumes the key equivalent
+  and fires nothing, not even a same-chord enabled sibling, and most File/View/Navigate items carry a
+  `modalActive` gate, so with the dashboard open the menu is largely inert while still holding every chord.
+  This is the exact class of bug the ⌘W-vs-stock-File-▸-Close reconcile fixed by hand (see the Keymap
+  section), which is why the diagnostic exists.
+  `rookctl keymap list` renders it as sections — `keymap: <path>`, `actions:`, `commands:`, `diagnostics:`,
+  `menu:` — where `*` marks an overridden action, `-` an action with no key (keyless actions are LISTED,
+  not dropped, so the output is the full action set), `(disabled)` an inert menu row, and a diagnostic with
+  `line == 0` (the whole-file / cross-section sentinel) prints with no line number, matching
+  `SettingsView.diagnosticLine`.
+  One shipped default renders un-typeable on purpose: `increase_font_size` is ⌘+, printed `cmd++`, which
+  does not re-parse (`+` is the chord joiner) — reported verbatim anyway, because the `menu` half renders
+  it identically and a placeholder would turn the one row that compares correctly into a false mismatch.
+  Four-point keep-in-sync audit for `keymap.list`: (1) `case keymapList = "keymap.list"` +
+  `ControlKeymap`/`ControlKeymapAction`/`ControlKeymapCommand`/`ControlKeymapDiagnostic`/`ControlKeymapMenuItem`
+  + `ControlResult.keymap` + `Keybind.namedKey(forKeyEquivalent:)` in `rookCore`,
+  (2) the `.keymapList` dispatcher arm → `ControlActions.listKeymap`, whose app-side witness is
+  `ControlServer+KeymapCommands.swift` (a NEW file — `reloadKeymap()`'s home, `+SessionActions.swift`, is
+  at its size limit) doing the `NSApp.mainMenu` walk and calling the host-free `ControlKeymap.project`,
+  (3) the `keymap list` subcommand in `rookctlKit` (`BasicOptions` only, no `--window`) +
+  `SocketClient.formatKeymap`, (4) `ControlKeymapTests` (the projection) + round-trip in
+  `ControlProtocolTests` + dispatcher routing in `ControlDispatcherTests` + `KeybindTests` (the
+  keyCode/keyEquivalent set-equality guard against `bindableNamedKeys`) + `CommandsTests` +
+  `SocketClientTests` (the rendering).
   `config.reload` re-reads the rook-scoped `ghostty.conf` and returns the ghostty config-diagnostic
   count in `result.count` (0 reads as a clean reload; `rookctl config reload` prints `ok` then,
   else `N diagnostic(s)`).
@@ -1230,6 +1328,41 @@ paths:
   `ClientOptions` for `--window`, alongside the `Visibility` default + `Mode`) in `rookctlKit`,
   (4) round-trip (incl. the windowed variant) in `ControlProtocolTests` + the e2e `testSidebarExpandCollapse`
   in `ControlSidebarStatusUITests`.
+  **Caveat — these two are NOTIFICATION-ONLY, so `collapsed` is not a reliable read-back for them.**
+  They post `.rookExpandWorkspaces`/`.rookCollapseWorkspaces` and the MOUNTED `WorkspaceSidebar` does the
+  mutating; the sidebar is mounted only while the window's sidebar is VISIBLE, so with it hidden the pair
+  changes nothing a script can read (the command still answers ok).
+  That is exactly why the per-workspace pair below writes the store FIRST.
+  `workspace.collapse`/`workspace.expand` (target = workspace) collapse/expand ONE workspace in a window's
+  sidebar tree — the per-workspace analogue of the all-workspace `sidebar.expand`/`sidebar.collapse`.
+  Both resolve through the shared `resolveWorkspace` and honor the global `--window` selector like the other
+  workspace commands, drive the delta-guarded `AppStore.setWorkspaceExpanded` (so a repeat is a clean no-op),
+  and return the workspace id.
+  **Order is load-bearing: the arm persists `Workspace.isExpanded` on the store FIRST and only THEN posts
+  `.rookSetWorkspaceExpanded` for the live outline** (store-scoped `object: store` like the expand/collapse-all
+  pokes, so only the target window reacts) — the store is the source of truth for the `collapsed` read-back,
+  and a notification-only write would silently drop with the sidebar hidden, which is the whole defect the
+  all-workspace pair still has.
+  There is deliberately NO `AppActions` hop: unlike the all-workspace pair this has no GUI caller (a row
+  click drives the `NSOutlineView` directly), so the control arm is its only entry point.
+  `workspace.new --collapsed` (`ControlArgs.collapsed`, threaded into `AppStore.addWorkspace(name:collapsed:)`)
+  creates the workspace already closed, so a script can build one and fill it with `session.new --no-select`
+  without it popping open; the CLI sends the field ONLY when the flag is set, so the default stays
+  byte-identical on the wire.
+  The READ side is `ControlWorkspaceNode.collapsed` on each `tree` workspace node: `true` when collapsed,
+  OMITTED when expanded — expanded is the default, matching the persisted `WorkspaceSnapshot.collapsed` —
+  so a script can record a workspace's open/closed state and restore it, or toggle by reading it first.
+  It reports the persisted model state (`!isExpanded`), independent of a transient focus force-reveal.
+  CLI: `rookctl workspace collapse|expand [--target <id>]` (`TargetOptions`, defaulting to `active` — the
+  id is an OPTION here, not a positional, unlike `window minimize`) and `rookctl workspace new [name] --collapsed`.
+  Four-point keep-in-sync audit: (1) `case workspaceCollapse`/`case workspaceExpand` + `ControlArgs.collapsed`
+  + `ControlWorkspaceNode.collapsed` in `ControlProtocol.swift`, (2) the two dispatcher arms →
+  `ControlActions.setWorkspaceExpansion` + the widened `createWorkspace(window:name:collapsed:)` (the old
+  two-argument overload is DELETED — the protocol requires `collapsed:`, so it witnessed nothing), both
+  app-side in the NEW `ControlServer+WorkspaceCommands.swift`, plus `collapsed` in the tree builder,
+  (3) the `workspace collapse`/`workspace expand` subcommands + `workspace new --collapsed` in `rookctlKit`,
+  (4) round-trip + omit-when-nil in `ControlProtocolTests` + dispatcher routing in `ControlDispatcherTests`
+  + `AppStoreOrganizationTests` (the mutator + tree read-back) + CLI mapping in `CommandsTests`.
   `workspace.focus` (target = workspace) collapses the sidebar tree to a single workspace — `args.mode`
   is `on`|`off`|`toggle` (`off` unfocuses only when the target is the currently focused one,
   `toggle` flips; delta-computed against `AppStore.focusedWorkspaceID` so it's idempotent,
@@ -1433,6 +1566,69 @@ paths:
   (`styleMask.contains(.fullScreen)` / `NSWindow.isZoomed`); both nil/omitted for a closed window, on the
   cache like `geometry`. The closure plumbing is unit-tested (`controlWindowNodesIncludeFullscreenZoomFromClosure`
   + the round-trips); the NSWindow reads are app-side, build-verified.
+  `window.minimize` parks a window in the Dock or brings it back — the control half of ⌘M / the yellow
+  traffic light / the Minimize title-bar double-click, and the last gap in the window surface (a script
+  could move/resize/zoom/fullscreen but neither park a window nor ask whether it was parked).
+  `args.mode` is the shared `ControlToggleMode` vocabulary `on`|`off`|`toggle`, with **toggle the explicit
+  default** (an omitted mode is sent as `toggle` by the CLI; an unparseable one is an
+  `invalid window minimize mode: X` error).
+  `on`/`off` resolve against the window's CURRENT `isMiniaturized`, so they are idempotent and only `toggle`
+  flips; `WindowRegistry.minimize` returns a three-way `MinimizeOutcome` so the arm can distinguish
+  `window not open — window.select it first` from `cannot minimize a full-screen window — window.fullscreen
+  it first`.
+  **The full-screen case is an ERROR rather than a silent ok on purpose**: AppKit no-ops `miniaturize` on a
+  natively full-screen window, so reporting success would be a lie.
+  (It fires only when the state would actually CHANGE — the idempotent short-circuit runs first, so
+  `window minimize off` on an already-restored full-screen window is a plain ok.)
+  Miniaturize/deminiaturize are ANIMATED, so the arm settle-polls `isMinimized == desired` before replying;
+  without it the `defer`-ed window-cache refresh would capture the OLD value and the very next
+  `window.list` would report the state the caller just changed away from.
+  Parking the FRONTMOST window also hands `frontmostWindowID` to a still-visible one (`handOffFrontmost`):
+  `activeWindowID` falls back only when the window's STORE is gone and a minimized window keeps its store,
+  so otherwise every untargeted command would keep routing into a window sitting in the Dock — and AppKit
+  keys another window on a minimize only while the APP is active, which is never the case for a script
+  parking windows in the background.
+  With every open window minimized there is nothing to hand to, so the pointer stays put rather than being
+  cleared.
+  `window.new --minimized` (`ControlArgs.minimized`) creates the window and THEN parks it, so a script can
+  build a set of project windows without each one flashing on screen and stealing focus; it waits out
+  `WindowAccessor`'s deferred second present before minimizing (that present deminiaturizes, so parking on
+  the instant of registration would simply be undone), then hands frontmost off — and only when the park
+  actually applied, since an unparked window is visible and owes nothing.
+  The READ side is `ControlWindowNode.minimized` on `window.list` (nil/omitted for a closed window), which
+  is what makes record-then-restore possible.
+  It rides the `cachedWindowNodes` cache like `geometry`/`fullscreen`/`zoomed`, so the new
+  `didMiniaturize`/`didDeminiaturize` observers (plus `.rookWindowAttachmentChanged` on register/unregister)
+  refresh it — otherwise a ⌘M or a Dock click, which run no control command, would leave the cache lying.
+  **A minimized window still reports its `geometry`** — the frame it will come back to — because
+  `WindowRegistry.resolvedScreen` falls back to the display the frame overlaps most when `NSWindow.screen`
+  goes nil off-screen, so record-then-restore works in the parked state too.
+  CLI: `rookctl window minimize [id] [on|off|toggle]` — BOTH positionals are optional, so a bare
+  `window minimize on` would bind `on` to the id; the subcommand recovers the intent because a window
+  address is a UUID prefix (hex only) or `active` and can never be a mode word.
+  Four-point keep-in-sync audit: (1) `case windowMinimize = "window.minimize"` + `ControlArgs.minimized`
+  + `ControlWindowNode.minimized` in `ControlProtocol.swift` (`window.minimize` reuses `ControlArgs.mode`),
+  (2) the `.windowMinimize` dispatcher arm (mode parse) → `ControlActions.windowMinimize` + the widened
+  `windowNew(name:minimized:)`, app-side in `ControlServer+WindowCommands.swift` over
+  `WindowRegistry.minimize`/`isMinimized`, plus the `flags:` closure feeding the node,
+  (3) the `window minimize` subcommand + `window new --minimized` in `rookctlKit`,
+  (4) round-trip + omit-when-nil in `ControlProtocolTests` + dispatcher validation in `ControlDispatcherTests`
+  + `WindowLibraryTests` (the node plumbing) + CLI mapping in `CommandsTests`.
+  The port also fixed four pre-existing plumbing defects the minimize path exposed, all worth knowing
+  because they silently mis-routed commands: `window.new` replied BEFORE its NSWindow attached (an immediate
+  `window.resize`/`move`/`zoom` on the new id failed with `window not open` — it now polls
+  `WindowRegistry.isRegistered`, NOT `library.isOpen`, which `newWindow()` sets synchronously and which
+  would prove nothing); `window.list` served a cache nothing refreshed on window ATTACH, so a brand-new
+  window reported no geometry; and `window.select` never took frontmost while the app was INACTIVE —
+  `frontmostWindowID`'s only writer was `reportFrontmost` on key/main notifications AppKit does not deliver
+  to an inactive app, so a background `window select` replied ok while every later untargeted command kept
+  routing into the previously-active window (`takeFrontmost` is the control-path equivalent).
+  A fourth was ours, not upstream's: `WindowAccessor.bringForwardForUITests` armed six deferred presents on
+  EVERY window attach and latched on only one branch, dragging a `window.new --minimized` back out of the
+  Dock.
+  Relatedly, `session.reveal` now RAISES the owning window: `makeFirstResponder` does not, and the
+  notification handler's `NSApp.activate` brings the APP forward, not a window parked in the Dock — so a
+  banner click into a minimized window used to change the selection invisibly.
   `restore.clear` clears every open session's saved CAPTURED foreground command (`Session.foregroundCommand`/`splitForegroundCommand`)
   and persists via `library.saveAllOpen()`, so the next restart restores plain shells for those panes instead
   of re-running the captured commands (also closing the force-quit re-fire: the restored command is consumed
@@ -1506,4 +1702,4 @@ paths:
   (image/text/color set/clear + tree read-back).
   **Agent-skill mirror (HARD keep-in-sync, 4th surface):** all commands are documented in the bundled
   `rook/Resources/agent-skill/` (SKILL.md summary, reference.md detail,
-  examples.md recipes) and the command count there is bumped to 67 to match.
+  examples.md recipes) and the command count there is bumped to 71 to match.

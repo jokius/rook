@@ -356,6 +356,32 @@ paths:
   (frontmost by default, the global `--window` selector for any open window) and call the `(in:)` variants
   — so unlike the frontmost-only `sidebar`/`sidebar.mode`, these can drive a background window's tree
   (see the Control API catalog).
+- **Collapse / expand ONE workspace (control-native).**
+  `workspace.collapse` / `workspace.expand` address a SINGLE workspace, honoring the global `--window`
+  selector like the other `workspace.*` commands, and `workspace.new --collapsed` seeds a workspace
+  already closed so a script can fill it with `session.new --no-select` without it popping open.
+  CLI: `rookctl workspace collapse|expand [--target <id>]` — the target is an OPTION (the shared
+  `TargetOptions`, defaulting to `active`), NOT a positional, unlike `rookctl window minimize [id]`;
+  and `rookctl workspace new [name] --collapsed`, where the name IS positional.
+  The read-back is `collapsed` on the `tree` workspace node — `true` when collapsed, OMITTED when expanded
+  (expanded is the default, matching the persisted `WorkspaceSnapshot.collapsed`), so it reports the
+  persisted model state (`!isExpanded`) and is unaffected by a transient focus force-reveal.
+  There is deliberately no `AppActions` hop: unlike the all-workspace pair this has no GUI caller (a row
+  click drives the outline directly), so the control arm in
+  `rook/Control/ControlServer+WorkspaceCommands.swift` is its only entry point.
+  **The arm writes the STORE first and posts the notification only for the live outline — that order is
+  load-bearing.**
+  `setWorkspaceExpanded` (delta-guarded, so the commands are idempotent) is the source of truth for the
+  read-back, and `WorkspaceSidebar` is mounted ONLY while that window's sidebar is VISIBLE — so a
+  notification-only write would silently drop with the sidebar hidden, leaving the command ok-but-inert.
+  The poke is `.rookSetWorkspaceExpanded`, store-scoped (`object: store`) like the all-workspace pokes,
+  with the workspace id + desired state in `userInfo`; the Coordinator's `setWorkspaceExpandedNotified`
+  only keeps `expandedWorkspaceIDs` in step and drives the on-screen row, with `suppressExpansionPersist`
+  set so the expand/collapse callback does not re-persist what the store already holds.
+  **The window-wide `sidebar.expand`/`sidebar.collapse` do NOT have this property**: they only POST, so
+  with the target window's sidebar hidden they change nothing readable — `collapsed` is NOT a reliable
+  read-back for them.
+  Reach for the per-workspace pair when a script needs to read back what it set.
 - **Persistence (per-window, no version bump).**
   `Session.flagged` persists via `SessionSnapshot.flagged: Bool?` (decode → `false`),
   `sidebarMode` via `Snapshot.sidebarMode: SidebarMode?` (→ `.tree`), `focusedWorkspaceID` via `Snapshot.focusedWorkspaceID: UUID?`
