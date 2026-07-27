@@ -46,6 +46,7 @@ final class MockControlActions: ControlActions {
         case dashboard(targets: [String], window: String?, close: Bool, fontMode: DashboardFontMode, mru: Bool)
         case font(target: String?, window: String?, pane: String?, String)
         case keymapReload
+        case keymapList
         case configReload
         case notify(target: String?, window: String?, title: String?, body: String)
         case themeSet(String?)
@@ -93,6 +94,7 @@ final class MockControlActions: ControlActions {
     var nextFontResponse = ControlResponse(ok: true)
     var nextNotifyResponse = ControlResponse(ok: true)
     var nextKeymapResponse = ControlResponse(ok: true)
+    var nextKeymapListResponse = ControlResponse(ok: true)
     var nextConfigResponse = ControlResponse(ok: true)
     var nextThemeSetResponse = ControlResponse(ok: true)
     var nextThemeListResponse = ControlResponse(ok: true)

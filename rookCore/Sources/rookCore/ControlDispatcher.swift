@@ -63,6 +63,9 @@ public protocol ControlActions {
                       fontMode: DashboardFontMode, mru: Bool) -> ControlResponse
     func font(_ target: String?, window: String?, pane: String?, action: String) -> ControlResponse
     func reloadKeymap() -> ControlResponse
+    /// The read side of `reloadKeymap()`: the resolved keymap projected host-free by
+    /// `ControlKeymap.project`, plus the live menu-bar key equivalents only the app target can read.
+    func listKeymap() -> ControlResponse
     func reloadGhosttyConfig() -> ControlResponse
     func sendNotification(_ target: String?, window: String?, title: String?, body: String) -> ControlResponse
     func setTheme(args: ControlArgs?) -> ControlResponse
@@ -181,7 +184,7 @@ public struct ControlDispatcher {
                 .workspaceMove, .workspaceFocus, .workspaceColor, .workspaceIcon, .workspaceRoot,
                 .workspaceCollapse, .workspaceExpand:
             return dispatchWorkspaceCommand(request)
-        case .quick, .fontInc, .fontDec, .fontReset, .keymapReload,
+        case .quick, .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarExpand,
                 .sidebarCollapse, .restoreClear:
             return dispatchAppCommand(request)
@@ -573,6 +576,8 @@ public struct ControlDispatcher {
             return actions.setQuickTerminal(mode: request.args?.mode)
         case .keymapReload:
             return actions.reloadKeymap()
+        case .keymapList:
+            return actions.listKeymap()
         case .configReload:
             return actions.reloadGhosttyConfig()
         case .notify:

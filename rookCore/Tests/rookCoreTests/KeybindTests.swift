@@ -91,6 +91,26 @@ struct KeybindTests {
         #expect(namedKey(forKeyCode: 0) == nil)
     }
 
+    // the character counterpart of namedKey(forKeyCode:) must cover the SAME vocabulary, or a menu key
+    // equivalent renders with its key missing and stops comparing against the chord the keymap resolved.
+    @Test func namedKeyForKeyEquivalentCoversEveryBindableNamedKey() {
+        let characters: [String: String] = [
+            "\u{F700}": "up", "\u{F701}": "down", "\u{F702}": "left", "\u{F703}": "right",
+            "\r": "return", "\t": "tab", " ": "space", "\u{7F}": "delete",
+        ]
+        for (character, expected) in characters {
+            #expect(namedKey(forKeyEquivalent: character) == expected)
+        }
+        #expect(Set(characters.values) == bindableNamedKeys,
+                "the character map and the file grammar must name the same keys")
+    }
+
+    @Test func namedKeyForKeyEquivalentIgnoresOrdinaryAndEmptyKeys() {
+        #expect(namedKey(forKeyEquivalent: "w") == nil)
+        #expect(namedKey(forKeyEquivalent: "") == nil)
+        #expect(namedKey(forKeyEquivalent: "ab") == nil, "only a single scalar can be a named key")
+    }
+
     @Test func bindableArrowKeysIsASubsetOfBindableNamedKeys() {
         #expect(bindableArrowKeys.isSubset(of: bindableNamedKeys))
         #expect(bindableArrowKeys == ["left", "right", "up", "down"])

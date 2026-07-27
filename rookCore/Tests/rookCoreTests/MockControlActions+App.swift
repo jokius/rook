@@ -18,6 +18,11 @@ extension MockControlActions {
         return nextKeymapResponse
     }
 
+    func listKeymap() -> ControlResponse {
+        calls.append(.keymapList)
+        return nextKeymapListResponse
+    }
+
     func reloadGhosttyConfig() -> ControlResponse {
         calls.append(.configReload)
         return nextConfigResponse

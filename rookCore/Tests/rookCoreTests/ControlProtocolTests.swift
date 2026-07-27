@@ -1298,6 +1298,19 @@ struct ControlProtocolTests {
         #expect(decoded.cmd == .keymapReload)
     }
 
+    @Test func keymapListRequestRoundTrips() throws {
+        let request = ControlRequest(cmd: .keymapList)
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.cmd == .keymapList)
+    }
+
+    @Test func keymapListRawStringMapsToCommand() throws {
+        let json = #"{"cmd":"keymap.list"}"#
+        let decoded = try JSONDecoder().decode(ControlRequest.self, from: Data(json.utf8))
+        #expect(decoded.cmd == .keymapList)
+    }
+
     @Test func configReloadRequestRoundTrips() throws {
         let request = ControlRequest(cmd: .configReload)
         let decoded = try roundTrip(request)

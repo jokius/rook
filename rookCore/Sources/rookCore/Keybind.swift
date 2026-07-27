@@ -23,9 +23,12 @@ public struct Modifier: OptionSet, Hashable, Sendable {
 /// The four arrows are here because the six arrow-bound built-ins ship their defaults on them, so the
 /// grammar must be able to spell what `BuiltinAction.defaultChord` returns.
 ///
-/// Adding a name here means updating four sites, two inbound and two outbound:
+/// Adding a name here means updating five sites, two inbound and three outbound:
 /// - `CustomCommandRunner` and `UndoCloseShortcut` resolve `NSEvent` → name via `namedKey(forKeyCode:)`,
 ///   so a name with no keycode parses in the file yet never fires;
+/// - `namedKey(forKeyEquivalent:)` resolves a live `NSMenuItem`'s key-equivalent CHARACTER back to the
+///   name for `keymap.list`, so a name missing there makes every menu item carrying that key render with
+///   the key absent and stop comparing against the resolved chord (its own test pins the two sets equal);
 /// - `Chord.glyphString` renders the name in palette hints and tooltips — it degrades to the raw name,
 ///   so a miss here is cosmetic;
 /// - `rookApp.toShortcut` maps the name to a SwiftUI `KeyEquivalent`, and its `default` arm is
@@ -53,6 +56,32 @@ public func namedKey(forKeyCode keyCode: UInt16) -> String? {
     case 124: return "right"
     case 125: return "down"
     case 126: return "up"
+    default: return nil
+    }
+}
+
+/// The named key for a menu item's key-equivalent CHARACTER, or `nil` for an ordinary printable key.
+///
+/// The character counterpart of `namedKey(forKeyCode:)`, for projecting live `NSMenuItem` key
+/// equivalents back into keymap syntax: a menu item carries a character rather than a virtual key code,
+/// and AppKit spells the arrows with private-use function-key scalars and return/tab/space/delete with
+/// control characters. Without this a menu chord renders as `cmd+opt+` with the key missing, which
+/// cannot be compared against the `cmd+opt+up` the keymap resolved.
+///
+/// Kept host-free by matching the scalar values rather than the AppKit constants, so `rookCore` stays
+/// AppKit-free; the values are the documented `NSUpArrowFunctionKey` family.
+public func namedKey(forKeyEquivalent character: String) -> String? {
+    let scalars = character.unicodeScalars
+    guard scalars.count == 1, let scalar = scalars.first else { return nil }
+    switch scalar.value {
+    case 0xF700: return "up"
+    case 0xF701: return "down"
+    case 0xF702: return "left"
+    case 0xF703: return "right"
+    case 0x0D, 0x03: return "return" // carriage return, and the numeric keypad's enter
+    case 0x09: return "tab"
+    case 0x20: return "space"
+    case 0x08, 0x7F: return "delete" // backspace, and forward delete
     default: return nil
     }
 }

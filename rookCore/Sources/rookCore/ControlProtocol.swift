@@ -70,6 +70,7 @@ public enum Command: String, Codable, Sendable {
     case windowFullscreen = "window.fullscreen"
     case windowMinimize = "window.minimize"
     case keymapReload = "keymap.reload"
+    case keymapList = "keymap.list"
     case configReload = "config.reload"
     case themeSet = "theme.set"
     case themeList = "theme.list"
@@ -758,12 +759,15 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var sync: Bool?
     public var light: String?
     public var dark: String?
+    /// The resolved keymap plus the live menu key equivalents, for `keymap.list`.
+    public var keymap: ControlKeymap?
 
     public init(id: String? = nil, tree: ControlTree? = nil, text: String? = nil,
                 windows: [ControlWindowNode]? = nil, exitCode: Int? = nil, count: Int? = nil,
                 affected: Int? = nil,
                 theme: String? = nil, themes: [String]? = nil, ratio: Double? = nil,
-                sync: Bool? = nil, light: String? = nil, dark: String? = nil) {
+                sync: Bool? = nil, light: String? = nil, dark: String? = nil,
+                keymap: ControlKeymap? = nil) {
         self.id = id
         self.tree = tree
         self.text = text
@@ -777,6 +781,7 @@ public struct ControlResult: Codable, Sendable, Equatable {
         self.sync = sync
         self.light = light
         self.dark = dark
+        self.keymap = keymap
     }
 }
 
