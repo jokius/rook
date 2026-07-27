@@ -59,6 +59,12 @@ public enum AgentStatus: String, Codable, Sendable, CaseIterable {
         case .idle: return ""
         }
     }
+
+    /// Tooltip for a visible status glyph: the three states differ only by shape and tint, so nothing on
+    /// the row names them in words. `idle` renders no glyph and therefore has no tooltip.
+    public var tooltipText: String? {
+        self == .idle ? nil : "Agent status: \(rawValue.capitalized)"
+    }
 }
 
 /// StatusPane records which pane of a session set the current agent status, using the same
@@ -104,5 +110,18 @@ public struct AgentIndicator: Equatable, Sendable {
     /// This keeps foreground typing from wiping a status set by a background pane.
     public func clearedBy(pane: StatusPane, isInterrupt: Bool) -> Bool {
         (statusPane ?? .left) == pane && status.clearedByKeystroke(isInterrupt: isInterrupt)
+    }
+
+    /// Tooltip for the session's status glyph: the state name, plus the pane that set it when that pane
+    /// is NOT the main one. The glyph is per-SESSION, so on a split- or scratch-tagged block it is the
+    /// only hint of which pane is waiting (and where a click on the row will land you). A `.left`/nil
+    /// pane adds no suffix — main is the default assumption. nil on `.idle`: no glyph, nothing to hover.
+    public var tooltipText: String? {
+        guard let text = status.tooltipText else { return nil }
+        switch statusPane {
+        case .right: return "\(text) (split pane)"
+        case .scratch: return "\(text) (scratch pane)"
+        case .left, nil: return text
+        }
     }
 }

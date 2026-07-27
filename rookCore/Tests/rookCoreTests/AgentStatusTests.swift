@@ -160,4 +160,21 @@ struct AgentStatusTests {
         // idle never renders a glyph
         #expect(AgentStatus.idle.symbolName == "")
     }
+
+    @Test func tooltipTextNamesVisibleStatusesAndOmitsIdle() {
+        #expect(AgentStatus.active.tooltipText == "Agent status: Active")
+        #expect(AgentStatus.blocked.tooltipText == "Agent status: Blocked")
+        #expect(AgentStatus.completed.tooltipText == "Agent status: Completed")
+        // idle renders no glyph, so there is nothing to hover
+        #expect(AgentStatus.idle.tooltipText == nil)
+    }
+
+    @Test func indicatorTooltipNamesOnlyANonMainPane() {
+        #expect(AgentIndicator(status: .blocked, statusPane: .right).tooltipText == "Agent status: Blocked (split pane)")
+        #expect(AgentIndicator(status: .active, statusPane: .scratch).tooltipText == "Agent status: Active (scratch pane)")
+        // main is the default assumption, so a left/nil pane adds no suffix
+        #expect(AgentIndicator(status: .blocked, statusPane: .left).tooltipText == "Agent status: Blocked")
+        #expect(AgentIndicator(status: .completed).tooltipText == "Agent status: Completed")
+        #expect(AgentIndicator().tooltipText == nil)
+    }
 }
