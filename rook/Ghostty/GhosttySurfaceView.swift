@@ -51,6 +51,12 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     /// factory after construction.
     weak var session: Session?
 
+    /// The session whose per-session VISUAL config (background watermark + font zoom) this surface
+    /// inherits while deliberately having no `session`. The scratch terminal uses this second weak link
+    /// so it renders the owning session's watermark without its OSC title/PWD reports mutating the
+    /// session model. Nil for overlays and quick terminals; main/split surfaces use `session` directly.
+    weak var watermarkSession: Session?
+
     /// Whether this surface is the session's split (right) pane rather than the primary. Set by the
     /// split factory; routes `applyPwd`/`applyTitle` to `session.splitCwd`/`splitTitle` so the split
     /// pane's reports don't clobber the primary's, and clears back to false when the pane is promoted
@@ -519,12 +525,15 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
 
         // a session carrying a background watermark (set earlier on a never-shown session, or restored from
         // a snapshot) applies it now that the surface exists — covering deferred-size creation, the eager
-        // deck, and relaunch. No-op for the sessionless overlay/scratch/quick surfaces.
+        // deck, and relaunch. The scratch inherits through `watermarkSession`; the overlay/quick surfaces
+        // stay sessionless and skip it.
         // ALSO re-applies a standalone `dashboardFontOverride` (a dashboard member whose surface realizes
         // AFTER the dashboard set the transient font): `applyWatermarkFromSession` honors
         // `dashboardFontOverride ?? session.fontSize`, so without this the late-realized cell renders at the
         // default font. Mirrors `reapplySessionConfigIfNeeded`.
-        if session?.backgroundWatermark != nil || dashboardFontOverride != nil { applyWatermarkFromSession() }
+        if (session ?? watermarkSession)?.backgroundWatermark != nil || dashboardFontOverride != nil {
+            applyWatermarkFromSession()
+        }
         // an overlay surface with its own background color (session.overlay.open --background-color) applies
         // it here too — the overlay is sessionless, so the watermark path above skips it.
         if overlayBackgroundColorHex != nil { applyOverlayBackgroundColor() }

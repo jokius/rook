@@ -229,12 +229,13 @@ extension GhosttySurfaceView {
 
     /// Builds this session's background-watermark config overlay (base files + `background-image*` lines +
     /// the session's current font zoom, via `WatermarkConfig`/`WatermarkRenderer`) and pushes it to the
-    /// surface, retaining the config for teardown. A no-op when the surface has no owning session (the
-    /// overlay/scratch/quick-terminal surfaces never carry one). A nil watermark with no font override
+    /// surface, retaining the config for teardown. The scratch surface inherits its owner's visual config
+    /// through `watermarkSession` while staying operationally sessionless; the overlay/quick-terminal
+    /// surfaces carry neither link and are a no-op. A nil watermark with no font override
     /// yields the plain base config, which CLEARS a previously-applied image. The `.text` PNG is (re)rendered
     /// here so it always matches the current string/color. Main-actor; reads the session imperatively.
     func applyWatermarkFromSession() {
-        guard let surface, let session else { return }
+        guard let surface, let session = session ?? watermarkSession else { return }
         // this installs a watermark/plain config with NO OSC-11 overlay, so release the OSC latch: it is the
         // dedupe key in the COLOR_CHANGE handler, and a stale value makes a subsequent identical OSC 11 (a
         // re-`printf` right after `session background clear/set`) get skipped and never render. the reload /
@@ -269,7 +270,8 @@ extension GhosttySurfaceView {
         // a transient OSC-11 background wins over the persisted watermark and must survive a config reload
         // that broadcast the shared config to this surface (which wiped it).
         if let hex = oscBackgroundColorHex { applyOSCBackground(hex); return }
-        guard session?.backgroundWatermark != nil || session?.fontSize != nil
+        let configSession = session ?? watermarkSession
+        guard configSession?.backgroundWatermark != nil || configSession?.fontSize != nil
                 || dashboardFontOverride != nil else { return }
         applyWatermarkFromSession()
     }
@@ -283,7 +285,7 @@ extension GhosttySurfaceView {
         // an OSC-11 background bakes the window opacity like a `.color` watermark, so a live opacity change
         // must re-emit it to keep the tint tracking the slider.
         if let hex = oscBackgroundColorHex { applyOSCBackground(hex); return }
-        guard session?.backgroundWatermark?.kind == .color else { return }
+        guard (session ?? watermarkSession)?.backgroundWatermark?.kind == .color else { return }
         applyWatermarkFromSession()
     }
 
