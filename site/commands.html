@@ -1544,6 +1544,15 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session seen</span>. Control-native.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                With <em>Show notification banners</em> off the call still succeeds — the badge tracks either way — but nothing is
+                handed to macOS, so the response carries an advisory in
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.text</span> and the CLI prints it in place of
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ok</span>:
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">badge updated, but "Show notification banners" is off, so no banner was posted</span>.
+                The presence of that note is what tells a delivered banner from a suppressed one — a bare
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ok</span> means the banner was posted.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 For agentic attention — waiting on input, or a finished result — prefer
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session status</span>. A notification is a one-shot
                 banner with no lasting state, while a status is typed and persistent, and drives the attention list, the title-bar

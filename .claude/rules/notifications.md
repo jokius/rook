@@ -17,7 +17,8 @@ paths:
   `notify` resolves the owning `Session` (the view's `weak var session`) + `PaneRole` (identity-compare
   the view to the session's `surface`/`splitSurface`/`overlaySurface`), applies suppression,
   **always bumps `session.unseenCount`** (the badge), then posts a `UNNotificationRequest` ONLY if `bannersEnabled`
-  (the General toggle) — so turning banners off still tracks the badge.
+  (the **Settings ▸ Notifications** toggle "Show notification banners", NOT General) — so turning banners
+  off still tracks the badge.
   Registered + `requestAuthorization([.alert])` from the scene `.task` (alongside `controlServer.start()`);
   auth is best-effort — the badge works even when banners are denied.
   `willPresent` returns `[.banner, .list]` so banners show even while rook is frontmost (the focused-pane
@@ -27,6 +28,17 @@ paths:
   `send(toSession:title:body:)` is the control channel's entry point (the `notify` command / `rookctl notify`):
   same badge + banner + reveal-identity machinery, but NO focus-suppression (the caller asked for it)
   and attributed to the `.main` pane.
+  **Every POST and every silent DROP logs at `.notice`** — the level the unified log PERSISTS, so
+  `log show` actually answers "did this reach macOS?".
+  That covers the `bannersEnabled` guard in BOTH paths (OSC `notify` + control `send`), the OSC
+  focus-suppression, and `notifyCommandFailure`: a swallowed banner is now diagnosable, and a HEALTHY
+  notify no longer logs nothing at all (which used to make the documented `log show` recipe come back
+  empty either way).
+  The keymap/config DIAGNOSTIC banners (`notifyKeymapDiagnostics`/`notifyConfigDiagnostics`) deliberately
+  stay silent on suppression — `keymap.reload`/`config.reload` already return the diagnostic count,
+  so the log is not their only trace.
+  The control path ALSO reports the suppression back to the caller (`ControlNotify.bannersOffNote` in
+  `result.text`, see the Control API rule).
 - **Notification sound (opt-in, `AppSettings.notificationSoundName`, None default).**
   A system sound attached as `content.sound` INSIDE the banner block (after the `bannersEnabled` guard) in
   BOTH the OSC `notify` and control `send` paths, so it RIDES the banner — it follows `notificationsEnabled`,
@@ -122,6 +134,19 @@ paths:
   the glyph TINT, per-call or not, is NOT accessibility-observable),
   and a `CABasicAnimation` `opacity` pulse added only while visible AND `blink` (the install's `UserPromptSubmit→active --blink`
   hook pulses the in-progress glyph).
+  **The glyph carries a hover TOOLTIP** — the three states differ only by shape and tint, so nothing on the
+  row names them in words.
+  The text is the host-free `AgentIndicator.tooltipText` (`Agent status: Blocked`), which says more than the
+  accessibility value can because our indicator also carries `statusPane`: a non-main pane appends
+  ` (split pane)`/` (scratch pane)`, so a session-level glyph still tells you WHICH pane is waiting
+  (`.left`/nil adds no suffix — main is the default assumption).
+  It is assigned in `StatusIconView.apply` next to the accessibility value and BEFORE the `.idle` guard,
+  so a REUSED cell can never keep a stale tooltip (`.idle` returns nil = no glyph, nothing to hover).
+  The SwiftUI twin `StatusGlyph` (attention popover, palette rows) does NOT carry it yet.
+  `toolTip` is not exposed through XCUITest's accessibility tree, so the `rookCore` unit test is the whole
+  mechanized check.
+  Pure hover chrome → control-API keep-in-sync EXEMPT (nothing new to drive; the state it names is already
+  `session.status`) — do not reopen the four-point audit for it.
   The glyph shows on EVERY non-idle session, the selected one INCLUDED — there is NO visibility gate.
   (An earlier `isFrontmostWindow`-driven hide-on-the-selected-session gate was removed:
   blanking the status on the row you're viewing read as confusing, since every other row carried a state;
@@ -213,7 +238,8 @@ paths:
   So a `right`- or `scratch`-tagged block both survives foreground typing in another pane AND pulls you to
   the waiting pane, not just the session.
 - **Titlebar attention bell (opt-in, window-wide aggregate of the glyph).**
-  When `attentionButtonEnabled` is on (Settings ▸ General, default OFF — see the Settings section),
+  When `attentionButtonEnabled` is on ("Show attention indicator", Settings ▸ **Notifications**,
+  default OFF — see the Settings section),
   `customTitlebar` (`ContentView`) shows a bell icon just after the title that recovers the per-session
   attention signal when the sidebar is hidden.
   It derives THREE states from the window's `AppStore.attentionSessions` (the host-free per-window set

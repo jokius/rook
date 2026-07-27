@@ -7,6 +7,7 @@ paths:
   - "rookCore/Sources/rookCore/CustomCommand.swift"
   - "rookCore/Sources/rookCore/ConfigPaths.swift"
   - "rook/Commands/CustomCommandRunner.swift"
+  - "rook/AppDelegate+CloseChord.swift"
   - "rookUITests/KeymapUITests.swift"
 ---
 
@@ -42,8 +43,28 @@ paths:
   ride AppKit menu-key-equivalents: each built-in `Button` in `rookApp`'s `.commands` reads `settingsModel.keymap.equivalent(for: .action)`
   via the `shortcut(for:)` helper (`Chord` → SwiftUI `KeyboardShortcut?`,
   applied only when non-nil so a keyless action stays keyless until mapped).
-  Because `keymap` is `@Observable` and `.commands` reads it, the menu shortcuts re-render on reload
-  — no notification needed for the menu.
+  **`@Observable` does NOT make the menu live.**
+  SwiftUI defers its menu rebuild to the next app ACTIVATION, so right after a `keymap reload` the live
+  `NSMenuItem.keyEquivalent`s still carry the OLD chords until the app is deactivated and re-activated.
+  For rook-vs-rook rebinds that lag is cosmetic — `resolveBuiltinOverrides` has already decided ownership
+  and the next activation applies it — but ⌘W is not cosmetic: `close_session` is the only built-in default
+  with a STOCK competitor (AppKit's File ▸ Close `performClose:`; `.saveItem` is the one command group
+  `rookApp+Menus` does NOT replace), and SwiftUI's deferred rebuild resolves that key-equivalent collision
+  by unbinding OUR item, never the stock one.
+  So `map cmd+e close_session` + reload handed ⌘W to close-the-whole-window, and putting `close_session`
+  back on ⌘W did not reclaim it until a relaunch.
+- **⌘W is therefore asserted from AppKit, not left to SwiftUI (`AppDelegate+CloseChord.swift`).**
+  In each submenu holding BOTH items, `applyCloseSessionChord` puts ⌘W on rook's Close Session item exactly
+  while `close_session` resolves to it (and clears a STALE one, so the File menu never shows ⌘W twice), and
+  arms the stock item only when `anyBuiltinOwns` is false.
+  Ownership is decided by ANY built-in resolving to ⌘W, not `close_session` alone, because the parser
+  rejects a chord only when TWO DISTINCT actions claim it — `map cmd+e close_session` + `map cmd+w new_session`
+  is a legal keymap in which another action legitimately owns the chord.
+  Re-applied at FOUR points — launch, `.rookKeymapChanged`, `didBecomeActive` (async, so it lands AFTER
+  SwiftUI's rebuild), and menu tracking — the same "a one-shot does not stick" shape as
+  `removeNativeFullScreenMenuItem`, and for the same reason: no SwiftUI API for either half.
+  rook's item is a SwiftUI closure button with no selector, so it is matched by TITLE (`"Close Session"`)
+  scoped to the submenu owning `performClose:` — renaming that menu item silently breaks the reconcile.
   Custom commands ride an app-wide `NSEvent` local `.keyDown` monitor in `CustomCommandRunner` (the same
   monitor pattern as the Ctrl-Tab switcher and Ctrl-1/2): it maps `NSEvent` → `Chord`,
   feeds a `KeybindMatcher` (firing simple chords + leader sequences like `ctrl+a>g`,

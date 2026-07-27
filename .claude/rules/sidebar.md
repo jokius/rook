@@ -344,8 +344,10 @@ paths:
   Both keep `expandedWorkspaceIDs` in sync (so the state survives a flagged-mode round-trip).
   Per-window scoping rides a notification (`.rookExpandWorkspaces`/`.rookCollapseWorkspaces`) posted
   with the TARGET window's `AppStore` as the object; each Coordinator registers its observer with `object: store`,
-  so only the matching window's sidebar acts (unlike the rename notifications,
-  which self-scope via the selected-session guard).
+  so only the matching window's sidebar acts.
+  The two rename notifications scope IDENTICALLY (`object: store` on both the post and the observer);
+  they used to be `object: nil` on the claim that the selected-session guard scoped them,
+  which it never did — every open window has a selection, so a rename opened an editor in all of them.
   This object-scoping is what lets the control path target ANY open window.
   Graceful no-op in `flagged` mode (no workspace rows).
   GUI surfaces (frontmost window): View ▸ Expand/Collapse Workspaces (plain keyless items,

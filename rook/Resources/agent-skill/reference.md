@@ -618,6 +618,13 @@ attributed to a session (default: the active session of the frontmost window). `
 the session name. Clicking the banner reveals that session. This is the only app-level way to post a
 banner (the terminal's own OSC 9/777 is the other source). Control-native (no GUI/menu equivalent).
 
+The response carries `result.id` (the notified session).
+With Settings ▸ Notifications ▸ "Show notification banners" OFF the call STILL succeeds and the unseen
+badge still ticks, but nothing is handed to macOS, so the response ALSO carries `result.text` =
+`badge updated, but "Show notification banners" is off, so no banner was posted`.
+The PRESENCE of that note is how a script tells a suppressed banner from a delivered one — the badge
+ticks either way — and `rookctl notify` prints it in place of `ok`.
+
 For agentic attention (waiting on input, or a finished result), prefer `session status` over `notify`
 and OSC 9/777. The two overlap, either can raise an "I need you" signal, but a notification is a
 one-shot banner and badge with no lasting state, while `session status` is a typed, persistent state

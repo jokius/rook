@@ -86,6 +86,18 @@ To remap a shortcut ghostty still owns: a physical key name (`key_c`, `key_v`, �
 any layout; a bare letter (`c`, `v`) matches the produced character. Edit `~/.config/rook/ghostty.conf`,
 then `rookctl config reload`.
 
+### "notify says ok but no notification appears"
+
+Most often the banners toggle is off: Settings ▸ Notifications ▸ "Show notification banners".
+The command still succeeds and the sidebar's unseen badge still ticks, so the tell is `result.text` —
+banners off makes `notify` answer `badge updated, but "Show notification banners" is off, so no banner
+was posted` instead of a bare `ok` (with `--json`, `result.text` present alongside `result.id`).
+No note and still no banner means the banner left rook, so look at macOS: System Settings ▸
+Notifications ▸ Rook (alerts allowed, Do Not Disturb / a Focus off).
+Every posted banner AND every silent drop logs at `.notice`, which `log show` persists, so both cases
+are visible in the log (`category == "NotificationManager"`), including the terminal's own OSC 9/777
+suppressed because you were typing in the firing pane.
+
 ### "The agent-status glyph updates the wrong session"
 
 One session's glyph blinks/changes while the work is happening in a DIFFERENT session — typically when

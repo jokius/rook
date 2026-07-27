@@ -963,7 +963,7 @@
               clear it headlessly with <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl session seen</span>
               so an orchestrator driving a session over the socket can acknowledge it without pulling focus
               (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl tree --json</span> reports each session's <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">unseen</span> count).
-              Banners and count badges toggle independently in General settings. For a coding agent that just needs to say it is
+              Banners and count badges toggle independently on the Notifications settings tab. For a coding agent that just needs to say it is
               waiting, <a href="#status" style="color: #7ece8f">agent status</a> is usually the better fit.
             </p>
           </section>
@@ -1754,6 +1754,16 @@
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ssh-terminfo</span> from the feature list to
               opt out.
             </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              <strong style="color: #e6e1d7">Click-to-move at the prompt is off.</strong> With shell integration on, libghostty's
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">cursor-click-to-move</span> emits arrow
+              keys to walk the shell's cursor to the clicked column — including on the double-click you meant as a word selection,
+              which snaps the cursor to the start of the line — so rook ships
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">cursor-click-to-move = false</span>; set
+              it back to <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">true</span> in
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">~/.config/rook/ghostty.conf</span> to get
+              it back. A TUI's own mouse reporting (vim, htop) is a separate path and is unaffected.
+            </p>
           </section>
 
           <!-- STATUS -->
@@ -1979,6 +1989,9 @@
               tool run → active, Stop → completed, permission prompt → blocked). Six Codex lifecycle events run a dedicated adapter.
               A permission request is only a candidate because it fires before Auto Review; the adapter keeps automatic decisions
               active and changes the row to blocked only after a real approval or structured question appears in that pane.
+              On Codex's Stop event the adapter also reads the turn's final assistant message: a question mark anywhere in it
+              reports blocked — that is how a plain prose question, which raises no dialog for the watcher to see, still parks the
+              row — and anything else (including no message at all) reports completed with auto-reset.
               Re-running upgrades an older Rook-managed Codex block and is otherwise idempotent. The package also installs
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rook-agent-session.sh</span> on both
               agents' <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">SessionStart</span> event —

@@ -128,6 +128,21 @@ paths:
   clears, so a denied request (which fires no follow-up tool event) does not linger blocked.
   A token file guards the watcher: a superseding lifecycle event rewrites it, and the watcher re-checks
   it right before writing so a late `blocked` from a stale pane read can't clobber a newer status.
+  **Codex therefore has TWO `blocked` sources**: that footer-dialog watcher, and — since the port of
+  upstream `73217925` — the `stop` arm's FINAL-MESSAGE check.
+  `stop` reads `last_assistant_message` off the Stop payload on stdin with
+  `/usr/bin/plutil -extract last_assistant_message raw -o - -` (the same no-`jq` JSON convention
+  `rook-agent-session.sh` uses) and reports plain `blocked` when the message CONTAINS a `?`,
+  falling back to `completed --auto-reset` when it is absent, `null`, or unparseable —
+  the watcher only ever sees Codex's own dialogs, so an ordinary prose question at the end of a turn
+  used to report `completed` and the session stopped asking for you.
+  The containment test is deliberately BLUNT: upstream widened it from "ends with `?`" precisely because
+  `How deep should I review it? I recommend the full review.` does not trail in one,
+  so it also fires on an already-answered question and on a URL —
+  that is the knob to narrow if `blocked` gets noisy.
+  (The `CodexStatusHookTests` harness must hand the hook an explicit stdin pipe and CLOSE it;
+  an inherited stdin that never reaches EOF hangs `plutil -extract … -` and the suite hangs rather than
+  fails.)
   This replaced a retired `codex-notify.sh` that keyword-matched the turn's final message and misfired
   both ways (issue #193; the merge also strips the old `notify = [...codex-notify.sh...]` line).
   Both wrappers get the bundled `rookctl` path baked in by `AgentHooksInstaller.bakeRookctlPath` (it
@@ -395,8 +410,13 @@ paths:
   (still false for a FLOATING overlay, preserving the NSSplitView-overrun invariant).
   GUI half: ⌘J (`BuiltinAction.toggleScratch`), title-bar `scratch-toggle` button,
   View ▸ Show/Hide Scratch, the ⌃⇧P palette "Toggle Scratch" — all through `AppActions.toggleScratch()`.
-  The scratch surface is NOT wired to the session (no `view.session`, like the overlay) so its PWD/title
-  never clobber the sidebar name; `autoFocus` grabs first responder on show,
+  The scratch surface is NOT OPERATIONALLY wired to the session (still no `view.session`, like the overlay)
+  so its PWD/title never clobber the sidebar name — but it DOES carry a SECOND weak link,
+  `GhosttySurfaceView.watermarkSession`, holding only the owner's VISUAL config (background watermark +
+  font zoom), so the session's `session.background` image/text/color renders on the scratch as well.
+  The four watermark read sites take `session ?? watermarkSession`; the overlay and quick-terminal surfaces
+  carry NEITHER link and stay a no-op.
+  `autoFocus` grabs first responder on show,
   the detail pane's `.onChange(of: scratchActive)` reclaims it on hide.
   Four-point keep-in-sync audit: (1) `case sessionScratch = "session.scratch"` + the new `ControlSessionNode.scratch`
   flag in `ControlProtocol.swift` (reuses `ControlArgs.mode`), (2) the `.sessionScratch` dispatch arm
@@ -447,6 +467,13 @@ paths:
   does NOT focus-suppress (the caller asked for it) but still bumps the badge + carries the `<windowID>:<sessionID>:main`
   click-to-reveal identity.
   It is the ONLY app-level way to post a banner; the terminal OSC path remains the other source.
+  **With the banner toggle OFF the command still succeeds** (the badge tracks either way) but carries the
+  advisory `ControlNotify.bannersOffNote` in `result.text` — `badge updated, but "Show notification banners"
+  is off, so no banner was posted` — which `SocketClient` already prints in place of `ok`,
+  so there is NO CLI change; the same ok-with-advisory shape as `session.agent`'s
+  `ignored: not the pane's agent`.
+  The constant lives next to `OverlayResultError` in `rookCore/Sources/rookCore/ControlProtocol.swift`
+  and is shared for the same reason: the server's wording and any caller matching on it must not drift.
   `session.new` creates a session.
   The destination workspace is addressed one of two MUTUALLY-EXCLUSIVE ways:
   `args.workspace` (id / unique prefix / `active`, the default) OR `args.workspaceName` (the sidebar
@@ -1435,8 +1462,11 @@ paths:
   opacity/color/fit/position validated against the shared host-free `WatermarkConfig`,
   used by BOTH the CLI `validate()` and the server.
   The `BackgroundWatermark` spec (host-free, `Codable`) is persisted in `SessionSnapshot` (survives restart)
-  via `AppStore.setBackgroundWatermark`, then applied to the session main + split surfaces as a PER-SURFACE
-  ghostty config overlay: `GhosttyApp.configWithOverlay` builds the same base files + an overlay file
+  via `AppStore.setBackgroundWatermark`, then applied to the session main + split + scratch surfaces as a
+  PER-SURFACE ghostty config overlay (the scratch reaches it through `watermarkSession`, see `session.scratch`
+  above — the re-apply loop in `ControlServer+SurfaceIO.applyWatermark` covers all three, so a background set
+  while the scratch is already open reaches it):
+  `GhosttyApp.configWithOverlay` builds the same base files + an overlay file
   (`WatermarkConfig.overlayText`: for image/text the `background-image*` lines + `background-opacity = 1`
   so the image shows even under window translucency, which pins the global `background-opacity` to 0;
   for `color` a `background = <hex>` line + `background-opacity = <windowOpacity>` (passed in from

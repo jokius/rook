@@ -181,7 +181,9 @@ paths:
   `BuiltinAction.dashboard` (`defaultChord` ⌘⇧D — expressible, so pure-`defaultChord`-driven) drives
   `AppActions.toggleDashboard()`, which opens a VIEW-ONLY grid of the frontmost window's most-recently-used
   sessions (`AppStore.dashboardMRUMembers`, auto-sized) and closes an open one.
-  It is a real Navigate ▸ Dashboard menu item (reading `equivalent(for: .dashboard)`) plus a ⌃⇧P palette
+  It is a real Navigate ▸ Dashboard menu item (reading `equivalent(for: .dashboard)`,
+  glyph `rectangle.split.2x2` — do NOT put it back to `square.grid.2x2`,
+  which is the workspace identity glyph, the default sidebar workspace row icon) plus a ⌃⇧P palette
   "Dashboard" entry — the same three surfaces as every other action.
   The grid is MODAL: `uiActionsEnabled` now gates on `!terminalZoomActive && !(frontmostDashboard?.isOpen ?? false)`,
   so keyboard/menu/palette actions can't mutate the deck behind it, and the menu items mirror that with a
@@ -190,6 +192,12 @@ paths:
   `focusActiveSession` and `focusSplitPane` gain the matching guards (`dashboardActive` /
   `dashboardActive(for:)`, in `AppActions+Focus.swift`): the grid's key-catcher owns first responder, so a
   focus move into a hidden deck surface would steal the keyboard from it.
+  All THREE of `focusSplitPane`'s cover gates — zoom, dashboard, quick terminal
+  (`terminalZoomActive(for:)`/`dashboardActive(for:)`/`quickTerminalActive(for:)`) — resolve the SESSION's
+  window via `library.windowID(forSession:)`, because that path is cross-window by design
+  (`session.focus --pane` targets a session in any window, and each window owns its own cover);
+  only `focusActiveSession` keeps a frontmost check, since it targets `library.activeStore.activeSession`
+  by definition.
   Zoom and the dashboard are mutually exclusive.
   The control half is the `dashboard` command (see the Control API catalog) — the GUI open is the `--mru`
   set at `--auto-size`, so the two land on the identical grid.
@@ -315,6 +323,10 @@ paths:
   so `AppActions.renameActive{Session,Workspace}()` post `.rookBeginRenameSession`/`.rookBeginRenameWorkspace`;
   `WorkspaceSidebar.Coordinator` observes them and calls `beginEditing` on the selected row (async,
   so the row is on screen after any palette overlay closes).
+  Both are posted with the frontmost `AppStore` as the object and observed with `object: store`,
+  so only that window's sidebar opens an editor — with `object: nil` the editor opened in EVERY window,
+  each one leaking an unbalanced `suppressAutoFollow()` (auto-follow wedged off) and latching that sidebar
+  in `isEditing`.
   `AppActions.renamePending` keeps `focusActiveSession` (the palette/quick-terminal close focus-restore)
   off the rename field for ~0.6 s.
 - The Ctrl-Tab session switcher (`SessionSwitcher` + `SessionSwitcherOverlay`) cycles a most-recently-used

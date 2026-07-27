@@ -28,7 +28,7 @@ log stream --predicate 'subsystem == "com.rook.app"' --info
 log show --predicate 'subsystem == "com.rook.app" && category == "CustomCommandRunner"' --info --last 30m
 ```
 
-The categories are `CustomCommandRunner`, `SettingsModel`, `GhosttyApp`, `NotificationManager`, and `ControlServer`. In Console.app, filter on the same subsystem.
+The categories are `rookApp`, `CustomCommandRunner`, `SettingsModel`, `GhosttyApp`, `GhosttyCallbacks`, `NotificationManager`, and `WatermarkRenderer`. In Console.app, filter on the same subsystem.
 
 ## Checking the keymap
 
@@ -119,7 +119,8 @@ Reload with **File ▸ Reload Config** or `rookctl config reload`. The keybind s
 ## Other common issues
 
 - **`rookctl: command not found`.** Install it from Help ▸ Install Command Line Tool… (it symlinks into `/usr/local/bin`). You can also call it by its full path inside the app bundle: `rook.app/Contents/MacOS/rookctl`.
-- **No desktop notifications.** macOS must have granted permission (System Settings ▸ Notifications ▸ Rook), and Settings ▸ General ▸ Notifications must be on. The unseen-count badge still tracks even when banners are off.
+- **No desktop notifications.** macOS must have granted permission (System Settings ▸ Notifications ▸ Rook), and **Show notification banners** in Settings ▸ Notifications must be on. The unseen-count badge still tracks even when banners are off.
+- **`notify` says ok but no notification appears.** `rookctl notify` succeeds as soon as the target session resolves, so a delivered banner and a suppressed one look the same from the call site. With **Show notification banners** off, the response carries a note in place of `ok` — `badge updated, but "Show notification banners" is off, so no banner was posted` — and the unseen-count badge ticks either way. Every posted banner and every suppression is logged at the `notice` level under the `NotificationManager` category, so the `log show` recipe above covers the healthy case as well as the swallowed one — including a terminal-emitted OSC 9/777 notification dropped because you were typing in that very pane, which `rookctl notify` is never subject to.
 - **Agent-status glyph does not update.** Install the hooks from Help ▸ Install Agent Status Hooks…, then start a fresh shell so the `source` line added to your shell rc takes effect. The hooks call `rookctl session status`, so `rookctl` must resolve first (see above).
 - **Agent-status glyph updates the wrong session.** One session's glyph blinks while the work happens in another — typically when agents run inside tmux (or a tmux-backed session manager such as agent-deck). The working process inherited another session's `ROOK_SESSION_ID`: the status hooks target whatever id is in their environment, and a long-lived daemon started from inside a Rook session (a tmux server is the usual carrier) captures that session's `ROOK_*` variables into its global environment and passes them to every child it ever creates. Check `tmux show-environment -g | grep ROOK` — if present, clear them with `tmux set-environment -g -r ROOK_SESSION_ID` (and the other `ROOK_*` names), then restart the affected panes. To avoid it, start such daemons with the variables scrubbed (`env -u ROOK_SESSION_ID … <command>`) or from a terminal outside rook.
 
