@@ -366,7 +366,7 @@ final class ControlServer {
         case .tree, .sessionNew, .sessionDuplicate, .sessionSelect, .sessionGo, .sessionClose, .sessionRename,
                 .sessionReveal, .sessionMove,
                 .workspaceNew, .workspaceSelect, .workspaceRename, .workspaceDelete, .workspaceMove, .workspaceFocus,
-                .workspaceColor, .workspaceIcon, .workspaceRoot,
+                .workspaceColor, .workspaceIcon, .workspaceRoot, .workspaceCollapse, .workspaceExpand,
                 .sessionSplit, .sessionScratch, .sessionFileTree, .sessionMarkdown, .sessionFocus, .sessionResize,
                 .surfaceZoom,
                 .sessionStatus, .sessionAgent, .sessionFlag, .sessionSeen, .notify,

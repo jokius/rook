@@ -14,7 +14,9 @@ public protocol ControlActions {
     func closeSessions(_ targets: [String], window: String?) -> ControlResponse
     func renameSession(_ target: String?, window: String?, name: String) -> ControlResponse
     func revealSession(_ target: String?, window: String?) -> ControlResponse
-    func createWorkspace(window: String?, name: String?) -> ControlResponse
+    /// Creates a workspace in the target window. `collapsed` seeds it closed in the sidebar
+    /// (`workspace.new --collapsed`) so a script can fill it with `session.new --no-select` without it opening.
+    func createWorkspace(window: String?, name: String?, collapsed: Bool) -> ControlResponse
     func selectWorkspace(_ target: String?, window: String?) -> ControlResponse
     func renameWorkspace(_ target: String?, window: String?, name: String) -> ControlResponse
     func deleteWorkspace(_ target: String?, window: String?) -> ControlResponse
@@ -33,6 +35,11 @@ public protocol ControlActions {
     /// (a literal `clear` or an omitted path clears); this only resolves the target, mutates, and — at
     /// spawn time, not here — falls back to home when the directory does not exist.
     func setWorkspaceRoot(_ target: String?, window: String?, path: String?) -> ControlResponse
+    /// Collapses (`expanded: false`) or expands (`expanded: true`) ONE workspace in the target window's
+    /// sidebar tree — the per-workspace analogue of the all-workspace `expandWorkspaces`/`collapseWorkspaces`.
+    /// The host persists `Workspace.isExpanded` itself (the `collapsed` read-back's source of truth) and only
+    /// then pokes the live outline, so it works with the sidebar hidden.
+    func setWorkspaceExpansion(_ target: String?, window: String?, expanded: Bool) -> ControlResponse
     func setSessionFlag(_ target: String?, window: String?, mode: String?) -> ControlResponse
     func markSessionSeen(_ target: String?, window: String?) -> ControlResponse
     func setSessionStatus(_ target: String?, window: String?, update: ControlSessionStatusUpdate) -> ControlResponse
@@ -170,7 +177,8 @@ public struct ControlDispatcher {
                 .sessionText:
             return await dispatchSessionSurfaceCommand(request)
         case .workspaceNew, .workspaceSelect, .workspaceRename, .workspaceDelete,
-                .workspaceMove, .workspaceFocus, .workspaceColor, .workspaceIcon, .workspaceRoot:
+                .workspaceMove, .workspaceFocus, .workspaceColor, .workspaceIcon, .workspaceRoot,
+                .workspaceCollapse, .workspaceExpand:
             return dispatchWorkspaceCommand(request)
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarExpand,
@@ -359,7 +367,8 @@ public struct ControlDispatcher {
     private func dispatchWorkspaceCommand(_ request: ControlRequest) -> ControlResponse {
         switch request.cmd {
         case .workspaceNew:
-            return actions.createWorkspace(window: request.args?.window, name: request.args?.name)
+            return actions.createWorkspace(window: request.args?.window, name: request.args?.name,
+                                           collapsed: request.args?.collapsed ?? false)
         case .workspaceSelect:
             return actions.selectWorkspace(request.target, window: request.args?.window)
         case .workspaceRename:
@@ -385,6 +394,10 @@ public struct ControlDispatcher {
             return dispatchWorkspaceIcon(request)
         case .workspaceRoot:
             return dispatchWorkspaceRoot(request)
+        case .workspaceCollapse:
+            return actions.setWorkspaceExpansion(request.target, window: request.args?.window, expanded: false)
+        case .workspaceExpand:
+            return actions.setWorkspaceExpansion(request.target, window: request.args?.window, expanded: true)
         default:
             preconditionFailure("unexpected workspace command: \(request.cmd.rawValue)")
         }

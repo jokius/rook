@@ -8,17 +8,20 @@ struct Workspace: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Workspace commands.",
         subcommands: [New.self, Rename.self, Delete.self, Select.self, Move.self, Focus.self, Color.self,
-                      Icon.self, Root.self]
+                      Icon.self, Root.self, Collapse.self, Expand.self]
     )
 
     struct New: RequestCommand {
         static let configuration = CommandConfiguration(abstract: "Create a workspace.")
         @Argument(help: "Workspace name (defaults to the auto-generated name).") var name: String?
+        @Flag(name: .long, help: "Create the workspace collapsed in the sidebar.") var collapsed = false
         @OptionGroup var options: ClientOptions
         var echoesResultID: Bool { true }
 
         func makeRequest() throws -> ControlRequest {
-            ControlRequest(cmd: .workspaceNew, args: options.withWindow(ControlArgs(name: name)))
+            // false sends nothing: the flag is the opt-in, so the default stays byte-identical on the wire.
+            ControlRequest(cmd: .workspaceNew,
+                           args: options.withWindow(ControlArgs(name: name, collapsed: collapsed ? true : nil)))
         }
     }
 
@@ -152,6 +155,26 @@ struct Workspace: ParsableCommand {
             }
             return ControlRequest(cmd: .workspaceRoot, target: target.target,
                                   args: options.withWindow(ControlArgs(path: path)))
+        }
+    }
+
+    struct Collapse: RequestCommand {
+        static let configuration = CommandConfiguration(abstract: "Collapse a workspace in the sidebar tree.")
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .workspaceCollapse, target: target.target, args: options.withWindow())
+        }
+    }
+
+    struct Expand: RequestCommand {
+        static let configuration = CommandConfiguration(abstract: "Expand a workspace in the sidebar tree.")
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .workspaceExpand, target: target.target, args: options.withWindow())
         }
     }
 }

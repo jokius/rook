@@ -3,8 +3,13 @@ import Foundation
 
 // The mock's workspace witnesses — see `MockControlActions`.
 extension MockControlActions {
-    func createWorkspace(window: String?, name: String?) -> ControlResponse {
-        calls.append(.workspaceNew(window: window, name))
+    func createWorkspace(window: String?, name: String?, collapsed: Bool) -> ControlResponse {
+        calls.append(.workspaceNew(window: window, name, collapsed: collapsed))
+        return ControlResponse(ok: true)
+    }
+
+    func setWorkspaceExpansion(_ target: String?, window: String?, expanded: Bool) -> ControlResponse {
+        calls.append(.workspaceExpansion(target: target, window: window, expanded: expanded))
         return ControlResponse(ok: true)
     }
 

@@ -239,16 +239,6 @@ extension ControlServer: ControlActions {
         }
     }
 
-    func createWorkspace(window: String?, name: String?) -> ControlResponse {
-        // placement target: the window's frontmost store (or `args.window`'s). name defaults to
-        // the auto-generated workspace name when none is given.
-        resolver.resolvePlacementStore(window) { store in
-            let name = trimmed(name) ?? store.defaultWorkspaceName
-            let workspace = store.addWorkspace(name: name)
-            return ControlResponse(ok: true, result: ControlResult(id: workspace.id.uuidString))
-        }
-    }
-
     func selectWorkspace(_ target: String?, window: String?) -> ControlResponse {
         // selecting a workspace selects its first session (workspace rows are not selectable on
         // their own); an empty workspace just clears nothing and reports the workspace id.

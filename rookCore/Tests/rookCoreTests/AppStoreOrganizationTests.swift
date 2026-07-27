@@ -739,4 +739,50 @@ struct AppStoreOrganizationTests {
         #expect(restored.workspaces.map(\.id) == [w1.id, w0.id])
         #expect(restored.workspaces[1].sessions.map(\.id) == [b.id, c.id, a.id])
     }
+
+    // MARK: - Collapse read-back (workspace.collapse / workspace.expand / workspace.new --collapsed)
+
+    @Test func addWorkspaceCollapsedSeedsTheWorkspaceClosed() {
+        let store = makeStore()
+        let open = store.addWorkspace(name: "open")
+        let shut = store.addWorkspace(name: "shut", collapsed: true)
+        #expect(store.workspaces.first { $0.id == open.id }?.isExpanded == true)
+        #expect(store.workspaces.first { $0.id == shut.id }?.isExpanded == false)
+    }
+
+    @Test func controlTreeReportsCollapsedOnlyForClosedWorkspaces() {
+        let store = makeStore()
+        store.addWorkspace(name: "open")
+        store.addWorkspace(name: "shut", collapsed: true)
+
+        let nodes = store.controlTree().workspaces
+        // expanded is the default, so it OMITS the field rather than reporting false — an all-expanded
+        // tree stays quiet, matching the persisted `WorkspaceSnapshot.collapsed`.
+        #expect(nodes.first { $0.name == "open" }?.collapsed == nil)
+        #expect(nodes.first { $0.name == "shut" }?.collapsed == true)
+    }
+
+    @Test func controlTreeCollapsedTracksSetWorkspaceExpanded() {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        func collapsedFlag() -> Bool? {
+            store.controlTree().workspaces.first { $0.id == workspace.id.uuidString }?.collapsed
+        }
+
+        #expect(collapsedFlag() == nil)
+        store.setWorkspaceExpanded(workspace.id, expanded: false)
+        #expect(collapsedFlag() == true)
+        store.setWorkspaceExpanded(workspace.id, expanded: true)
+        #expect(collapsedFlag() == nil)
+    }
+
+    @Test func collapseStateSurvivesASnapshotRoundTrip() {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work", collapsed: true)
+
+        let restored = makeStore()
+        restored.restore(from: store.snapshot())
+        #expect(restored.workspaces.first { $0.id == workspace.id }?.isExpanded == false)
+        #expect(restored.controlTree().workspaces.first { $0.id == workspace.id.uuidString }?.collapsed == true)
+    }
 }
