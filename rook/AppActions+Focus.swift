@@ -22,6 +22,19 @@ extension AppActions {
         return DashboardControllerRegistry.shared.controller(for: windowID)?.isOpen == true
     }
 
+    /// Whether the quick terminal is showing in the window OWNING this session — the session-scoped twin of
+    /// the frontmost-scoped `frontmostQuickTerminal`, completing the set with `terminalZoomActive(for:)`
+    /// and `dashboardActive(for:)`.
+    /// Each window owns its own quick-terminal controller, so the FRONTMOST one is the wrong question for
+    /// `focusSplitPane`: a cover up in the frontmost window would silently drop the focus step for a
+    /// `session.focus --pane` aimed at a BACKGROUND window (leaving that window's `splitFocused` and its
+    /// real first responder disagreeing), while a cover actually showing in that background window — the
+    /// one that does own its focus — would be missed.
+    func quickTerminalActive(for session: Session) -> Bool {
+        guard let windowID = library.windowID(forSession: session.id) else { return false }
+        return QuickTerminalRegistry.shared.controller(for: windowID)?.isVisible == true
+    }
+
     /// Move first responder to the split (right) pane on open, or the primary on close.
     /// Re-asserts over a short window because the split surface materializes a beat after the
     /// toggle and the HSplitView collapse churns the primary view. While a full-coverage surface
@@ -54,7 +67,10 @@ extension AppActions {
         // the quick terminal is a window-level cover above the session; while it's up it owns focus, so
         // don't move first responder to a pane behind it (its own hide restores the session). The caller
         // has already set `splitFocused`, so the right pane shows once the quick terminal is dismissed.
-        if frontmostQuickTerminal?.isVisible == true { return }
+        // Gated on the SESSION's window like the zoom/dashboard pair above, not the frontmost one — each
+        // window owns its own quick terminal, so this gate's per-window answer was already available and
+        // simply wasn't being asked.
+        if quickTerminalActive(for: session) { return }
         let target: (any TerminalSurface)? = (session.overlayActive || session.scratchActive)
             ? session.topmostSurface
             : (wantSplit ? session.splitSurface : session.surface)
