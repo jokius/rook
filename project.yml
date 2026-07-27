@@ -49,6 +49,10 @@ targets:
           - "Resources/terminfo"
           - "Resources/agent-status"
           - "Resources/agent-skill"
+          # the `ghostty +ssh-cache` shim: the post-build phase installs it at
+          # Contents/MacOS/ghostty (where libghostty's GHOSTTY_BIN_DIR points), so it must
+          # not ALSO land in Contents/Resources as a stray copy.
+          - "Resources/ghostty-shim.sh"
           # committed SOURCE for rook's own bundled theme(s); setup.sh stages it
           # into Resources/ghostty/themes (above), so the source dir itself must not
           # be pulled into the project tree or the app bundle.
@@ -139,6 +143,11 @@ targets:
           dest="$CODESIGNING_FOLDER_PATH/Contents/MacOS/rookctl"
           mkdir -p "$(dirname "$dest")"
           cp -f "$src" "$dest"
+          # the `ghostty` shim: ghostty's shell integration calls "$GHOSTTY_BIN_DIR/ghostty
+          # +ssh-cache" to remember which hosts already have our terminfo, and libghostty points
+          # GHOSTTY_BIN_DIR at this very directory. Not a Mach-O, so it needs no signature of its
+          # own — the app re-seal below covers it.
+          install -m 755 "$SRCROOT/rook/Resources/ghostty-shim.sh" "$CODESIGNING_FOLDER_PATH/Contents/MacOS/ghostty"
           # ad-hoc sign the helper + re-seal the app (Debug/normal builds). Developer ID signing for
           # releases is done authoritatively by scripts/release.sh AFTER xcodebuild returns (so it
           # can't be clobbered by Xcode's own final code-sign, which also adds the required timestamp).

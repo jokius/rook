@@ -132,6 +132,36 @@ paths:
   **Inline rename** paints the edit field with the terminal theme's foreground-on-background (the row's
   selection-foreground would be dark-on-dark in the system edit box), and `restore` re-applies the row's
   selection-aware color when editing ends (a same-name commit doesn't reload the row).
+- **SSH terminfo upload rides ghostty's shell integration, and its cache needs a `ghostty` SHIM in
+  `Contents/MacOS` — re-verify BOTH on a `GHOSTTY_REV` bump.**
+  `TERM=xterm-ghostty` is unknown to a stock remote host and ncurses REFUSES to start there
+  (`nano`: `Error opening terminal: xterm-ghostty.`; `vim` survives only on its builtin termcap), so
+  `ghostty-defaults.conf` enables `ssh-env,ssh-terminfo` alongside `no-cursor,no-title`.
+  The upload is entirely upstream code: the bundled `shell-integration/*/ghostty.*` defines an `ssh()`
+  function that pipes `infocmp -0 -x xterm-ghostty` into `ssh … tic -x -` (remote `~/.terminfo`, no root)
+  and only then keeps `TERM=xterm-ghostty`, falling back to `xterm-256color` when that fails.
+  rook writes NONE of that — do not re-implement it app-side, and do not patch the bundled script
+  (`Resources/ghostty/` is a setup.sh build output, regenerated on every run).
+  What rook DOES own is the "already uploaded" memo: the wrapper shells out to
+  `"$GHOSTTY_BIN_DIR/ghostty" +ssh-cache --host=/--add=`, and libghostty points `GHOSTTY_BIN_DIR` at the
+  app's `Contents/MacOS` — where we ship libghostty, not the ghostty BINARY.
+  `Resources/ghostty-shim.sh` (installed as `Contents/MacOS/ghostty` by the `Bundle rookctl CLI`
+  post-build phase, excluded from the app sources so it doesn't ALSO land in `Resources/`) implements
+  exactly those two arms over a host list in the state dir (`ssh-terminfo-hosts`, `ROOK_STATE_DIR`-aware
+  like the rest); `GhosttyShimTests` covers the contract, incl. whole-line matching (a substring hit would
+  hand a stock host `TERM=xterm-ghostty` — the original bug).
+  **Without the shim the feature still works but the probe always misses**, so every `ssh` re-uploads.
+  That is not merely slow: on a cache MISS the wrapper passes `"$@"` — INCLUDING a remote command — to the
+  upload connection, so `ssh host 'cmd'` runs `cmd` TWICE (verified against a throwaway sshd container:
+  2 executions on the first connect, 1 once cached).
+  The shim therefore bounds that upstream quirk to once per host; it is documented in README's
+  *SSH and terminfo* rather than worked around.
+  **Upstream REPLACED this whole design after the pinned `4dcb09ada`**: `main`'s wrapper is just
+  `ghostty +ssh -- "$@"`, with upload + cache inside the binary.
+  A `GHOSTTY_REV` bump past that would hand our shim `+ssh`, so it has a fallback arm that `exec ssh`s the
+  args after `--` — the connection keeps working, but terminfo upload SILENTLY stops.
+  Re-solve it deliberately when bumping (port the upload into the shim, or keep it as the documented
+  fallback), and re-test `ssh` to a host with no `xterm-ghostty` entry.
 - **terminfo sibling dir.**
   `GHOSTTY_RESOURCES_DIR` points at `Contents/Resources/ghostty`; libghostty derives `TERMINFO` as `dirname(...)/terminfo`
   at shell spawn, so the compiled terminfo database must be a sibling at `Contents/Resources/terminfo`.

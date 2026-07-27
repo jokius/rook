@@ -1731,6 +1731,29 @@
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl config reload</span>. A
               malformed line is skipped and the good ones still apply; the returned diagnostic count covers every config source.
             </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              <strong style="color: #e6e1d7">SSH and terminfo.</strong> rook runs with
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">TERM=xterm-ghostty</span>, which a stock
+              remote host has never heard of — and ncurses programs refuse to start on an unknown terminal
+              (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">nano</span> dies with
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">Error opening terminal</span>). So ghostty's
+              SSH shell integration is on by default
+              (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
+                >shell-integration-features = no-cursor,no-title,ssh-env,ssh-terminfo</span
+              >): the first
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ssh</span> to a host uploads the terminfo
+              entry into its <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">~/.terminfo</span> (no root
+              needed), and later connections skip straight through; a failed upload falls back to
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">xterm-256color</span> rather than breaking.
+              It needs <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">infocmp</span> locally and
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tic</span> remotely, and on the
+              <em>first</em> connection to a new host a command passed on the command line
+              (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ssh host 'do-thing'</span>) runs twice —
+              interactive <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ssh host</span> and every later
+              connection are unaffected. Drop
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ssh-terminfo</span> from the feature list to
+              opt out.
+            </p>
           </section>
 
           <!-- STATUS -->
