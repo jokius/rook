@@ -19,7 +19,43 @@ public struct Modifier: OptionSet, Hashable, Sendable {
 /// keys the app-side runner can produce from an `NSEvent`, so `parseKeybind` rejects any other name
 /// (a key the UI would accept but the runner could never fire). `esc` is reserved as the leader
 /// abort and is intentionally NOT bindable.
-public let bindableNamedKeys: Set<String> = ["tab", "space", "return", "delete"]
+///
+/// The four arrows are here because the six arrow-bound built-ins ship their defaults on them, so the
+/// grammar must be able to spell what `BuiltinAction.defaultChord` returns.
+///
+/// Adding a name here means updating four sites, two inbound and two outbound:
+/// - `CustomCommandRunner` and `UndoCloseShortcut` resolve `NSEvent` → name via `namedKey(forKeyCode:)`,
+///   so a name with no keycode parses in the file yet never fires;
+/// - `Chord.glyphString` renders the name in palette hints and tooltips — it degrades to the raw name,
+///   so a miss here is cosmetic;
+/// - `rookApp.toShortcut` maps the name to a SwiftUI `KeyEquivalent`, and its `default` arm is
+///   `KeyEquivalent(Character(chord.key))`, which TRAPS on a multi-character string. That one is a
+///   crash on the first menu render, not a degradation, so it is the site to update first.
+public let bindableNamedKeys: Set<String> = Set(["tab", "space", "return", "delete"]).union(bindableArrowKeys)
+
+/// The four arrow keys, a subset of `bindableNamedKeys`. Named separately because they carry one extra
+/// rule: a built-in `map` may not bind a modifier-less arrow (`parseMapLine`), since an always-on menu
+/// key-equivalent on a bare arrow swallows the key in the terminal, the palettes, the dashboard grid,
+/// and every text field at once.
+let bindableArrowKeys: Set<String> = ["left", "right", "up", "down"]
+
+/// The named key for a macOS virtual key code, or `nil` for a key that carries a normal character
+/// (which the caller derives from the event itself). The single source of truth for the keyCode→name
+/// half of the `NSEvent`→`Chord` mapping, shared by every app-side monitor so a name added to
+/// `bindableNamedKeys` can't parse in the file yet fail to fire at runtime.
+public func namedKey(forKeyCode keyCode: UInt16) -> String? {
+    switch keyCode {
+    case 36: return "return"
+    case 48: return "tab"
+    case 49: return "space"
+    case 51: return "delete"
+    case 123: return "left"
+    case 124: return "right"
+    case 125: return "down"
+    case 126: return "up"
+    default: return nil
+    }
+}
 
 /// Whether a chord is owned by the app's always-on `NSEvent` monitors (NOT a menu key-equivalent), so a
 /// keybind that starts with it would dead-race the monitor and must be rejected. This MIRRORS the
@@ -75,6 +111,10 @@ public struct Chord: Equatable, Hashable, Sendable {
         case "space": s += "␣"
         case "return": s += "↩"
         case "delete": s += "⌫"
+        case "left": s += "←"
+        case "right": s += "→"
+        case "up": s += "↑"
+        case "down": s += "↓"
         default: s += key.count == 1 ? key.uppercased() : key
         }
         return s
@@ -90,9 +130,9 @@ public typealias Keybind = [Chord]
 ///
 /// The grammar is chords separated by `>`, each chord a `+`-joined list of modifier words and a
 /// final base key, case-insensitive. Examples: `cmd+shift+e`, `ctrl+a>b`, `ctrl + a > b`. The base
-/// key is a single printable character or one of `bindableNamedKeys` (`tab`/`space`/`return`/
-/// `delete`) — the keys the app-side runner can actually produce; any other multi-char word (e.g.
-/// `esc`, `f1`) is rejected. Returns `nil` for an empty input, an empty chord (e.g. a trailing `>`
+/// key is a single printable character or one of `bindableNamedKeys` (`tab`/`space`/`return`/`delete`/
+/// `left`/`right`/`up`/`down`) — the keys the app-side runner can actually produce; any other
+/// multi-char word (e.g. `esc`, `f1`) is rejected. Returns `nil` for an empty input, an empty chord (e.g. a trailing `>`
 /// or `+`), a chord with no base key, more than one base key in a chord, an unrecognized modifier
 /// word, or an unproducible named key.
 public func parseKeybind(_ s: String) -> Keybind? {

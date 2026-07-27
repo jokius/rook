@@ -28,8 +28,8 @@ struct KeymapTests {
     @Test func keylessActionWithoutOverrideReturnsNil() {
         let keymap = Keymap(builtinOverrides: [:], commands: [])
         #expect(keymap.equivalent(for: .firstSession) == nil)
-        // an arrow-bound action is also nil with no override.
-        #expect(keymap.equivalent(for: .focusLeftPane) == nil)
+        // an arrow-bound action resolves to its shipped default, like any other keyed action.
+        #expect(keymap.equivalent(for: .focusLeftPane) == Chord(mods: [.command, .option], key: "left"))
     }
 
     @Test func parseMapHappyPath() {
@@ -53,15 +53,15 @@ struct KeymapTests {
         #expect(keymap.glyphHint(for: .toggleSidebar) == "⌘K")
     }
 
-    @Test func glyphHintFallsBackToArrowGlyphForArrowActions() {
-        // arrow-bound actions have no expressible default chord, so the hint comes from the fallback.
+    @Test func glyphHintRendersArrowDefaultsAsGlyphs() {
+        // the arrow-bound actions resolve through defaultChord like any other keyed action.
         let keymap = Keymap(builtinOverrides: [:], commands: [])
         #expect(keymap.glyphHint(for: .previousSession) == "⌥⌘↑")
         #expect(keymap.glyphHint(for: .focusLeftPane) == "⌥⌘←")
     }
 
-    @Test func glyphHintOverrideWinsOverArrowFallback() {
-        // a user-mapped parseable chord beats the hardcoded arrow glyph.
+    @Test func glyphHintOverrideWinsOverArrowDefault() {
+        // a user-mapped chord beats the shipped arrow default.
         let keymap = Keymap(builtinOverrides: [.previousSession: Chord(mods: [.command], key: "p")], commands: [])
         #expect(keymap.glyphHint(for: .previousSession) == "⌘P")
     }
@@ -231,6 +231,68 @@ struct KeymapTests {
         #expect(keymap.builtinOverrides.isEmpty)
         #expect(diagnostics.count == 1)
         #expect(diagnostics[0].message.contains("invalid chord"))
+    }
+
+    @Test func parseArrowChordMapLines() {
+        // arrows are part of the chord grammar, so these parse cleanly.
+        let text = """
+        map cmd+shift+left previous_session
+        map cmd+shift+right next_session
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.equivalent(for: .previousSession) == Chord(mods: [.command, .shift], key: "left"))
+        #expect(keymap.equivalent(for: .nextSession) == Chord(mods: [.command, .shift], key: "right"))
+    }
+
+    @Test func parseBareArrowMapIsRejected() {
+        // a modifier-less arrow would install an always-on menu key-equivalent swallowing the key in the
+        // terminal, the palettes, the dashboard grid, and every text field.
+        let (keymap, diagnostics) = parseKeymap("map left previous_session")
+        #expect(keymap.builtinOverrides.isEmpty)
+        // the action keeps its shipped default.
+        #expect(keymap.equivalent(for: .previousSession) == Chord(mods: [.command, .option], key: "up"))
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].message.contains("needs a modifier"))
+    }
+
+    @Test func parseModifiedArrowMapIsAcceptedForEveryArrow() {
+        // only the BARE form is rejected — any modifier makes an arrow bindable.
+        for key in ["left", "right", "up", "down"] {
+            let (keymap, diagnostics) = parseKeymap("map cmd+shift+\(key) new_session")
+            #expect(diagnostics.isEmpty, "unexpected diagnostics for cmd+shift+\(key)")
+            #expect(keymap.equivalent(for: .newSession) == Chord(mods: [.command, .shift], key: key))
+        }
+    }
+
+    @Test func parseBareNonArrowMapIsStillAccepted() {
+        // the modifier requirement is arrow-ONLY — a bare non-arrow map predates the rule and stays
+        // legal. Pins the guard's scope so widening it to every chord can't slip through unnoticed.
+        let (keymap, diagnostics) = parseKeymap("map a new_session")
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.equivalent(for: .newSession) == Chord(mods: [], key: "a"))
+    }
+
+    @Test func mapOntoAnArrowActionsUnmovedDefaultIsRejected() {
+        // the six arrow defaults are now visible to the conflict checker: cmd+opt+up is previous_session's
+        // UNMOVED default, so claiming it for another action must be diagnosed, not silently double-bound.
+        let (keymap, diagnostics) = parseKeymap("map cmd+opt+up new_session")
+        #expect(keymap.builtinOverrides.isEmpty)
+        #expect(keymap.equivalent(for: .newSession) == Chord(mods: [.command], key: "n"))
+        #expect(keymap.equivalent(for: .previousSession) == Chord(mods: [.command, .option], key: "up"))
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].message.contains("conflicts with built-in 'previous_session'"))
+    }
+
+    @Test func customCommandOnAnArrowDefaultIsDropped() {
+        // cross-section validation sees the arrow defaults too, so a custom command can't shadow one.
+        let (keymap, diagnostics) = parseKeymap(#"command "Nav" cmd+opt+down echo hi"#)
+        #expect(keymap.commands.count == 1)
+        // the keybind is dropped but the palette entry survives.
+        #expect(keymap.commands[0].name == "Nav")
+        #expect(keymap.commands[0].shortcut.isEmpty)
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].message.contains("built-in"))
     }
 
     @Test func parseDuplicateBuiltinChordDiagnostic() {
