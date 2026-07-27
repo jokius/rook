@@ -137,10 +137,19 @@ final class ControlServer {
         // it fires for ANY window, but a non-rook panel just rebuilds the same cheap rook nodes, and a
         // drag's didMove/didResize storm just keeps the cache current.
         for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification,
-                     NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification] {
+                     NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification,
+                     NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.refreshWindowCache() }
             }
+        }
+        // a window's NSWindow attaches a render pass or two AFTER its store loads, so the node cached right
+        // after window.new carries no geometry/flags — and nothing else refreshes it on that path (see the
+        // .rookWindowAttachmentChanged doc comment). Refresh on attach/detach so the cache is honest for
+        // every opener, including GUI New Window and launch reopen-all, which run no control command at all.
+        NotificationCenter.default.addObserver(forName: .rookWindowAttachmentChanged, object: nil,
+                                               queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshWindowCache() }
         }
     }
 
@@ -377,7 +386,7 @@ final class ControlServer {
                 .sessionOverlayResult, .sessionBackground, .sessionText, .quick, .quickType, .quickText,
                 .windowNew, .windowList, .windowSelect,
                 .windowClose, .windowRename, .windowDelete, .windowResize, .windowMove, .windowZoom,
-                .windowFullscreen, .restoreClear, .dashboard:
+                .windowFullscreen, .windowMinimize, .restoreClear, .dashboard:
             return ControlResponse(ok: false, error: "control dispatcher did not handle \(request.cmd.rawValue)")
         case .debugAppearance:
             return setDebugAppearance(args: request.args)
@@ -513,7 +522,9 @@ final class ControlServer {
         return result.isEmpty ? nil : result
     }
 
-    private func log(_ message: @autoclosure () -> String) {
+    /// Internal, not private: the command arms live in `ControlServer+*.swift` extensions, which cannot
+    /// reach a private member declared here.
+    func log(_ message: @autoclosure () -> String) {
         NSLog("rook: %@", message())
     }
 }

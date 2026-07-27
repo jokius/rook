@@ -3,8 +3,8 @@ import Foundation
 
 // The mock's window witnesses — see `MockControlActions`.
 extension MockControlActions {
-    func windowNew(name: String?) -> ControlResponse {
-        calls.append(.windowNew(name))
+    func windowNew(name: String?, minimized: Bool) async -> ControlResponse {
+        calls.append(.windowNew(name, minimized: minimized))
         return nextWindowNewResponse
     }
 
@@ -51,5 +51,10 @@ extension MockControlActions {
     func windowFullscreen(_ target: String?) -> ControlResponse {
         calls.append(.windowFullscreen(target: target))
         return nextWindowFullscreenResponse
+    }
+
+    func windowMinimize(_ target: String?, mode: ControlToggleMode) async -> ControlResponse {
+        calls.append(.windowMinimize(target: target, mode: mode))
+        return nextWindowMinimizeResponse
     }
 }

@@ -68,6 +68,7 @@ public enum Command: String, Codable, Sendable {
     case windowMove = "window.move"
     case windowZoom = "window.zoom"
     case windowFullscreen = "window.fullscreen"
+    case windowMinimize = "window.minimize"
     case keymapReload = "keymap.reload"
     case configReload = "config.reload"
     case themeSet = "theme.set"
@@ -108,6 +109,12 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// `session.new --no-select` without it opening. Omitted/`false` = expanded. The read-back is the
     /// `tree` workspace node's `collapsed` field.
     public var collapsed: Bool?
+    /// For `window.new`: create the window already MINIMIZED to the Dock (the CLI's `--minimized`) instead
+    /// of presenting it, so a script can build a set of project windows without each one flashing on screen
+    /// and stealing focus. Omitted/`false` presents it as usual. The read-back is the `window.list` node's
+    /// `minimized` field; the new window also hands frontmost back to a still-visible window, so untargeted
+    /// commands do not route into the Dock.
+    public var minimized: Bool?
     /// For `session.new`: create the session in the background without selecting or focusing it, leaving
     /// the current selection untouched (the CLI's `--no-select`). Omitted/`false` keeps the default
     /// select-and-focus behavior. The read-back is the existing `tree` `active` flag — the new node is not
@@ -121,6 +128,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// `show|hide|toggle` for quick/surface zoom),
     /// `session.flag` (`on|off|toggle|clear`), `sidebar.mode` (`tree|flagged|toggle`),
     /// `workspace.focus` (`on|off|toggle`), `session.markdown` (`open|close|toggle`),
+    /// `window.minimize` (`on|off|toggle`),
     /// and `session.background` (`image|text|color|clear`).
     public var mode: String?
     /// The image file path for `session.background` mode `image` (PNG or JPEG); also the target directory
@@ -257,7 +265,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
 
     public init(name: String? = nil, cwd: String? = nil, targets: [String]? = nil,
                 workspace: String? = nil, workspaceName: String? = nil,
-                createWorkspace: Bool? = nil, collapsed: Bool? = nil,
+                createWorkspace: Bool? = nil, collapsed: Bool? = nil, minimized: Bool? = nil,
                 noSelect: Bool? = nil, text: String? = nil, select: Bool? = nil, mode: String? = nil,
                 command: String? = nil, wait: Bool? = nil, sizePercent: Int? = nil, full: Bool? = nil,
                 follow: Bool? = nil, window: String? = nil,
@@ -279,6 +287,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.workspaceName = workspaceName
         self.createWorkspace = createWorkspace
         self.collapsed = collapsed
+        self.minimized = minimized
         self.noSelect = noSelect
         self.text = text
         self.select = select
@@ -693,10 +702,16 @@ public struct ControlWindowNode: Codable, Sendable, Equatable {
     /// Whether the window is zoomed (maximized-to-screen, NOT full screen), or nil for a CLOSED window
     /// (omitted from the JSON). The read side of the write-only `window.zoom` toggle. Read live app-side.
     public let zoomed: Bool?
+    /// Whether the window is minimized to the Dock, or nil for a CLOSED window (omitted from the JSON).
+    /// The read side of `window.minimize`, so a script can skip a redundant minimize or restore the set
+    /// of windows it put away. Read live app-side; like `geometry` it rides the cache, refreshed on the
+    /// NSWindow miniaturize/deminiaturize notifications so ⌘M or a Dock click is reflected too. A
+    /// minimized window still reports its `geometry` (the frame it will come back to).
+    public let minimized: Bool?
 
     public init(id: String, name: String, open: Bool, active: Bool, autoFollowMs: Int? = nil,
                 sidebarVisible: Bool? = nil, geometry: ControlWindowFrame? = nil,
-                fullscreen: Bool? = nil, zoomed: Bool? = nil) {
+                fullscreen: Bool? = nil, zoomed: Bool? = nil, minimized: Bool? = nil) {
         self.id = id
         self.name = name
         self.open = open
@@ -706,6 +721,7 @@ public struct ControlWindowNode: Codable, Sendable, Equatable {
         self.geometry = geometry
         self.fullscreen = fullscreen
         self.zoomed = zoomed
+        self.minimized = minimized
     }
 }
 

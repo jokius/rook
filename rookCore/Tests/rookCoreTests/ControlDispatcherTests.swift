@@ -1656,18 +1656,24 @@ struct ControlDispatcherTests {
             cmd: .windowNew,
             args: ControlArgs(name: "Build")
         ))
+        let parked = await dispatcher.dispatch(ControlRequest(
+            cmd: .windowNew,
+            args: ControlArgs(name: "Parked", minimized: true)
+        ))
         let listed = await dispatcher.dispatch(ControlRequest(cmd: .windowList))
         let selected = await dispatcher.dispatch(ControlRequest(cmd: .windowSelect, target: "win-b"))
         let closed = await dispatcher.dispatch(ControlRequest(cmd: .windowClose, target: "win-b"))
         let deleted = await dispatcher.dispatch(ControlRequest(cmd: .windowDelete, target: "win-b"))
 
         #expect(created == ControlResponse(ok: true, result: ControlResult(id: "win-b")))
+        #expect(parked == ControlResponse(ok: true, result: ControlResult(id: "win-b")))
         #expect(listed == ControlResponse(ok: true, result: ControlResult(windows: windows)))
         #expect(selected == ControlResponse(ok: true, result: ControlResult(id: "win-b")))
         #expect(closed == ControlResponse(ok: true, result: ControlResult(id: "win-b")))
         #expect(deleted == ControlResponse(ok: false, error: "cannot delete last window"))
         #expect(actions.calls == [
-            .windowNew("Build"),
+            .windowNew("Build", minimized: false),
+            .windowNew("Parked", minimized: true),
             .windowList,
             .windowSelect(target: "win-b"),
             .windowClose(target: "win-b"),
@@ -1701,18 +1707,30 @@ struct ControlDispatcherTests {
         let zoomed = await dispatcher.dispatch(ControlRequest(cmd: .windowZoom, target: "9f3c"))
         actions.nextWindowFullscreenResponse = ControlResponse(ok: true, result: ControlResult(id: "win"))
         let fullscreen = await dispatcher.dispatch(ControlRequest(cmd: .windowFullscreen, target: "9f3c"))
+        actions.nextWindowMinimizeResponse = ControlResponse(ok: true, result: ControlResult(id: "win"))
+        let minimized = await dispatcher.dispatch(ControlRequest(
+            cmd: .windowMinimize,
+            target: "9f3c",
+            args: ControlArgs(mode: "on")
+        ))
+        // an omitted mode is the toggle default, matching the other mode-bearing commands
+        let toggled = await dispatcher.dispatch(ControlRequest(cmd: .windowMinimize, target: "9f3c"))
 
         #expect(renamed == ControlResponse(ok: true, result: ControlResult(id: "win")))
         #expect(resized == ControlResponse(ok: true, result: ControlResult(id: "win")))
         #expect(moved == ControlResponse(ok: true, result: ControlResult(id: "win")))
         #expect(zoomed == ControlResponse(ok: false, error: "window not open — window.select it first"))
         #expect(fullscreen == ControlResponse(ok: true, result: ControlResult(id: "win")))
+        #expect(minimized == ControlResponse(ok: true, result: ControlResult(id: "win")))
+        #expect(toggled == ControlResponse(ok: true, result: ControlResult(id: "win")))
         #expect(actions.calls == [
             .windowRename(target: "9f3c", "Renamed"),
             .windowResize(target: "9f3c", width: 1200, height: 800),
             .windowMove(target: "9f3c", x: 100, y: 50, display: 1),
             .windowZoom(target: "9f3c"),
-            .windowFullscreen(target: "9f3c")
+            .windowFullscreen(target: "9f3c"),
+            .windowMinimize(target: "9f3c", mode: .on),
+            .windowMinimize(target: "9f3c", mode: .toggle)
         ])
     }
 
@@ -1741,12 +1759,18 @@ struct ControlDispatcherTests {
             target: "win",
             args: ControlArgs(x: 100)
         ))
+        let badMinimizeMode = await dispatcher.dispatch(ControlRequest(
+            cmd: .windowMinimize,
+            target: "win",
+            args: ControlArgs(mode: "hide")
+        ))
 
         #expect(missingName == ControlResponse(ok: false, error: "window.rename requires a name"))
         #expect(blankName == ControlResponse(ok: false, error: "window.rename requires a name"))
         #expect(missingResize == ControlResponse(ok: false, error: "window.resize requires positive width and height"))
         #expect(badResize == ControlResponse(ok: false, error: "window.resize requires positive width and height"))
         #expect(missingMoveY == ControlResponse(ok: false, error: "window.move requires x and y"))
+        #expect(badMinimizeMode == ControlResponse(ok: false, error: "invalid window minimize mode: hide"))
         #expect(actions.calls.isEmpty)
     }
 
