@@ -23,7 +23,7 @@ final class NotificationManager: NSObject, @preconcurrency UNUserNotificationCen
     /// launch by `rookApp`; weak for the same app-lifetime reason as `actions`.
     weak var library: WindowLibrary?
 
-    /// Whether to post macOS banners (the General settings toggle, default on). When off, banners are
+    /// Whether to post macOS banners (the Notifications settings toggle, default on). When off, banners are
     /// suppressed but the sidebar badge still tracks unseen notifications. Set by `SettingsModel`.
     var bannersEnabled = true
 
@@ -70,12 +70,21 @@ final class NotificationManager: NSObject, @preconcurrency UNUserNotificationCen
 
         // strict first-responder check: suppress only when you are actually typing in this pane.
         let firingIsFocused = surface === (NSApp.keyWindow?.firstResponder as? GhosttySurfaceView)
-        guard TerminalNotification.shouldDeliver(firingIsFocused: firingIsFocused, appActive: NSApp.isActive) else { return }
+        guard TerminalNotification.shouldDeliver(firingIsFocused: firingIsFocused, appActive: NSApp.isActive) else {
+            logger.notice("notify: session \(session.id, privacy: .public) is the focused pane; suppressed")
+            return
+        }
 
         // the badge always tracks the unseen notification; the macOS banner is gated by the toggle.
         session.unseenCount += 1
         bounceDock()
-        guard bannersEnabled else { return }
+        // every drop AND every post is logged at .notice — the level `log show` persists — so a
+        // notification that never reached macOS is tellable from a broken notification path.
+        guard bannersEnabled else {
+            logger.notice("notify: badge bumped for session \(session.id, privacy: .public), but no banner — \"Show notification banners\" is off in Settings ▸ Notifications")
+            return
+        }
+        logger.notice("notify: posting banner for session \(session.id, privacy: .public)")
 
         let content = UNMutableNotificationContent()
         content.title = title.isEmpty ? session.displayName : title
@@ -99,7 +108,11 @@ final class NotificationManager: NSObject, @preconcurrency UNUserNotificationCen
         guard let windowID = library?.windowID(forSession: session.id) else { return false }
         session.unseenCount += 1
         bounceDock()
-        guard bannersEnabled else { return true }
+        guard bannersEnabled else {
+            logger.notice("send: badge bumped for session \(session.id, privacy: .public), but no banner — \"Show notification banners\" is off in Settings ▸ Notifications")
+            return true
+        }
+        logger.notice("send: posting banner for session \(session.id, privacy: .public)")
         let content = UNMutableNotificationContent()
         content.title = title.isEmpty ? session.displayName : title
         content.body = body
@@ -128,7 +141,12 @@ final class NotificationManager: NSObject, @preconcurrency UNUserNotificationCen
     /// terminal notification it isn't tied to a surface, so it always posts when banners are enabled
     /// (no focus/window gating); a fixed identifier coalesces repeated failures of the same command.
     func notifyCommandFailure(name: String, detail: String) {
-        guard bannersEnabled else { return }
+        // unlike the keymap/config banners, a swallowed failure has no other read-back (`keymap.reload`
+        // and `config.reload` still report their diagnostic count), so the log is its only trace.
+        guard bannersEnabled else {
+            logger.notice("command \(name, privacy: .public) failed (\(detail, privacy: .public)), but no banner — \"Show notification banners\" is off")
+            return
+        }
         let content = UNMutableNotificationContent()
         content.title = "Command failed"
         content.body = "\(name) (\(detail))"

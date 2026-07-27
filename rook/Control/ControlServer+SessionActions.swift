@@ -693,7 +693,8 @@ extension ControlServer: ControlActions {
 
     /// Post a desktop notification attributed to a session (default: the active session of the
     /// frontmost window, via `resolveSession`). `title` defaults to the session name; `body` is
-    /// required. Errors when no open window owns the resolved session.
+    /// required. Errors when no open window owns the resolved session. A post while banners are off still
+    /// succeeds (the badge tracks) but carries `ControlNotify.bannersOffNote` in `result.text`.
     func sendNotification(_ target: String?, window: String?, title: String?, body: String) -> ControlResponse {
         return resolver.resolveSession(target, window: window) { store, id in
             guard let session = store.session(withID: id) else {
@@ -702,7 +703,10 @@ extension ControlServer: ControlActions {
             guard NotificationManager.shared.send(toSession: session, title: title ?? "", body: body) else {
                 return ControlResponse(ok: false, error: "session's window is not open")
             }
-            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+            var result = ControlResult(id: id.uuidString)
+            // banners off = nothing was handed to macOS; a bare `ok` would read as a delivered banner.
+            if !NotificationManager.shared.bannersEnabled { result.text = ControlNotify.bannersOffNote }
+            return ControlResponse(ok: true, result: result)
         }
     }
 
