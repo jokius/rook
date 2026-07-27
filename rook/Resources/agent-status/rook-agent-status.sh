@@ -30,12 +30,16 @@ set -u
 state=$1
 shift
 
-# forward the pane discriminator when the app injected it: each session surface
-# (main/split/scratch) sets its own ROOK_PANE so a status set from a background pane
-# lands on that pane. it is validated rookctl-side, so pass it through verbatim. the
-# ${arr[@]+..} guard keeps the empty-array expansion safe under `set -u` on bash 3.2.
+# forward the pane discriminators when the app injected them: each session surface
+# (main/split/scratch) sets its own ROOK_PANE (the role) plus ROOK_PANE_ID (a stable
+# per-surface token). the role can go stale — a split survivor promoted into the main pane
+# keeps its baked `right` — so we also forward the token as --pane-id, which the app resolves
+# to the surface's CURRENT slot and lets override the stale role. both are validated
+# rookctl-side, so pass them through verbatim. the ${arr[@]+..} guard keeps the empty-array
+# expansion safe under `set -u` on bash 3.2.
 pane_args=()
-[ -n "${ROOK_PANE:-}" ] && pane_args=(--pane "$ROOK_PANE")
+[ -n "${ROOK_PANE:-}" ] && pane_args+=(--pane "$ROOK_PANE")
+[ -n "${ROOK_PANE_ID:-}" ] && pane_args+=(--pane-id "$ROOK_PANE_ID")
 
 if [ -n "${ROOK_SOCKET:-}" ]; then
   "${ROOKCTL:-rookctl}" session status "$state" \

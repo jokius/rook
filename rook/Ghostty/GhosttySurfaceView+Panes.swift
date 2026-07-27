@@ -8,4 +8,11 @@ extension GhosttySurfaceView {
     func promoteToPrimaryPane() {
         isSplitPane = false
     }
+
+    /// `TerminalSurface.paneToken`: this surface's stable spawn identity, read straight back from the baked
+    /// `ROOK_PANE_ID` env value the shell also carries (empty for a surface spawned without a pane — the
+    /// overlay / quick terminal). Distinct from the LIVE role (`isSplitPane`), which promotion flips; the
+    /// token never changes, so `Session.paneRole(forToken:)` maps a status hook's `--pane-id` to the
+    /// surface's CURRENT slot even after a promote + re-split.
+    var paneToken: String { env["ROOK_PANE_ID"] ?? "" }
 }

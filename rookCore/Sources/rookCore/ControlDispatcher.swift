@@ -322,7 +322,8 @@ public struct ControlDispatcher {
             }
             let update = ControlSessionStatusUpdate(status: status, blink: request.args?.blink,
                                                     autoReset: request.args?.autoReset,
-                                                    sound: request.args?.sound, color: request.args?.color, pane: pane)
+                                                    sound: request.args?.sound, color: request.args?.color,
+                                                    pane: pane, paneID: request.args?.paneID)
             return actions.setSessionStatus(request.target, window: request.args?.window, update: update)
         case .sessionAgent:
             return dispatchSessionAgent(request)

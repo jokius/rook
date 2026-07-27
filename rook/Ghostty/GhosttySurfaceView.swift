@@ -44,7 +44,7 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
 
     /// Extra environment variables (the `ROOK_*` vars) the spawned shell sees, set into the surface
     /// config at creation. A creation input (like `workingDirectory`): read in `createSurface`.
-    private let env: [String: String]
+    let env: [String: String]
 
     /// The owning model session. `weak` to avoid a retain cycle: the `Session`
     /// strongly owns this surface via `Session.surface`. Set by the app's surface
