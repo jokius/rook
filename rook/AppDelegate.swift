@@ -73,10 +73,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppDelegate.removeNativeFullScreenMenuItem()
         NotificationCenter.default.addObserver(self, selector: #selector(menuBeganTracking),
                                                name: NSMenu.didBeginTrackingNotification, object: nil)
+        // SwiftUI defers its menu rebuild to the next app ACTIVATION, and that rebuild is what lets the stock
+        // File ▸ Close claim ⌘W (see AppDelegate+CloseChord). Reconcile after it — async, so we run once
+        // SwiftUI has rebuilt — and on every keymap change, so Reload Keymap reaches the chord immediately
+        // instead of at the next activation.
+        NotificationCenter.default.addObserver(self, selector: #selector(appDidBecomeActive),
+                                               name: NSApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keymapChanged),
+                                               name: .rookKeymapChanged, object: nil)
+        reconcileCloseSessionChord()
+    }
+
+    @objc private func appDidBecomeActive(_: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.reconcileCloseSessionChord() }
+        }
+    }
+
+    @objc private func keymapChanged(_: Notification) {
+        MainActor.assumeIsolated { self.reconcileCloseSessionChord() }
     }
 
     @objc private func menuBeganTracking(_: Notification) {
-        MainActor.assumeIsolated { AppDelegate.removeNativeFullScreenMenuItem() }
+        MainActor.assumeIsolated {
+            AppDelegate.removeNativeFullScreenMenuItem()
+            self.reconcileCloseSessionChord()
+        }
     }
 
     /// Remove AppKit's auto-injected fullscreen menu item — the one whose action is `toggleFullScreen:`.
