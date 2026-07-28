@@ -44,8 +44,13 @@ enum WindowAppearance {
         }
 
         // native fullscreen draws its own opaque background and the chrome shows through any
-        // transparency, so force opaque while fullscreened.
-        let transparent = chrome.opacity < 1 && !window.styleMask.contains(.fullScreen)
+        // transparency, so force opaque while fullscreened. Reduce Transparency is an EFFECTIVE
+        // override, not a settings write: the saved opacity/blur stay put and come back the moment the
+        // system setting goes off again.
+        let reduceTransparency = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        let transparent = chrome.opacity < 1
+            && !window.styleMask.contains(.fullScreen)
+            && !reduceTransparency
         if transparent {
             window.isOpaque = false
             window.backgroundColor = background.withAlphaComponent(chrome.opacity)

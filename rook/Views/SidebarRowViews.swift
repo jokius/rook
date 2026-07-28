@@ -209,7 +209,10 @@ final class StatusIconView: NSImageView {
         image = Self.icon(for: indicator.status, override: indicator.color)
         widthConstraint.constant = Self.glyphWidth
         setAccessibilityValue(indicator.status.rawValue)
-        if indicator.blink { startBlink() } else { stopBlink() }
+        // Reduce Motion kills the repeating pulse only — the glyph and its status color stay, so the
+        // signal survives; a live flip re-runs this via the sidebar's `.rookAppearanceChanged` sweep.
+        let shouldBlink = indicator.blink && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if shouldBlink { startBlink() } else { stopBlink() }
     }
 
     private func startBlink() {

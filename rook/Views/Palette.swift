@@ -1,4 +1,5 @@
 import rookCore
+import AppKit
 import SwiftUI
 
 /// One selectable palette entry: a title (and optional subtitle, e.g. a session's cwd), an optional
@@ -79,6 +80,7 @@ struct CommandPalette: View {
     let controller: PaletteController
     let actions: AppActions
 
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var query = ""
     @State private var selection = 0
     /// The visible, filtered result list. Held in `@State` (recomputed on query/mode change) so
@@ -170,7 +172,7 @@ struct CommandPalette: View {
             Divider()
             results
         }
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .background(panelBackground, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.1)))
         .shadow(radius: 24)
         .accessibilityIdentifier("command-palette")
@@ -187,6 +189,15 @@ struct CommandPalette: View {
         }
         .onChange(of: controller.mode) { selection = 0; updateFiltered(); syncThemeSession() }
         .onDisappear { actions.cancelThemePreview() }
+    }
+
+    /// The floating-panel treatment is the native material, unless Reduce Transparency asks for a solid
+    /// surface — then the system window color, which keeps the system-label text legible either side of
+    /// light/dark. SwiftUI re-renders this on a live flip; nothing is written to settings.
+    private var panelBackground: AnyShapeStyle {
+        reduceTransparency
+            ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
+            : AnyShapeStyle(.regularMaterial)
     }
 
     private var results: some View {

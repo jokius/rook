@@ -22,6 +22,7 @@ struct rookApp: App {
     @State private var controlServer: ControlServer
     @State private var customCommandRunner: CustomCommandRunner
     @State private var appearanceObserver: SystemAppearanceObserver
+    @State private var accessibilityObserver: SystemAccessibilityObserver
 
     /// The plain `WindowGroup`'s scene id, used by `openWindow(id:)` to spawn additional windows.
     private static let windowGroupID = "terminal"
@@ -57,6 +58,10 @@ struct rookApp: App {
         // follows the macOS light/dark appearance via an app-level KVO observer on
         // NSApp.effectiveAppearance (see SystemAppearanceObserver). No dependencies; started in `.task`.
         _appearanceObserver = State(initialValue: SystemAppearanceObserver())
+        // follows the macOS Reduce Motion / Reduce Transparency switches, which are read as EFFECTIVE
+        // overrides at render time — this only re-asserts the chrome when one flips, so the change lands
+        // without a relaunch. No dependencies; started in `.task` alongside the appearance observer.
+        _accessibilityObserver = State(initialValue: SystemAccessibilityObserver())
     }
 
     var body: some Scene {
@@ -170,6 +175,7 @@ struct rookApp: App {
                     // start following the macOS appearance last: `[.initial]` seeds the launch side once
                     // the eager-deck surfaces exist (idempotent, so per-window `.task` re-entry is safe).
                     appearanceObserver.start()
+                    accessibilityObserver.start()
                 }
         }
         // chromeless: no system title bar (the traffic lights float over our custom titlebar row in
