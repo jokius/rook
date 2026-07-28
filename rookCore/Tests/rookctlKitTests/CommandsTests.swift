@@ -635,6 +635,27 @@ struct CommandsTests {
         #expect(validationMessage(["session", "status", "blocked", "--color", "nope"]) == "color must be a #rrggbb hex value")
     }
 
+    @Test func sessionStatusWithShape() throws {
+        let req = try request(["session", "status", "blocked", "--shape", "triangle"])
+        #expect(req.cmd == .sessionStatus)
+        #expect(req.args?.shape == "triangle")
+        #expect(req == ControlRequest(cmd: .sessionStatus, target: "active",
+                                      args: ControlArgs(status: "blocked", shape: "triangle")))
+    }
+
+    @Test func sessionStatusWithoutShape() throws {
+        // no --shape: nothing is sent, so the app keeps the state's own semantic glyph.
+        let req = try request(["session", "status", "active"])
+        #expect(req.args?.shape == nil)
+    }
+
+    @Test func sessionStatusRejectsBadShape() {
+        // rejected by validate() before any request is built, mirroring the dispatcher's own guard; pin the
+        // exact message so an unrelated parse failure can't masquerade as shape validation.
+        #expect(validationMessage(["session", "status", "blocked", "--shape", "hexagon"])
+                == "shape must be one of: circle, square, triangle, diamond, capsule, star")
+    }
+
     @Test func sessionStatusWithPane() throws {
         let expected = ControlRequest(cmd: .sessionStatus, target: "s1",
                                       args: ControlArgs(pane: "right", status: "blocked"))

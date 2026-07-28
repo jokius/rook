@@ -181,10 +181,13 @@ struct SessionSwitcherRow: View {
     /// recent-sessions popover leave it nil. `statusColorHex` is the per-call `session.status --color` tint.
     var status: AgentStatus?
     var statusColorHex: String?
+    /// The per-call `session.status --shape` override, carried alongside the tint so this row draws the
+    /// same glyph the sidebar does.
+    var statusShape: StatusShape?
 
     var body: some View {
         HStack {
-            if let status { StatusGlyph(status: status, colorHex: statusColorHex) }
+            if let status { StatusGlyph(status: status, colorHex: statusColorHex, shape: statusShape) }
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).foregroundStyle(foreground ?? Color.primary)
                 Text(subtitle)

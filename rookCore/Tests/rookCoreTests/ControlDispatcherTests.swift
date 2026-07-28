@@ -826,6 +826,39 @@ struct ControlDispatcherTests {
         ])
     }
 
+    @Test func sessionStatusCarriesValidShapeAndRejectsUnknownShape() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let shaped = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionStatus,
+            target: "session",
+            args: ControlArgs(status: "blocked", shape: "square")
+        ))
+        let badShape = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionStatus,
+            target: "session",
+            args: ControlArgs(status: "blocked", shape: "hexagon")
+        ))
+        // a following set with NO shape must carry shape nil — the "next call without --shape discards it"
+        // contract at the update layer (the app arm builds a fresh AgentIndicator from update.shape).
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionStatus, target: "session",
+                                                     args: ControlArgs(status: "blocked")))
+
+        #expect(shaped == ControlResponse(ok: true))
+        #expect(badShape == ControlResponse(ok: false,
+                                            error: "invalid shape: hexagon (circle|square|triangle|diamond|capsule|star)"))
+        // the unknown shape never reaches actions, so the session's status is left untouched.
+        #expect(actions.calls == [
+            .sessionStatus(target: "session", window: nil,
+                           ControlSessionStatusUpdate(status: .blocked, blink: nil, autoReset: nil,
+                                                      sound: nil, shape: .square)),
+            .sessionStatus(target: "session", window: nil,
+                           ControlSessionStatusUpdate(status: .blocked, blink: nil, autoReset: nil,
+                                                      sound: nil, shape: nil))
+        ])
+    }
+
     @Test func sessionStatusColorErrorWinsOverInvalidPane() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)

@@ -168,9 +168,11 @@ final class BadgeView: NSView {
 
 /// A small SF-Symbol agent-status glyph drawn just left of the count badge: `active` is a blue
 /// ellipsis, `blocked` an amber exclamation, `completed` a green check (all `.circle.fill` for a
-/// consistent silhouette). Hidden on `.idle`. Exposed to accessibility as an `agent-status` static
-/// text whose value is the state name (so XCUITest matches `app.staticTexts["agent-status"]`). Blink
-/// is a layer `opacity` `CABasicAnimation` (autoreverse/repeat), added only while visible AND blinking.
+/// consistent silhouette). A per-call `session.status --shape` swaps in a plain silhouette instead, so
+/// the SHAPE can carry the state where the tint can't. Hidden on `.idle`. Exposed to accessibility as an
+/// `agent-status` static text whose value is the state name (so XCUITest matches
+/// `app.staticTexts["agent-status"]`; neither the tint nor the silhouette is accessibility-observable).
+/// Blink is a layer `opacity` `CABasicAnimation` (autoreverse/repeat), added only while visible AND blinking.
 final class StatusIconView: NSImageView {
     private static let blinkKey = "agent-status-blink"
     private static let glyphWidth: CGFloat = 16
@@ -206,7 +208,7 @@ final class StatusIconView: NSImageView {
             return
         }
         isHidden = false
-        image = Self.icon(for: indicator.status, override: indicator.color)
+        image = Self.icon(for: indicator.status, override: indicator.color, shape: indicator.shape)
         widthConstraint.constant = Self.glyphWidth
         setAccessibilityValue(indicator.status.rawValue)
         // Reduce Motion kills the repeating pulse only — the glyph and its status color stay, so the
@@ -230,13 +232,13 @@ final class StatusIconView: NSImageView {
         layer?.removeAnimation(forKey: Self.blinkKey)
     }
 
-    private static func icon(for status: AgentStatus, override colorHex: String?) -> NSImage? {
+    private static func icon(for status: AgentStatus, override colorHex: String?, shape: StatusShape?) -> NSImage? {
         guard status != .idle else { return nil } // unreachable: `apply` returns early on `.idle` before drawing
-        // symbol + color come from the shared mapping (AgentStatus.symbolName + GhosttyApp.statusColor)
-        // so this glyph and the SwiftUI StatusGlyph stay identical; a per-call `--color` overrides the tint.
+        // symbol + color come from the shared resolvers (AgentStatus.symbolName(shape:) + GhosttyApp.statusColor)
+        // so this glyph and the SwiftUI StatusGlyph stay identical, per-call `--shape`/`--color` included.
         let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
             .applying(NSImage.SymbolConfiguration(paletteColors: [GhosttyApp.shared.statusColor(for: status, override: colorHex)]))
-        return NSImage(systemSymbolName: status.symbolName, accessibilityDescription: status.rawValue)?
+        return NSImage(systemSymbolName: status.symbolName(shape: shape), accessibilityDescription: status.rawValue)?
             .withSymbolConfiguration(config)
     }
 }

@@ -121,8 +121,9 @@ public struct ControlSessionCreateOptions: Equatable, Sendable {
 }
 
 /// Parsed `session.status` payload. Sound validation and playback stay host-side; `color` is the
-/// per-call `#rrggbb` glyph-tint override (validated for hex in the dispatcher), threaded onto the
-/// ephemeral `AgentIndicator`.
+/// per-call `#rrggbb` glyph-tint override (validated for hex in the dispatcher) and `shape` the per-call
+/// silhouette override (parsed to `StatusShape` in the dispatcher), both threaded onto the ephemeral
+/// `AgentIndicator`.
 /// What `session.agent` asks the app to remember for one pane: the conversation ref (nil = clear it), which
 /// pane it belongs to (`left`=main, `right`=split; nil = main), and the pid of the agent that reported it —
 /// the ownership proof the app checks against the pane's live foreground process.
@@ -144,6 +145,9 @@ public struct ControlSessionStatusUpdate: Equatable, Sendable {
     public let autoReset: Bool?
     public let sound: String?
     public let color: String?
+    /// The per-call glyph silhouette, or nil to keep the status' semantic default glyph. Already
+    /// validated — the dispatcher rejects an unknown raw value before any mutation.
+    public let shape: StatusShape?
     /// Which pane set the status (`left`=main, `right`=split, `scratch`), or nil when unspecified. Stamped
     /// onto the indicator so pane-scoped keystroke-clear and pane-aware navigation know which surface blocked.
     public let pane: StatusPane?
@@ -155,12 +159,14 @@ public struct ControlSessionStatusUpdate: Equatable, Sendable {
     public let paneID: String?
 
     public init(status: AgentStatus, blink: Bool?, autoReset: Bool?, sound: String?,
-                color: String? = nil, pane: StatusPane? = nil, paneID: String? = nil) {
+                color: String? = nil, shape: StatusShape? = nil,
+                pane: StatusPane? = nil, paneID: String? = nil) {
         self.status = status
         self.blink = blink
         self.autoReset = autoReset
         self.sound = sound
         self.color = color
+        self.shape = shape
         self.pane = pane
         self.paneID = paneID
     }

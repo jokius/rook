@@ -161,6 +161,60 @@ struct AgentStatusTests {
         #expect(AgentStatus.idle.symbolName == "")
     }
 
+    // the whole point of the shape axis: with NO shape the glyph is byte-for-byte what it always was, so
+    // adding --shape changes nothing for anyone who does not pass it.
+    @Test func symbolNameWithoutAShapeKeepsTheSemanticDefault() {
+        for status in AgentStatus.allCases {
+            #expect(status.symbolName(shape: nil) == status.symbolName)
+        }
+        #expect(AgentStatus.active.symbolName(shape: nil) == "ellipsis.circle.fill")
+        #expect(AgentStatus.blocked.symbolName(shape: nil) == "exclamationmark.circle.fill")
+        #expect(AgentStatus.completed.symbolName(shape: nil) == "checkmark.circle.fill")
+    }
+
+    @Test func symbolNameWithAShapeDrawsThatSilhouette() {
+        #expect(AgentStatus.active.symbolName(shape: .square) == "square.fill")
+        #expect(AgentStatus.blocked.symbolName(shape: .triangle) == "triangle.fill")
+        #expect(AgentStatus.completed.symbolName(shape: .star) == "star.fill")
+        // idle renders no glyph at all, so a shape on it has nothing to draw
+        #expect(AgentStatus.idle.symbolName(shape: .circle) == "")
+    }
+
+    @Test func statusShapeParsesItsNamesAndRejectsUnknownOnes() {
+        #expect(StatusShape.allCases == [.circle, .square, .triangle, .diamond, .capsule, .star])
+        #expect(StatusShape(rawValue: "diamond") == .diamond)
+        #expect(StatusShape(rawValue: "hexagon") == nil)
+        #expect(StatusShape(rawValue: "Circle") == nil) // case-sensitive, like AgentStatus
+        // every shape is the solid `.fill` variant, and both message forms come off allCases
+        #expect(StatusShape.allCases.allSatisfy { $0.symbolName == "\($0.rawValue).fill" })
+        #expect(StatusShape.validNamesList == "circle|square|triangle|diamond|capsule|star")
+        #expect(StatusShape.validNamesPhrase == "circle, square, triangle, diamond, capsule, star")
+    }
+
+    @Test func indicatorEqualityDistinguishesShape() {
+        // a shape-only difference must reload the sidebar row (it rides RowContent, like the color).
+        #expect(AgentIndicator(status: .blocked, shape: .square) != AgentIndicator(status: .blocked))
+        #expect(AgentIndicator(status: .blocked, shape: .square) != AgentIndicator(status: .blocked, shape: .star))
+    }
+
+    @MainActor
+    @Test func controlTreeReportsStatusShapeOnlyWhenSet() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "w")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+
+        // no shape: the read-back is absent, so a script sees "the default glyph" rather than a lie.
+        store.setAgentIndicator(AgentIndicator(status: .blocked), forSession: session.id)
+        #expect(store.controlTree().workspaces.first?.sessions.first?.statusShape == nil)
+
+        store.setAgentIndicator(AgentIndicator(status: .blocked, shape: .diamond), forSession: session.id)
+        #expect(store.controlTree().workspaces.first?.sessions.first?.statusShape == "diamond")
+
+        // idle reports no status at all, so it reports no shape either (gated like statusColor/statusBlink)
+        store.setAgentIndicator(AgentIndicator(status: .idle, shape: .diamond), forSession: session.id)
+        #expect(store.controlTree().workspaces.first?.sessions.first?.statusShape == nil)
+    }
+
     @Test func tooltipTextNamesVisibleStatusesAndOmitsIdle() {
         #expect(AgentStatus.active.tooltipText == "Agent status: Active")
         #expect(AgentStatus.blocked.tooltipText == "Agent status: Blocked")

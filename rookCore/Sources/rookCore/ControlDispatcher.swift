@@ -357,29 +357,48 @@ public struct ControlDispatcher {
         case .sessionSeen:
             return actions.markSessionSeen(request.target, window: request.args?.window)
         case .sessionStatus:
-            guard let status = AgentStatus(rawValue: request.args?.status ?? "") else {
-                return ControlResponse(ok: false, error: "invalid status")
-            }
-            if let color = request.args?.color, !WatermarkConfig.isValidColorHex(color) {
-                return ControlResponse(ok: false, error: "invalid color (expected #rrggbb)")
-            }
-            var pane: StatusPane?
-            if let rawPane = request.args?.pane {
-                guard let parsed = StatusPane(rawValue: rawPane) else {
-                    return ControlResponse(ok: false, error: "--pane must be left, right, or scratch")
-                }
-                pane = parsed
-            }
-            let update = ControlSessionStatusUpdate(status: status, blink: request.args?.blink,
-                                                    autoReset: request.args?.autoReset,
-                                                    sound: request.args?.sound, color: request.args?.color,
-                                                    pane: pane, paneID: request.args?.paneID)
-            return actions.setSessionStatus(request.target, window: request.args?.window, update: update)
+            return dispatchSessionStatus(request)
         case .sessionAgent:
             return dispatchSessionAgent(request)
         default:
             preconditionFailure("unexpected session command: \(request.cmd.rawValue)")
         }
+    }
+
+    /// `session.status`: flag a per-session agent state on the sidebar row. EVERY argument is validated
+    /// here, BEFORE `setSessionStatus` runs, so a typo in any one of them leaves the session's current
+    /// status untouched rather than half-applying the call: the state itself, the `#rrggbb` tint, the
+    /// silhouette (the shape axis, for when the tint can't carry the state), and the pane role. The
+    /// opaque `--pane-id` token rides through unchecked — only the app side can resolve it against the
+    /// session's live surfaces. Its own arm (like `session.agent`'s) so the `dispatchSessionCommand`
+    /// switch stays a flat router.
+    private func dispatchSessionStatus(_ request: ControlRequest) -> ControlResponse {
+        guard let status = AgentStatus(rawValue: request.args?.status ?? "") else {
+            return ControlResponse(ok: false, error: "invalid status")
+        }
+        if let color = request.args?.color, !WatermarkConfig.isValidColorHex(color) {
+            return ControlResponse(ok: false, error: "invalid color (expected #rrggbb)")
+        }
+        var shape: StatusShape?
+        if let raw = request.args?.shape {
+            guard let parsed = StatusShape(rawValue: raw) else {
+                return ControlResponse(ok: false, error: "invalid shape: \(raw) (\(StatusShape.validNamesList))")
+            }
+            shape = parsed
+        }
+        var pane: StatusPane?
+        if let rawPane = request.args?.pane {
+            guard let parsed = StatusPane(rawValue: rawPane) else {
+                return ControlResponse(ok: false, error: "--pane must be left, right, or scratch")
+            }
+            pane = parsed
+        }
+        let update = ControlSessionStatusUpdate(status: status, blink: request.args?.blink,
+                                                autoReset: request.args?.autoReset,
+                                                sound: request.args?.sound, color: request.args?.color,
+                                                shape: shape,
+                                                pane: pane, paneID: request.args?.paneID)
+        return actions.setSessionStatus(request.target, window: request.args?.window, update: update)
     }
 
     /// `session.agent`: remember (or clear) which agent conversation a pane is on. The agent's own hook is
