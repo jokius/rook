@@ -15,8 +15,10 @@ Full detail for every `rookctl` command. See `SKILL.md` for the model and addres
 - **Response shape**: `{"ok": true, "result": {…}}` or `{"ok": false, "error": "<message>"}`.
   `result` carries one of: `id` (affected/new session/workspace/window), `text` (session copy/text),
   `exitCode` (overlay result), `count` (diagnostics/search), `affected` (sessions actually changed by a
-  batch close/move), `tree` (the tree), `windows` (window list). The process exit code is non-zero when
-  `ok` is false.
+  batch close/move), `tree` (the tree), `windows` (window list), `events` (an `events.read` page). The
+  process exit code is non-zero when `ok` is false. `events.read` is the ONE command that carries a
+  `result` alongside `ok: false` — a cursor failure still returns the ring's current anchor (see
+  **events** below).
 - **Options go after the subcommand**: `rookctl session type "ls" --target active`, never before it.
 
 ## Addressing
@@ -131,6 +133,92 @@ and grows while the window is idle, so it is on `tree` only, never `window.list`
 both; `sidebarMode`, `quickVisible`, `zoomedSurface`, and the four `dashboard*` fields are `tree`-only
 (a GUI/keyboard change would leave a cached copy stale).
 All ten are read-only projections of GUI state.
+
+## events
+
+`rookctl events [--json] [--kind K] [--limit N] [--run UUID --after SEQ]` — follow the app's event
+ring instead of polling `tree` and diffing snapshots. Polling cannot see a transition that flipped and
+flipped back between two reads (an agent that blocked and unblocked simply never happened), and it
+cannot read notification content at all — the session node carries only an `unseen` count.
+
+**This is not push and not streaming.** The wire model is unchanged: `events.read` is an ordinary
+one-request-one-connection command returning ONE page, and `rookctl events` is a client-side poll loop
+over it that sleeps 0.25 s only after an EMPTY page, so a burst drains at full speed. Terminal OUTPUT
+is still not streamed — read a buffer on demand with `session text`.
+
+App-wide: there is NO `--window` selector (each event carries its own `window` id). `--socket` and
+`--json` work as everywhere else.
+
+### Flags
+
+- `--kind K` — filter by event kind. Repeatable and/or comma-separated (`--kind status,notify --kind
+  tree.changed`). Values: `status`, `notify`, `session.created`, `session.closed`, `tree.changed`.
+  Anything else is `invalid event kind: <kind>` (the CLI rejects it locally too). Omitted = every kind.
+- `--limit N` — maximum events per page, 1–1000, default 100. Out of range is
+  `event limit must be between 1 and 1000`.
+- `--run UUID` / `--after SEQ` — the cursor, a PAIR. One without the other is
+  `events.read requires --run and --after together`; a malformed UUID is `invalid event run id`, a
+  non-numeric sequence is `invalid event cursor`. Omit BOTH to subscribe from now (see below).
+
+### Response shape
+
+`result.events` is a batch object:
+
+- `run` — the app-run UUID stamped on this ring. Send it back as `--run`.
+- `next` — the sequence to send as the next `--after`. It is the ring position the read scanned
+  through, INCLUDING entries the `--kind` filter skipped; on a page cut short by `--limit` it is the
+  LAST RETURNED event's `seq`, so entries the filter skipped past after it are still examined on the
+  next page. A page whose entries were ALL filtered out still advances `next` past them, so the
+  filter never re-scans the same stretch; on a genuinely quiet ring `next` simply comes back equal to
+  the `after` you sent.
+- `items` — the matching events, ascending by `seq`.
+
+Each event is `{seq, ts, kind, window?, workspace?, session?, payload}`: `seq` is monotonic within the
+run (starting at 1), `ts` is Unix epoch seconds as a FRACTIONAL number (not an integer — round it
+before formatting), and `window`/`workspace`/`session` are UUID strings
+(a `tree.changed` carries only `window`). `payload` fields are all optional — `name` (the session's
+display name), `status`/`pane`/`blink`/`color` (on `status`), `title`/`body` (on `notify`).
+
+Human (non-`--json`) output is one line per event, `HH:mm:ss kind name …` in local time — e.g.
+`14:02:11 status api blocked pane=right blink`, `14:02:19 notify api Done: build is green`,
+`14:03:02 session.created scratch`, `14:03:40 tree.changed <window-id>`. With `--json` each line is one
+bare event object (NDJSON — pipe it straight into `jq`).
+
+### Event kinds
+
+- `status` — an agent-status TRANSITION. Emitted only when the normalized indicator actually CHANGES,
+  so a re-asserted identical status is silent; the one-shot `completed --auto-reset` clear back to
+  `idle` IS a transition and is reported. Payload: `status` (`idle`|`active`|`completed`|`blocked`),
+  plus `pane`/`blink`/`color` mirroring `session status --pane/--blink/--color`.
+- `notify` — a notification accepted for a session; payload `title` (the effective title — the session's
+  name when the caller sent none) and `body`. **RESERVED, not yet emitted**: the kind is accepted by
+  `--kind` and the shape is fixed, but nothing in the running app records notifications into the ring
+  today, so `--kind notify` currently returns nothing. Until an emitter is wired, notification CONTENT is
+  unreadable and the only signal is the `unseen` count on the `tree` session node.
+- `session.created` / `session.closed` — payload `name`. Sessions restored at LAUNCH deliberately emit
+  nothing, so a consumer starting up is not buried by the whole restored tree.
+- `tree.changed` — the window's tree SHAPE changed (session added/removed/moved, workspace
+  added/removed/reordered, a rename, a window rename or removal). Debounced ~100 ms per window, so a
+  batch move or a workspace reopen collapses into ONE event. It is a signal, not a diff — re-read
+  `tree` when you get one.
+
+### The cursor contract
+
+- **No cursor = subscribe from now.** Omit `--run`/`--after` and the reply is an empty page carrying
+  the current `run`/`next` anchor. History is NOT replayed: a fresh consumer would otherwise receive up
+  to 4096 stale events. Take the anchor, then pass `run`/`next` back on every later read.
+- **The ring is bounded and per-app-run**: 4096 entries, a fresh `run` UUID each time the app starts.
+  It does not persist; nothing survives a restart.
+- Three cursor failures. All answer `ok: false` — and all STILL carry the ring's current anchor in
+  `result.events`, so a caller that decides to rebaseline can do it from the same reply:
+  - `event run changed` — the cursor's `run` is not the current app run (rook was restarted).
+  - `event cursor is ahead of the current sequence` — `after` is past the ring's newest sequence.
+  - `event cursor expired` — the events after the cursor were already evicted from the ring (the
+    consumer fell more than 4096 events behind).
+- **The server never re-anchors silently, on purpose.** A consumer that missed events has to LEARN it
+  missed them instead of reading silence as "nothing happened" — so rebaselining is your decision, not
+  the server's. `rookctl events` propagates all three: it prints the error and exits non-zero rather
+  than quietly restarting the loop.
 
 ## workspace
 
@@ -852,6 +940,10 @@ user-edited file read at launch — there is no control command for it.
 `failed to read surface buffer` (quick text / session text), `window not open — window.select it first`
 (resize/move/minimize/`--window`),
 `cannot minimize a full-screen window — window.fullscreen it first` (window minimize),
+`events.read requires --run and --after together` / `invalid event run id` / `invalid event cursor` /
+`invalid event kind: <kind>` / `event limit must be between 1 and 1000` (events.read argument checks) and
+`event run changed` / `event cursor is ahead of the current sequence` / `event cursor expired` (the three
+cursor failures, each returned with the current anchor still in `result.events`),
 `unknown theme: <name>` (theme set), `unknown sound: <name>` (session status --sound),
 `invalid color (expected #rrggbb)` (session status --color),
 `--pane must be left, right, or scratch` (the `--pane` value check — the `rookctl` CLI rejects a bad pane

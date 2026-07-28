@@ -9,7 +9,8 @@ description: >
   session's built-in preview panel; type
   into a session, copy its selection, or search its scrollback; post desktop notifications; manage windows (new, list,
   select, close, resize, move); change font size; or reload and edit the keymap and the rook-scoped
-  ghostty config. Also covers the
+  ghostty config. Also covers subscribing to app events (agent-status transitions, delivered
+  notifications, session created/closed, tree changes) with `rookctl events` / `events.read`, the
   window/workspace/session addressing model and the ROOK_* environment a spawned shell sees, plus
   diagnosing problems (keymap editor, custom actions, logs) and filing a bug as a GitHub issue or a
   feature request / question as a GitHub Discussion.
@@ -19,6 +20,8 @@ when_to_use: >
   session.flag, session.seen, session.reveal, session.background, session.overlay, workspace.new, workspace.select, workspace.move, workspace.focus, workspace.root, workspace.collapse, workspace.expand, window.new, window.list,
   window.select, window.resize, window.move, window.zoom, window.fullscreen, window.minimize, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, flagged, notify, font.inc, keymap.reload, keymap.list, config.reload,
   theme.set, theme.list, select theme, edit keymap, show an image, display an image inline, show-image,
+  events, events.read, rookctl events, event subscription, subscribe to events, watch rook events,
+  event cursor, tree.changed,
   ROOK_SESSION_ID, ROOK_SOCKET, and asks to drive or script rook. Also: troubleshoot rook,
   keymap editor won't open, custom action / custom command not working, rook logs, file a rook
   bug, report a rook issue, open a rook discussion / feature request.
@@ -32,7 +35,11 @@ allowed-tools: Bash(rookctl *)
 Rook is a native macOS terminal. It exposes a programmatic control channel over a local unix
 socket, driven by the companion CLI `rookctl`. Use it to build and steer terminal layouts, run
 programs in overlays, type into sessions, and notify the user in the exact session you are working
-in. Fire-and-forget commands only: there is no terminal-output streaming and no event subscription.
+in. Every command is request/response — one request per invocation — and terminal OUTPUT is never
+streamed (read a buffer on demand with `session text`). Events, on the other hand, ARE subscribable:
+`rookctl events` follows a cursor over the app's event ring and reports agent-status transitions,
+delivered notifications, sessions created/closed, and structural `tree.changed` signals, so you no
+longer have to poll `tree --json` and diff snapshots.
 
 ## Am I inside Rook?
 
@@ -128,7 +135,7 @@ you work. For any session-scoped command meant to act on *this* session — `ove
 `type`, `text`, `background`, `status`, `copy`, … — pass `--target "$ROOK_SESSION_ID"`. Omit it and
 you open overlays / type into whatever the user has selected, not your own session.
 
-## Command summary (71 commands)
+## Command summary (72 commands)
 
 Run `rookctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
 **examples.md**. (The count excludes `debug.appearance`, a UI-test-only seam with no `rookctl`
@@ -169,6 +176,19 @@ the open dashboard shows, in grid order — `<session-id>:left` for a primary pa
 a split pane, so a split session appears as both), `dashboardHighlighted` (the highlighted cell's pane ref —
 the one Enter jumps into, focusing that exact pane), `dashboardFontSize` (the absolute font size in points
 applied to the cells, omitted when untouched), and `dashboardFontMode` (`auto`|`fixed`|`untouched`).
+
+**events** — `events [--json] [--kind K] [--limit N] [--run UUID --after SEQ]` — follow the app's
+event ring instead of polling `tree`. The CLI is a poll loop over the one-shot `events.read` command
+(it sleeps 250 ms only after an EMPTY page, so a burst drains at full speed) and prints one line per
+event: a human column layout, or one bare JSON object per line with `--json` (NDJSON — pipe it to
+`jq`). Kinds are `status` (an agent-status transition, with the same `status`/`pane`/`blink`/`color`
+values `session status` writes), `notify` (`title` + `body` — RESERVED, nothing emits it yet, so it
+currently yields nothing), `session.created`, `session.closed`, and
+`tree.changed` (a debounced per-window structural change). Starting with NO cursor subscribes FROM
+NOW — there is no history replay. The ring is bounded (4096 entries) and lives only for one app run,
+so a cursor that is stale, from a previous run, or ahead of the sequence FAILS loudly rather than
+silently re-anchoring; see **reference.md ▸ events** for the exact error strings and the cursor
+contract.
 
 **workspace** — `new [name] [--collapsed]` (`--collapsed` creates it already closed in the sidebar, so a
 script can fill it with `session new --no-select` without it popping open) ·
@@ -384,11 +404,14 @@ Full detail, templates, and the exact `gh` commands are in **troubleshooting.md*
 ## Reference files
 
 - **reference.md** — full per-command detail: every flag, the JSON return shapes
-  (`result.id`/`text`/`exitCode`/`count`/`affected`/`tree`/`windows`), error strings, the scratch/overlay/split
+  (`result.id`/`text`/`exitCode`/`count`/`affected`/`tree`/`windows`/`events`), error strings, the
+  cursor contract for `events.read`, the scratch/overlay/split
   lifecycle, and the keymap.conf format (`map` / `command`, chords, leaders, `{AGT_X}` tokens).
 - **examples.md** — copy-paste rookctl recipes for common tasks (build a layout, run a program in a
-  blocking overlay and read its status, type into a fresh session, notify, inspect the tree).
-- **troubleshooting.md** — diagnosing common problems (keymap editor, custom actions, logs) and the
+  blocking overlay and read its status, type into a fresh session, notify, inspect the tree, watch the
+  event stream and keep a durable cursor).
+- **troubleshooting.md** — diagnosing common problems (keymap editor, custom actions, missed events and
+  the three cursor errors, logs) and the
   bug-issue / feature-Discussion reporting workflow (draft-first, scrub, never post without approval).
 - **scripts/show-image.sh** — bundled helper that displays an image inline in an overlay (see above).
 

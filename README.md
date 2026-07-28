@@ -190,9 +190,9 @@ The theme picker (View ▸ Select Theme…, or the action palette) previews each
 
 ## Scripting Rook
 
-`rook` can be driven from a script over a local unix-domain socket through a companion CLI, `rookctl`. This is for personal scripting — fire-and-forget commands that manage workspaces and sessions, inject text, and invoke control actions. There is no terminal-output streaming and no event subscription.
+`rook` can be driven from a script over a local unix-domain socket through a companion CLI, `rookctl`. This is for personal scripting — fire-and-forget commands that manage workspaces and sessions, inject text, and invoke control actions, plus a read-only event feed you poll for what the app just did (see [Watching for events](#watching-for-events)). Everything stays request/response: nothing is pushed to you, and there is no terminal-output streaming — to read a terminal's buffer, ask for it with `session text`.
 
-The sections below cover the common cases. All 71 commands, with every argument, return value, and error, are documented in the **[Command reference](https://rook.app/commands)**. (That count is the scriptable set — it excludes `debug.appearance`, a UI-test-only command with no `rookctl` subcommand.)
+The sections below cover the common cases. All 72 commands, with every argument, return value, and error, are documented in the **[Command reference](https://rook.app/commands)**. (That count is the scriptable set — it excludes `debug.appearance`, a UI-test-only command with no `rookctl` subcommand.)
 
 The app bundles `rookctl` inside `rook.app`. The easiest way to put it on your PATH is **Help ▸ Install Command Line Tool…**, which symlinks the bundled binary into `/usr/local/bin` (the first entry in macOS's default PATH). When that directory is user-writable it installs silently; otherwise it asks once for an administrator password.
 
@@ -339,6 +339,26 @@ rookctl session new --window "$ROOK_WINDOW_ID" --cwd .   # open a sibling sessio
 rookctl session type --target "$ROOK_SESSION_ID" $'\n'   # type into this very session
 rookctl tree --socket "$ROOK_SOCKET"                     # reach the same Rook this shell runs in
 ```
+
+### Watching for events
+
+Polling `tree --json` tells you the shape of the tree, not what happened to it: a status that flipped and flipped back between two polls never happened as far as the poll can tell. `rookctl events` prints what the app did instead, one line per event:
+
+```sh
+rookctl events                                        # human lines: time, kind, name, details
+rookctl events --json                                 # one bare JSON object per line — pipe it into jq
+rookctl events --kind status --kind session.created   # only these kinds (repeatable, or comma-separated)
+rookctl events --kind status,tree.changed --limit 20  # at most 20 events per read (1–1000, default 100)
+rookctl events --run "$run" --after 41                # resume from a cursor instead of starting from now
+```
+
+Four kinds fire today: `status` (an agent-status transition, carrying the status, the pane, and the blink and color it resolved to), `session.created` and `session.closed` (each naming the session), and `tree.changed` — a per-window "the tree moved" signal, debounced by 100 ms so that a batch move or a workspace reopen is one event rather than N, and named by its window rather than a session. A fifth kind, `notify`, is part of the protocol and `--kind notify` is accepted, but nothing emits one yet, so that filter stays silent; a notification's arrival is still only readable as the session's `unseen` count in `tree`.
+
+Events live in a bounded in-memory ring of 4096 entries belonging to one run of the app. It is not a log: nothing is written to disk, and the ring does not survive a restart. Each entry carries a monotonic sequence number and the ring carries a UUID for the app run; together those are a cursor. `--run` and `--after` are a pair — one without the other is an error — and every reply hands back the `next` value to send with the following read. Omit both and you subscribe from now: no history is replayed, so a watcher that starts up late is not buried under 4096 events it does not care about. `rookctl events` does all of this for you — it starts at the tail, feeds each reply's `next` into the next request, and waits 250 ms only after a read that came back empty, so a burst drains at full speed.
+
+Underneath is the ordinary one-request-one-connection `events.read` command. The CLI simply asks again; no connection is held open and nothing is pushed.
+
+A cursor the ring cannot honor fails loudly rather than resetting itself. Three errors say so — `event run changed` (the cursor is from an earlier run of the app), `event cursor is ahead of the current sequence`, and `event cursor expired` (the events after your cursor have been evicted from the ring) — and all three answer `ok:false` while still carrying the ring's current anchor, so a watcher that accepts the gap can rebaseline from that very reply. Deciding to accept it is the part that is not taken from you: re-anchoring silently would hand a consumer that missed events a quiet "nothing happened", which is exactly the blind spot the event feed exists to remove.
 
 ## Customizing keys
 

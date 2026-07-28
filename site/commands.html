@@ -6,7 +6,7 @@
     <title>Command reference — rook | rookctl control API</title>
     <meta
       name="description"
-      content="Complete rookctl reference: all 71 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, themes, and keymaps, with arguments and return values."
+      content="Complete rookctl reference: all 72 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, events, themes, and keymaps, with arguments and return values."
     />
     <meta
       name="keywords"
@@ -18,7 +18,7 @@
     <meta property="og:title" content="Command reference — rook" />
     <meta
       property="og:description"
-      content="All 71 rookctl control commands with arguments, return values, and errors."
+      content="All 72 rookctl control commands with arguments, return values, and errors."
     />
     <meta property="og:url" content="https://rook.app/commands" />
     <meta property="og:image" content="https://rook.app/assets/rook-og.png" />
@@ -30,7 +30,7 @@
     <meta name="twitter:title" content="Command reference — rook" />
     <meta
       name="twitter:description"
-      content="All 71 rookctl control commands with arguments, return values, and errors."
+      content="All 72 rookctl control commands with arguments, return values, and errors."
     />
     <meta name="twitter:image" content="https://rook.app/assets/rook-og.png" />
     <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
@@ -146,6 +146,7 @@
             <div style="height: 16px"></div>
             <span style="color: #4a5158; font-size: 11px; letter-spacing: 0.12em; padding: 4px 12px">COMMANDS</span>
             <a href="#tree" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">tree</a>
+            <a href="#events" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">events</a>
             <a href="#workspace" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">workspace</a>
             <a href="#session" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">session</a>
             <a href="#overlay" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">session overlay</a>
@@ -192,7 +193,7 @@
             Command reference
           </h1>
           <p style="font-size: 19px; line-height: 1.6; color: #bfbab0; margin: 0 0 8px">
-            All 71 commands of the rook control API, with arguments and return values. Every one is reachable from the
+            All 72 commands of the rook control API, with arguments and return values. Every one is reachable from the
             <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl</span> CLI and from the local
             control socket.
           </p>
@@ -221,7 +222,11 @@
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 16px">
               rook listens on a local unix-domain socket. Each connection carries one newline-delimited JSON request and receives
               one response, then closes. The scope is personal scripting — fire-and-forget commands. There is no scrollback
-              streaming and no event subscription.
+              streaming: a pane's output is read on demand with
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc; white-space: nowrap">session text</span>. To
+              watch what <em>changes</em>, read the event log with
+              <a href="#events" style="color: #7ece8f">events.read</a> — cursor-paged, and still one request per connection rather
+              than a pushed stream.
             </p>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 16px">
               <strong style="color: #e6e1d7">Socket resolution.</strong> With
@@ -247,8 +252,11 @@
               (overlay result), <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">count</span>
               (search matches, keymap/config diagnostics),
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ratio</span> (session resize),
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tree</span>, or
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">windows</span>.
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tree</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">windows</span>, or
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">events</span> (an
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">events.read</span> page — the one
+              field that is also present on a failure, carrying the current anchor).
             </p>
             <div
               style="

@@ -13,6 +13,72 @@ rookctl window list --json # windows, with open/active flags
 rookctl tree --json | jq -r '.result.tree.workspaces[].sessions[] | "\(.name): \(.foreground // "shell")"'
 ```
 
+## Watch what happens instead of diffing the tree
+
+`rookctl events` follows the app's event ring, so you no longer poll `tree --json` and diff snapshots.
+Polling cannot see a transition that flipped and flipped back between two reads — an agent that blocked
+and unblocked simply never happened. `--json` prints one bare event object per line (NDJSON).
+
+```bash
+rookctl events                                   # human column lines: HH:mm:ss kind name …
+rookctl events --kind status,session.closed      # only these kinds (repeatable and/or comma-separated)
+
+# react to any session blocking, wherever it happens (jq --unbuffered, or you buffer a whole page)
+rookctl events --json --kind status \
+  | jq -r --unbuffered 'select(.payload.status == "blocked") | .session' \
+  | while read -r id; do rookctl session flag on --target "$id"; done
+```
+
+It is a poll loop over the one-shot `events.read`, not a push socket: it sleeps 0.25 s only after an
+EMPTY page, so a burst drains at full speed. It exits non-zero on any failure — a dead socket, or one of
+the three cursor errors below — and never keeps printing as if nothing broke.
+
+### Keep the cursor, and never restart silently
+
+Starting with NO cursor means "subscribe from now": there is no history replay. So a supervisor that just
+restarts `rookctl events` skips everything that happened while it was down. That is fine — as long as you
+RECORD the gap instead of pretending it was quiet:
+
+```bash
+while :; do
+  rookctl events --json >> ~/rook-events.ndjson
+  echo "watcher stopped at $(date -Iseconds); events until it comes back are LOST" >&2
+  sleep 1
+done
+```
+
+`rookctl events` keeps its cursor in memory only, so it cannot resume across its own restart. For a
+durable cursor, drive `events.read` yourself — one JSON request per connection, one reply, then the app
+closes the socket (`--run`/`--after` are a PAIR; `after` rides as a string):
+
+```bash
+read_events() {  # $1 = run (empty on the first call), $2 = after
+  if [ -n "$1" ]; then a="{\"run\":\"$1\",\"after\":\"$2\",\"limit\":200}"; else a='{"limit":200}'; fi
+  printf '{"cmd":"events.read","args":%s}\n' "$a" | nc -U "$ROOK_SOCKET"
+}
+
+reply=$(read_events "$run" "$after")
+if [ "$(jq -r .ok <<<"$reply")" != "true" ]; then
+  case "$(jq -r .error <<<"$reply")" in
+    "event run changed")
+      echo "rook restarted — the old run's events are gone for good" >&2 ;;
+    "event cursor expired")
+      echo "fell more than 4096 events behind — the middle is gone" >&2 ;;
+    "event cursor is ahead of the current sequence")
+      echo "cursor belongs to a different ring (stale state file?)" >&2 ;;
+  esac
+  # ALL THREE still carry the current anchor in the SAME reply, so rebaseline from it — deliberately,
+  # after recording the gap. Never swallow the error and start over: the server refuses to re-anchor
+  # you silently precisely so a missed stretch cannot read as "nothing happened".
+fi
+run=$(jq -r '.result.events.run' <<<"$reply")    # present on ok:true AND on all three failures
+after=$(jq -r '.result.events.next' <<<"$reply") # feed back as --after; advances even on an empty page
+jq -c '.result.events.items[]' <<<"$reply" >> ~/rook-events.ndjson
+```
+
+Persist `run`+`after` after each page and you resume exactly where you stopped — as long as rook has not
+restarted (a new run) and you have not fallen 4096 events behind (an expired cursor).
+
 ## Reset the restore-on-restart commands
 
 The opt-in "Restore running commands on restart" setting saves each pane's foreground command at quit.

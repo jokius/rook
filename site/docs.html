@@ -1114,7 +1114,7 @@
               "
             >
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 0">
-                Looking for the full list? All 71 commands (the count excludes one UI-test-only command with no CLI
+                Looking for the full list? All 72 commands (the count excludes one UI-test-only command with no CLI
                 subcommand), with every argument, return value, and error, live on the
                 <a href="/commands" style="color: #7ece8f; font-weight: 500">Command reference →</a>
               </p>
@@ -1122,8 +1122,15 @@
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 16px">
               rook can be driven from a script over a local unix-domain socket through the companion CLI,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #e6e1d7">rookctl</span>. This is for
-              fire-and-forget scripting that manages workspaces and sessions, injects text, and invokes control actions — there is
-              no output streaming and no event subscription.
+              scripting that manages workspaces and sessions, injects text, and invokes control actions. Nothing is pushed to you
+              and terminal output is never streamed — read a buffer with
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session text</span> — but a script
+              can watch what changes:
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl events</span> polls a
+              cursor-paged feed of status changes, notifications, session lifecycle, and structural tree changes, so a watcher no
+              longer has to diff whole
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tree</span> snapshots and hope a
+              transition did not flip back between two polls.
             </p>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 16px">
               Each command targets a session or workspace by its UUID, a unique prefix of that UUID (git-style), or the keyword

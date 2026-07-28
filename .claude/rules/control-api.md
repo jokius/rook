@@ -23,8 +23,14 @@ paths:
   via the companion `rookctl` CLI.
   It is a thin dispatcher onto the existing `AppActions`/`AppStore` seam — the third caller of that seam,
   alongside the toolbar/bottom bar and the menu bar — so no business logic is duplicated.
-  Scope is personal scripting: fire-and-forget commands, no terminal-output/scrollback streaming and
-  no event subscription (out of scope by design).
+  Scope is personal scripting: one request per connection, and NO terminal-output/scrollback streaming —
+  a buffer is read on demand with `session.text`, never pushed.
+  **Event subscription is no longer out of scope** — the inherited "no event subscription (by design)"
+  claim is FALSE since `events.read` (catalog below) added the READ leg: a cursor-paged poll over a
+  bounded in-process ring of status/notify/session/tree events.
+  The server still never PUSHES and holds no long-lived connection, so the request-response model is
+  untouched; what changed is that a watcher no longer has to diff `tree` snapshots to find out what
+  happened.
 - **Three layers, matching the core/app split:**
   1. **Protocol + pure logic in `rookCore`**
      (Foundation-only, `Codable`, `Sendable`): `ControlProtocol.swift` holds the `Command` enum,
@@ -91,6 +97,10 @@ paths:
   `keymap.list` is itself the read leg of `keymap.reload` (the keymap is one app-wide `SettingsModel`, not
   per-session state), the same way `theme.list` reads back `theme.set` — a sibling READ COMMAND satisfies
   the rule as well as a node field does.
+  `events.read` owes no tree field for BOTH halves of that reasoning at once: the ring is one app-wide,
+  app-run-scoped buffer (not per-session state that a node could carry), and the command IS a read leg —
+  it is what a script uses to observe what the WRITE commands did, so demanding a read-back OF it would be
+  circular.
   This is a SEPARATE obligation from the four-point audit (Command + arg + CLI + tests) and easy to forget:
   `session.overlay.resize` shipped write-only and `overlaySizePercent` was added only later, when a
   tmux-zoom script needed to restore an overlay's exact size.
@@ -222,7 +232,7 @@ paths:
   The skill is a REFERENCE/knowledge skill (both user-invocable via `/rook` and model-triggered,
   `allowed-tools: Bash(rookctl *)`; the agent-neutral `description` carries the trigger nouns since
   Codex may ignore the extra `when_to_use` field — unknown frontmatter is harmless),
-  authored at `rook/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 66-command
+  authored at `rook/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 72-command
   summary + the image-display helper + a troubleshooting/reporting pointer;
   `reference.md` full per-command detail + keymap format; `examples.md` rookctl recipes;
   `troubleshooting.md` diagnosing the common problems (keymap editor, custom actions,
@@ -300,13 +310,17 @@ paths:
   rules, then remaining targets resolve inside that same store so one command never mutates multiple windows.
   The top-level `target` also carries the first explicit batch target so a new CLI talking to a still-running
   pre-batch server degrades to a named session instead of accidentally acting on `active`.
-- **Command catalog (71 commands):**
+- **Command catalog (72 commands):**
   The count is every `Command` case MINUS `debug.appearance` (the UI-test-only seam below, which has no
   `rookctl` subcommand and is not in the skill) — `awk '/^public enum Command/,/^}/' rookCore/Sources/rookCore/ControlProtocol.swift | grep -cE '^\s+case '`
-  minus one.
-  The same number must appear in `README.md`, `site/docs.html`, and the bundled `agent-skill/SKILL.md`;
-  those four surfaces drifted apart once (67 here vs 66 there) precisely because each was edited alone.
+  minus one (73 cases → 72).
+  The same number must appear in `README.md`, `site/docs.html`, `site/commands.html` (four places there:
+  the meta description, the two social-card descriptions, and the page intro), and the bundled
+  `agent-skill/SKILL.md`;
+  those surfaces drifted apart once (67 here vs 66 there) precisely because each was edited alone.
   - `tree`
+  - `events.read` — its own family, NOT part of `tree`: the ring is app-wide and the command is a
+    cursor-paged read of what HAPPENED, while `tree` is a snapshot of what IS
   - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.color`/`workspace.icon`/`workspace.root`/`workspace.collapse`/`workspace.expand`
   - `session.new`/`session.close`/`session.select`/`session.rename`/`session.duplicate`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.agent`/`session.flag`/`session.seen`/`session.background`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
   - `surface.zoom`
@@ -333,7 +347,99 @@ paths:
   Setting echoes the resulting effective side in `result.text`; the BARE form (no name) reads the side
   the last config feed applied (`SettingsModel.lastAppliedIsDark`), which the test polls to prove the
   flip actually drove the reload.
-  `AppearanceFlipUITests` is its only consumer; the public command count stays 71.
+  `AppearanceFlipUITests` is its only consumer; the public command count stays 72.
+
+  **`events.read` — the READ leg of a bounded event ring, control-NATIVE (no GUI surface at all).**
+  It exists because polling `tree --json` and diffing a ~31-field-per-session snapshot cannot see a
+  transition that flipped and flipped BACK between two polls (an agent that blocked and unblocked simply
+  never happened), and cannot read notification CONTENT at all — the session node carries only an unseen
+  count.
+  The ring (`rookCore/Sources/rookCore/ControlEvents.swift`, `ControlEventRing`, `@MainActor`, capacity
+  4096) is one buffer per APP RUN, stamped with a run UUID and a monotonic `seq`, holding five kinds:
+  - `status` — a status TRANSITION. `AppStore.setAgentIndicator` emits only when the NORMALIZED indicator
+    actually changed, so a re-asserted `--pane right` on a splitless session (which coerces to `left`) is
+    silent instead of firing on every call.
+  - `notify` — a notification's effective title + body (an empty title falls back to the session name).
+  - `session.created` / `session.closed` — per session, carrying its display name.
+  - `tree.changed` — a per-WINDOW structural signal, debounced 100 ms, so a batch mutation (a multi-session
+    move, a workspace reopen, a window remove) collapses into ONE signal rather than N.
+    Emitted for name/order/shape changes that a snapshot diff would otherwise have to find; a same-value
+    rename is deliberately NOT a tree change.
+  Args (all optional): `--run`/`--after` (the cursor, a PAIR), `--kind` (repeatable and/or
+  comma-separated), `--limit` (1…1000, default 100).
+  Response is `result.events` = `{run, next, items[]}`, each item
+  `{seq, ts, kind, window?, workspace?, session?, payload{}}` with nil fields omitted —
+  payload is `name`/`status`/`pane`/`blink`/`color` for `status`, `name`/`title`/`body` for `notify`,
+  `name` for `session.created`/`session.closed`, and empty for `tree.changed`
+  (golden wire shapes are pinned in `ControlEventsTests.everyEventKindMatchesGoldenWireShape`).
+  Feed each reply's `next` back as the next `--after`: it is the sequence the ring scanned THROUGH,
+  including entries the kind filter skipped — except when `--limit` truncates the page, where `next` is the
+  LAST RETURNED match's `seq`, not the tail, so the matches beyond it are not silently consumed.
+  **The cursor contract is the delicate part, and every failure is LOUD.**
+  - NO cursor (both `--run` and `--after` omitted) is the subscribe-from-now bootstrap: it anchors at the
+    tail and returns NO history, because replaying up to 4096 stale events at a fresh consumer is worse
+    than useless. `--run <id> --after 0` is the opposite intent — replay everything still retained.
+  - One of the pair without the other is rejected by the dispatcher before the ring is touched
+    (`events.read requires --run and --after together`) rather than treated as a bootstrap, which would
+    silently drop everything since the caller's last page.
+    The other dispatcher-owned validations: `invalid event run id`, `invalid event cursor`,
+    `event limit must be between 1 and 1000`, `invalid event kind: <kind>`.
+  - Three ring-level failures answer `ok: false` — a cursor from a PREVIOUS app run → `event run changed`;
+    a cursor past the sequence → `event cursor is ahead of the current sequence`;
+    a cursor whose events have already been EVICTED → `event cursor expired`.
+    (`ControlEventReadError` raw values; scripts match on these strings, so do not reword them.)
+  - **All three still carry the CURRENT anchor** in `result.events` (`{run, next, items: []}`), so a caller
+    that decides to rebaseline can do it from the same reply.
+    The server never rebaselines silently on the caller's behalf: a consumer that missed events must LEARN
+    it missed them instead of mistaking a fresh anchor for "nothing happened" — that is the whole point of
+    the feature and the reason a bad cursor is an error rather than an ok-with-new-anchor.
+  Unknown kinds stay RAW strings on the wire (`ControlArgs.kinds: [String]`), so a future kind name decodes
+  fine and fails as a normal control error rather than making the request undecodable.
+  **`rookctl events` is a CLIENT-side poll loop, not a stream**
+  (`rookCore/Sources/rookctlKit/EventCommands.swift`): it sends the bootstrap read, prints one line per event, feeds each reply's `next` back as the next
+  `--after`, and sleeps 0.25 s ONLY after an EMPTY page — a burst drains at full speed.
+  `--json` prints one BARE JSON object per event (NDJSON, pipe it into `jq`); the default is a human
+  `HH:mm:ss kind name …` column line.
+  It never swallows a failure: a transport error, an `ok:false` (notably a loud cursor failure), or a
+  failed stdout write stops the loop.
+  It is registered on the root but is NOT a `RequestCommand` — it owns a loop instead of one round trip.
+  **Where the pieces live (dispatcher-first, taken to its limit).**
+  The ring, the cursor rules, the batch/anchor shape, and ALL of `events.read`'s validation
+  (`ControlDispatcher.dispatchEventsRead`) are host-free in `rookCore`;
+  the app-target arm is `ControlServer+EventCommands.readEvents`, twelve lines forwarding to
+  `WindowLibrary.readEvents`.
+  There is NO target to resolve — the ring is app-wide (one per `WindowLibrary`, shared by every window
+  store), so `--window` does not apply; each event carries its own `window` field instead.
+  Emission rides `AppStore.controlEventSink`, a closure `WindowLibrary.makeStore` supplies that stamps the
+  window id onto each draft; a standalone `AppStore` has a nil sink and emits nothing.
+  Two side conditions are load-bearing for the stream telling the truth:
+  1. `clearAutoResetIndicator` routes the one-shot `completed` flash clear through `setAgentIndicator`
+     instead of assigning `session.agentIndicator` directly — a direct assign bypasses the emit, so the END
+     of the episode would be invisible and a watcher would see a `completed` that never resolves.
+  2. `WindowLibrary.isBootstrapping` (true only while `init` runs `bootstrap()`) IS the launch-restore
+     suppression — rook's `loadStore` has no `launchRestore` flag — so every store the launch path opens
+     emits into a dead sink and the ring starts empty, instead of replaying the whole restored tree as
+     `session.created` and burying a fresh consumer at startup.
+     A genuine (re)open is different on purpose: `loadStore` for a REOPENED window emits its sessions as
+     `session.created` plus one `tree.changed`, because that tree just became observable again.
+  `WindowLibrary.flushTreeEvents()` is a TEST seam that fires the pending per-window debounces
+  synchronously; it is deliberately not wired to quit — by then no consumer is left, and the ring does not
+  outlive the app run anyway.
+  Tests: `ControlEventsTests` (ring semantics + dispatcher validation + golden wire shapes + store/library
+  emission, incl. launch silence, the per-window debounce, and the loud-failure mapping),
+  `EventCommandsTests` (request building, cursor advance, backoff-only-on-empty, stop-on-failure,
+  formatters), and `CommandsTests.eventsIsRegisteredAsAPollingSubcommand`.
+  There is NO XCUITest e2e — everything but the socket hop is host-free, which is the point of the seam.
+  **The `notify` kind is emitted from BOTH notification paths**, `NotificationManager.notify` (OSC 9/777)
+  and `NotificationManager.send` (the control `notify` command).
+  Each calls `AppStore.recordNotificationEvent` BEFORE the `bannersEnabled` gate, so a watcher sees every
+  ACCEPTED notification — including the ones the banner toggle swallows, which the unseen badge counts
+  either way.
+  The call also returns the effective title (the session name when the title is empty), and both paths use
+  that return value for the banner, so the ring and the banner can never disagree about what was said.
+  This leg shipped a beat after the ring itself: `recordNotificationEvent` landed host-free and
+  unit-tested while `NotificationManager` sat outside that change's file set, so for one commit the kind
+  validated but never fired.
 
   `workspace.delete` honors keep-at-least-one and returns an error instead of the GUI confirm alert (nothing
   blocks on a modal).
@@ -1702,4 +1808,5 @@ paths:
   (image/text/color set/clear + tree read-back).
   **Agent-skill mirror (HARD keep-in-sync, 4th surface):** all commands are documented in the bundled
   `rook/Resources/agent-skill/` (SKILL.md summary, reference.md detail,
-  examples.md recipes) and the command count there is bumped to 71 to match.
+  examples.md recipes) and the command count there is kept in step with the catalog above — do not restate
+  the number here, one place to update is enough.

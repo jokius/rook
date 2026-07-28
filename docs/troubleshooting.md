@@ -119,6 +119,18 @@ keybind = super+v=paste_from_clipboard
 
 Reload with **File ▸ Reload Config** or `rookctl config reload`. The keybind syntax is at <https://ghostty.org/docs/config/keybind/reference>.
 
+## My event watcher missed events
+
+`rookctl events` stops with an error rather than quietly resuming from the tail when the cursor it sent cannot be honored: it prints the message and exits non-zero, and over the socket `events.read` answers `ok:false` with the same message in `error`. That is the design, not a malfunction — a watcher that lost its place has to learn it lost its place, instead of reading a silent re-anchor as "nothing happened". The failed reply still carries the ring's current anchor in `result.events` (`run` plus `next`, with an empty `items`), so a client speaking to the socket directly can rebaseline from that very reply. `rookctl events` does not: it prints one JSON object per event, never the response envelope, so from the CLI you re-anchor by re-running it without a cursor (below).
+
+- **`event run changed`.** The cursor is from a previous run of the app. The event ring lives in memory for one app run and is stamped with that run's UUID, so quitting, relaunching, or crashing Rook invalidates every cursor you were holding. Nothing is recoverable — the events went with the process — and nothing is broken; a restart is expected to reject an old cursor.
+- **`event cursor expired`.** The ring holds 4096 entries and the events after your cursor have already been pushed out by newer ones. Your watcher was stopped, blocked, or slower than the app for long enough to fall more than a ringful behind. Read more often, and raise `--limit` (up to 1000) so each read drains more per round trip. Filtering with `--kind` does not help here — the ring stores every kind regardless of what you read — but it does not hurt either, because a filtered read still advances your cursor past the entries it skipped.
+- **`event cursor is ahead of the current sequence`.** The sequence number you asked for does not exist in this run yet. This one is a caller bug: a hand-written cursor, or arithmetic done on a `next` value. Send back the `next` your last reply gave you, verbatim.
+
+A feed that prints nothing at all and reports no error is a different situation, not a lost cursor: a watcher filtered to `--kind notify` has nothing to match, because that kind is accepted by the CLI but not emitted by the app yet. Drop the filter, or watch the session's `unseen` count in `rookctl tree --json`.
+
+To resume after any of the three errors, drop `--run` and `--after` and run `rookctl events` again. With no cursor it subscribes from now, which is the explicit "I accept that the gap is lost" move — it replays no history, so whatever happened while you were away stays unseen. If you cannot afford that, poll `rookctl tree --json` once at the same moment to re-read the current state, then let the event feed carry you forward from there.
+
 ## Other common issues
 
 - **`rookctl: command not found`.** Install it from Help ▸ Install Command Line Tool… (it symlinks into `/usr/local/bin`). You can also call it by its full path inside the app bundle: `rook.app/Contents/MacOS/rookctl`.

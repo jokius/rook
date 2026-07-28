@@ -133,6 +133,30 @@ Every posted banner AND every silent drop logs at `.notice`, which `log show` pe
 are visible in the log (`category == "NotificationManager"`), including the terminal's own OSC 9/777
 suppressed because you were typing in the firing pane.
 
+### "rookctl events stopped, or I missed events"
+
+`rookctl events` exits non-zero rather than quietly resubscribing — by design. A consumer that lost its
+place has to LEARN it, instead of reading the silence as "nothing happened". Three cursor errors say so,
+each returned with `ok:false` but STILL carrying the ring's current anchor in `result.events`, so you can
+rebaseline from the same reply once you have decided to:
+
+- `event run changed` — the cursor is from a PREVIOUS app run. The ring lives in the process: it is
+  stamped with a fresh run UUID at every launch and nothing survives a restart. Rook was relaunched (or
+  you are talking to a different instance's socket); the old run's events are gone.
+- `event cursor expired` — the events after your cursor were already evicted. The ring holds the last
+  4096 entries, so a consumer that stalls (or a `--limit` loop that never keeps up) falls off the back.
+- `event cursor is ahead of the current sequence` — the cursor's sequence is past the ring's newest one.
+  Normally a cursor persisted from another ring, or hand-edited state.
+
+Missing events with NO error means you never asked for them: starting with no `--run`/`--after`
+subscribes FROM NOW, and there is no history replay. Whatever happened before the first read, or between
+a watcher's death and its restart, was never in your stream. Record that gap rather than assuming it was
+quiet — see examples.md ▸ "Watch what happens instead of diffing the tree".
+
+`--kind notify` is a special case: the kind is accepted and reserved, but nothing in the running app
+records notifications into the ring yet, so it always yields nothing. Read the badge count from `tree`
+(`unseen` on the session node) until an emitter is wired.
+
 ### "The agent-status glyph updates the wrong session"
 
 One session's glyph blinks/changes while the work is happening in a DIFFERENT session — typically when
