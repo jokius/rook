@@ -20,6 +20,7 @@ public enum Command: String, Codable, Sendable {
     case sessionMove = "session.move"
     case workspaceMove = "workspace.move"
     case workspaceFocus = "workspace.focus"
+    case workspaceFilter = "workspace.filter"
     case workspaceColor = "workspace.color"
     case workspaceIcon = "workspace.icon"
     case workspaceRoot = "workspace.root"
@@ -129,7 +130,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// Mode for `session.split` / `quick` / `surface.zoom` (`on|off|toggle`,
     /// `show|hide|toggle` for quick/surface zoom),
     /// `session.flag` (`on|off|toggle|clear`), `sidebar.mode` (`tree|flagged|toggle`),
-    /// `workspace.focus` (`on|off|toggle`), `session.markdown` (`open|close|toggle`),
+    /// `workspace.focus` (`on|off|toggle`), `workspace.filter` (`on|off|toggle`),
+    /// `session.markdown` (`open|close|toggle`),
     /// `window.minimize` (`on|off|toggle`),
     /// and `session.background` (`image|text|color|clear`).
     public var mode: String?
@@ -551,7 +553,24 @@ public struct ControlWorkspaceNode: Codable, Sendable, Equatable {
     /// the focused one / no workspace is focused (omitted from the JSON). Distinct from `active` (the
     /// SELECTED workspace): focus collapses the sidebar to a single workspace. The read side of the
     /// write-only `workspace.focus` — so a script can record which workspace is focused and restore it.
+    ///
+    /// EFFECTIVE focus, not membership: it goes nil the moment the filter stops applying, even though the
+    /// workspace stays MARKED (see `marked`). That meaning is deliberately frozen — scripts read `focused`
+    /// as "the tree is collapsed to this workspace", so widening it to membership would silently change
+    /// what every existing reader sees.
     public let focused: Bool?
+    /// Whether this workspace is the one the sidebar focus filter is PINNED to, reported independently of
+    /// whether the filter currently applies — nil when it is not the pinned one (omitted from the JSON).
+    /// The pair to read with `tree.workspaceFilter`: `marked` says WHERE the filter would land,
+    /// `workspaceFilter` says WHETHER it lands, and `focused` is exactly their conjunction.
+    ///
+    /// This exists because an INVOLUNTARY jump across the tree (idle auto-follow, attention nav, a
+    /// notification reveal) switches the filter off but KEEPS the mark, so `marked: true` with no `focused`
+    /// is the state `workspace.filter on` re-applies; without this field "pinned but not filtering" and
+    /// "nothing pinned at all" would look identical from outside, and a script could not tell whether
+    /// `workspace.filter on` has anywhere to go. An EXPLICIT `workspace.focus … off` forgets the mark, so
+    /// this then goes nil too.
+    public let marked: Bool?
     /// Whether this workspace is COLLAPSED in the sidebar tree (`true`), or nil when expanded — the
     /// default — so an all-expanded tree omits the field (matching the persisted `WorkspaceSnapshot.collapsed`).
     /// The read side of the write-only `workspace.collapse`/`workspace.expand` and `workspace.new --collapsed`,
@@ -578,13 +597,15 @@ public struct ControlWorkspaceNode: Codable, Sendable, Equatable {
     public let root: String?
     public let sessions: [ControlSessionNode]
 
-    public init(id: String, name: String, active: Bool, focused: Bool? = nil, collapsed: Bool? = nil,
+    public init(id: String, name: String, active: Bool, focused: Bool? = nil, marked: Bool? = nil,
+                collapsed: Bool? = nil,
                 color: String? = nil, icon: String? = nil, iconKind: String? = nil, root: String? = nil,
                 sessions: [ControlSessionNode]) {
         self.id = id
         self.name = name
         self.active = active
         self.focused = focused
+        self.marked = marked
         self.collapsed = collapsed
         self.color = color
         self.icon = icon
@@ -625,6 +646,15 @@ public struct ControlTree: Codable, Sendable, Equatable {
     /// (not on `window.list`), since a GUI-only ⌃` toggle bypasses the command path and would leave a
     /// cached copy stale — read the live tree copy instead. nil in a host-produced tree with no app closure.
     public let quickVisible: Bool?
+    /// Whether the projected window's workspace focus filter currently APPLIES — the flag half of the focus
+    /// state, whose pinned-workspace half is each workspace node's `marked`. The read side of the write-only
+    /// `workspace.filter` command, so a script can make its toggle idempotent or record-then-restore the
+    /// filter around a peek at the whole tree. LIVE, built fresh from the window's store per request.
+    ///
+    /// `tree`-only (not on `window.list`), like `sidebarMode`: an involuntary jump across the tree flips it
+    /// off with no command involved, so a cached copy would go stale. nil in a host-produced tree that does
+    /// not project a window.
+    public let workspaceFilter: Bool?
     /// The control id of the surface terminal zoom currently fills the projected window with —
     /// `surface:<session-id>:<kind>` for a session surface, `quick` for the quick terminal — or
     /// nil/omitted when nothing is zoomed. LIVE — resolved app-side per request from the window's
@@ -657,6 +687,7 @@ public struct ControlTree: Codable, Sendable, Equatable {
 
     public init(workspaces: [ControlWorkspaceNode], idleMs: Int? = nil, autoFollowMs: Int? = nil,
                 sidebarVisible: Bool? = nil, sidebarMode: String? = nil, quickVisible: Bool? = nil,
+                workspaceFilter: Bool? = nil,
                 zoomedSurface: String? = nil, dashboardMembers: [String]? = nil,
                 dashboardHighlighted: String? = nil, dashboardFontSize: Double? = nil,
                 dashboardFontMode: String? = nil) {
@@ -666,6 +697,7 @@ public struct ControlTree: Codable, Sendable, Equatable {
         self.sidebarVisible = sidebarVisible
         self.sidebarMode = sidebarMode
         self.quickVisible = quickVisible
+        self.workspaceFilter = workspaceFilter
         self.zoomedSurface = zoomedSurface
         self.dashboardMembers = dashboardMembers
         self.dashboardHighlighted = dashboardHighlighted

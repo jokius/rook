@@ -29,6 +29,7 @@ final class MockControlActions: ControlActions {
         case sessionMoveBatch(targets: [String], window: String?, ControlSessionMove)
         case workspaceMove(target: String?, window: String?, ReorderDirection)
         case workspaceFocus(target: String?, window: String?, String?)
+        case workspaceFilter(window: String?, mode: ControlToggleMode)
         case workspaceExpansion(target: String?, window: String?, expanded: Bool)
         case workspaceColor(target: String?, window: String?, hex: String?)
         case workspaceIcon(target: String?, window: String?, icon: WorkspaceIcon?)

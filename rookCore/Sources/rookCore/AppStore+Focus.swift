@@ -34,7 +34,11 @@ extension AppStore {
     /// Sets (or clears) the focused workspace and persists it. Clean no-op (no write) when unchanged, so
     /// the delta-computed control/menu callers stay idempotent. Passing nil unfocuses and forgets the mark.
     public func setFocusedWorkspace(_ id: UUID?) {
-        guard focusedWorkspaceID != id else { return }
+        // an explicit unfocus must forget the mark even when the filter is ALREADY off, which is the
+        // state an involuntary jump leaves behind. The effective focus reads nil in both cases, so
+        // guarding on it alone would early-return and silently keep a mark the user just said they were
+        // done with — and then `workspace.filter on` would resurrect a focus they had dismissed.
+        guard focusedWorkspaceID != id || (id == nil && markedWorkspaceID != nil) else { return }
         focusedWorkspaceID = id
         pruneSidebarSelection()
         save()
@@ -45,10 +49,28 @@ extension AppStore {
     /// marked is a no-op (there would be nothing to filter to). Clean no-op (no write) when unchanged,
     /// like every other delta-computed setter.
     public func setFocusFilterEnabled(_ enabled: Bool) {
-        guard focusFilterEnabled != enabled, markedWorkspaceID != nil else { return }
+        // enabling needs a mark that still RESOLVES: a mark whose workspace was deleted would switch the
+        // filter on while filtering nothing, which reads as "focus restored" to a script but shows the
+        // whole tree. Disabling is never gated — it must always be able to undo.
+        guard focusFilterEnabled != enabled, !enabled || focusedWorkspaceExists else { return }
         focusFilterEnabled = enabled
         pruneSidebarSelection()
         save()
+    }
+
+    /// Applies (`on`), lifts (`off`), or flips (`toggle`) the filter over the CURRENT mark — the host-free
+    /// half of the `workspace.filter` control command, so its app-side arm is pure store resolution. Every
+    /// mode routes through `setFocusFilterEnabled`, so all three are idempotent and enabling with nothing
+    /// marked stays a clean no-op.
+    public func applyWorkspaceFilter(_ mode: ControlToggleMode) {
+        setFocusFilterEnabled(mode.desiredValue(current: focusFilterEnabled))
+    }
+
+    /// Whether the mark names a workspace that still exists — the gate on re-enabling the filter, so a
+    /// mark left dangling by a removal cannot switch filtering back on with nothing to filter to.
+    private var focusedWorkspaceExists: Bool {
+        guard let markedWorkspaceID else { return false }
+        return workspaces.contains { $0.id == markedWorkspaceID }
     }
 
     /// Stops filtering when the newly selected session lives outside the focused workspace, so a cross-set

@@ -255,6 +255,7 @@ public final class AppStore {
             return ControlWorkspaceNode(id: workspace.id.uuidString, name: workspace.name,
                                         active: workspace.id == activeWorkspaceID,
                                         focused: workspace.id == focusedWorkspaceID ? true : nil,
+                                        marked: workspace.id == markedWorkspaceID ? true : nil,
                                         collapsed: workspace.isExpanded ? nil : true,
                                         color: workspace.colorHex,
                                         icon: workspace.icon?.value, iconKind: workspace.icon?.kind.rawValue,
@@ -263,7 +264,8 @@ public final class AppStore {
         }
         return ControlTree(workspaces: nodes, idleMs: idleMs(), autoFollowMs: autoFollowMs,
                            sidebarVisible: sidebarVisible, sidebarMode: sidebarMode.rawValue,
-                           quickVisible: quickVisible(), zoomedSurface: zoomedSurface(),
+                           quickVisible: quickVisible(), workspaceFilter: focusFilterEnabled,
+                           zoomedSurface: zoomedSurface(),
                            dashboardMembers: dashboardMembers(),
                            dashboardHighlighted: dashboardHighlighted(),
                            dashboardFontSize: dashboardFontSize(),

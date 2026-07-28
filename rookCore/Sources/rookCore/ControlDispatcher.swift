@@ -27,6 +27,11 @@ public protocol ControlActions {
     func moveSessions(_ targets: [String], window: String?, move: ControlSessionMove) -> ControlResponse
     func moveWorkspace(_ target: String?, window: String?, direction: ReorderDirection) -> ControlResponse
     func focusWorkspace(_ target: String?, window: String?, mode: String?) -> ControlResponse
+    /// Applies (or lifts) a window's workspace focus filter WITHOUT touching which workspace is marked.
+    /// Window-scoped, so it takes no workspace target — the host resolves the store from `window`
+    /// (frontmost when nil). The mode is parsed by the dispatcher; the on/off/toggle semantics are
+    /// host-free in `AppStore.applyWorkspaceFilter`, so this only resolves the store and calls it.
+    func setWorkspaceFilter(window: String?, mode: ControlToggleMode) -> ControlResponse
     /// Sets the workspace's sidebar icon color; `hex` is a validated `#rrggbb`, or nil to reset it to the
     /// theme default. The dispatcher owns the validation — this only resolves the target and mutates.
     func setWorkspaceColor(_ target: String?, window: String?, hex: String?) -> ControlResponse
@@ -186,8 +191,8 @@ public struct ControlDispatcher {
                 .sessionText:
             return await dispatchSessionSurfaceCommand(request)
         case .workspaceNew, .workspaceSelect, .workspaceRename, .workspaceDelete,
-                .workspaceMove, .workspaceFocus, .workspaceColor, .workspaceIcon, .workspaceRoot,
-                .workspaceCollapse, .workspaceExpand:
+                .workspaceMove, .workspaceFocus, .workspaceFilter, .workspaceColor, .workspaceIcon,
+                .workspaceRoot, .workspaceCollapse, .workspaceExpand:
             return dispatchWorkspaceCommand(request)
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarExpand,
@@ -438,6 +443,15 @@ public struct ControlDispatcher {
             return actions.moveWorkspace(request.target, window: request.args?.window, direction: direction)
         case .workspaceFocus:
             return actions.focusWorkspace(request.target, window: request.args?.window, mode: request.args?.mode)
+        case .workspaceFilter:
+            // window-scoped: no workspace target, only the flag. Same `on|off|toggle` vocabulary and shared
+            // parser as `window.minimize`, defaulting to `toggle`; parsed here so a bad mode can never
+            // half-apply host-side.
+            guard let mode = ControlToggleMode.parse(request.args?.mode) else {
+                return ControlResponse(ok: false,
+                                       error: "invalid workspace filter mode: \(request.args?.mode ?? "toggle")")
+            }
+            return actions.setWorkspaceFilter(window: request.args?.window, mode: mode)
         case .workspaceColor:
             return dispatchWorkspaceColor(request)
         case .workspaceIcon:

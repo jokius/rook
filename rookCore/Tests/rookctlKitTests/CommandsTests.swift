@@ -86,6 +86,22 @@ struct CommandsTests {
         #expect(throws: (any Error).self) { try Rookctl.parseAsRoot(["workspace", "focus", "sideways"]) }
     }
 
+    @Test func workspaceFilterDefaultsToggleAndCarriesNoTarget() throws {
+        // window-scoped like `sidebar expand`: no --target, so the request must carry a nil target even
+        // though every sibling `workspace` subcommand defaults it to `active`.
+        #expect(try request(["workspace", "filter"]) == ControlRequest(cmd: .workspaceFilter, args: ControlArgs(mode: "toggle")))
+        let windowed = ControlRequest(cmd: .workspaceFilter, args: ControlArgs(mode: "on", window: "win"))
+        #expect(try request(["workspace", "filter", "on", "--window", "win"]) == windowed)
+    }
+
+    @Test func workspaceFilterRejectsBadMode() {
+        #expect(throws: (any Error).self) { try Rookctl.parseAsRoot(["workspace", "filter", "sideways"]) }
+    }
+
+    @Test func workspaceFilterRejectsTarget() {
+        #expect(throws: (any Error).self) { try Rookctl.parseAsRoot(["workspace", "filter", "on", "--target", "9f3c"]) }
+    }
+
     @Test func workspaceCollapseDefaultsActive() throws {
         #expect(try request(["workspace", "collapse"]) == ControlRequest(cmd: .workspaceCollapse, target: "active"))
     }

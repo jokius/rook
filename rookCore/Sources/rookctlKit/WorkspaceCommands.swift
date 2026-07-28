@@ -7,8 +7,8 @@ import rookCore
 struct Workspace: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Workspace commands.",
-        subcommands: [New.self, Rename.self, Delete.self, Select.self, Move.self, Focus.self, Color.self,
-                      Icon.self, Root.self, Collapse.self, Expand.self]
+        subcommands: [New.self, Rename.self, Delete.self, Select.self, Move.self, Focus.self, Filter.self,
+                      Color.self, Icon.self, Root.self, Collapse.self, Expand.self]
     )
 
     struct New: RequestCommand {
@@ -81,6 +81,28 @@ struct Workspace: ParsableCommand {
 
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .workspaceFocus, target: target.target, args: options.withWindow(ControlArgs(mode: mode)))
+        }
+    }
+
+    /// `rookctl workspace filter [on|off|toggle] [--window W]` — applies or lifts the sidebar's workspace
+    /// focus filter for a WHOLE window, leaving the focused workspace marked. It deliberately carries NO
+    /// `--target`: it flips the window's filter rather than acting on one workspace, so its shape is
+    /// `sidebar expand`/`sidebar collapse` (`ClientOptions` only), not the `workspace.*` target commands.
+    struct Filter: RequestCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Apply or lift the sidebar workspace focus filter, keeping the focused workspace (on|off|toggle)."
+        )
+        @Argument(help: "Mode: on, off, or toggle (default).") var mode: String = "toggle"
+        @OptionGroup var options: ClientOptions
+
+        func validate() throws {
+            guard ["on", "off", "toggle"].contains(mode) else {
+                throw ValidationError("mode must be on, off, or toggle")
+            }
+        }
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .workspaceFilter, args: options.withWindow(ControlArgs(mode: mode)))
         }
     }
 

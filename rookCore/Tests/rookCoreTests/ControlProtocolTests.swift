@@ -866,6 +866,54 @@ struct ControlProtocolTests {
         #expect(decoded.focused == nil)
     }
 
+    @Test func workspaceFilterRoundTrips() throws {
+        // window-scoped, so it carries NO target — only the mode (and the optional --window selector).
+        let cases: [ControlRequest] = [
+            ControlRequest(cmd: .workspaceFilter, args: ControlArgs(mode: "on")),
+            ControlRequest(cmd: .workspaceFilter, args: ControlArgs(mode: "off", window: "win")),
+            ControlRequest(cmd: .workspaceFilter, args: ControlArgs(mode: "toggle")),
+        ]
+        for request in cases {
+            #expect(try roundTrip(request) == request)
+            #expect(try roundTrip(request).target == nil)
+        }
+        let raw = #"{"cmd":"workspace.filter","args":{"mode":"on"}}"#
+        let decoded = try JSONDecoder().decode(ControlRequest.self, from: Data(raw.utf8))
+        #expect(decoded.cmd == .workspaceFilter)
+        #expect(decoded.args?.mode == "on")
+    }
+
+    @Test func workspaceNodeRoundTripsWithMarkedIndependentlyOfFocused() throws {
+        // the mark and the filter are reported SEPARATELY: an involuntary jump leaves the workspace marked
+        // with the filter off, which `focused` alone cannot express (it is the conjunction of the two).
+        let ws = ControlWorkspaceNode(id: "w1", name: "work", active: true, marked: true, sessions: [])
+        let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(
+            workspaces: [ws], workspaceFilter: false)))
+        let decoded = try roundTrip(response)
+        #expect(decoded == response)
+        #expect(decoded.result?.tree?.workspaces.first?.marked == true)
+        #expect(decoded.result?.tree?.workspaces.first?.focused == nil)
+        #expect(decoded.result?.tree?.workspaceFilter == false)
+    }
+
+    @Test func workspaceNodeOmitsMarkedWhenNil() throws {
+        // not the marked workspace (or nothing marked) — the key must be omitted, not emitted as null.
+        let ws = ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [])
+        let json = String(data: try JSONEncoder().encode(ws), encoding: .utf8) ?? ""
+        #expect(!json.contains("marked"), "a nil marked must be omitted from the JSON; got \(json)")
+        let decoded = try JSONDecoder().decode(ControlWorkspaceNode.self, from: Data(json.utf8))
+        #expect(decoded.marked == nil)
+    }
+
+    @Test func treeOmitsWorkspaceFilterWhenNil() throws {
+        // a host-produced tree that projects no window — the key must be omitted, not emitted as null.
+        let tree = ControlTree(workspaces: [])
+        let json = String(data: try JSONEncoder().encode(tree), encoding: .utf8) ?? ""
+        #expect(!json.contains("workspaceFilter"), "a nil workspaceFilter must be omitted; got \(json)")
+        let decoded = try JSONDecoder().decode(ControlTree.self, from: Data(json.utf8))
+        #expect(decoded.workspaceFilter == nil)
+    }
+
     @Test func workspaceCollapseExpandRoundTrip() throws {
         // the two per-workspace tree commands, plus `workspace.new --collapsed`'s arg, over the wire.
         let collapse = ControlRequest(cmd: .workspaceCollapse, target: "9f3c", args: ControlArgs(window: "win"))

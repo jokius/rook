@@ -38,6 +38,11 @@ extension MockControlActions {
         return ControlResponse(ok: true)
     }
 
+    func setWorkspaceFilter(window: String?, mode: ControlToggleMode) -> ControlResponse {
+        calls.append(.workspaceFilter(window: window, mode: mode))
+        return ControlResponse(ok: true)
+    }
+
     func setWorkspaceColor(_ target: String?, window: String?, hex: String?) -> ControlResponse {
         calls.append(.workspaceColor(target: target, window: window, hex: hex))
         return ControlResponse(ok: true)

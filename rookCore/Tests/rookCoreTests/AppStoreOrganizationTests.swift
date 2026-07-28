@@ -497,8 +497,28 @@ struct AppStoreOrganizationTests {
         // removeWorkspace pruned it, since a nil mark also resolves to nothing and also filters nothing.
         #expect(store.markedWorkspaceID == work.id)
         store.setFocusFilterEnabled(true)
+        // re-enabling REFUSES a mark that no longer resolves: switching the filter on while filtering
+        // nothing would read as "focus restored" to a script and show the whole tree anyway.
+        #expect(store.focusFilterEnabled == false)
         #expect(store.focusedWorkspace == nil)                                    // stale mark resolves to nothing
         #expect(store.visibleWorkspaces.map(\.id) == [personal.id, spare.id])     // ...so the tree stays whole
+    }
+
+    @Test func explicitUnfocusForgetsTheMarkEvenAfterAnInvoluntaryJump() {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+        _ = store.addSession(toWorkspace: work.id, cwd: "/a")!
+        let outside = store.addSession(toWorkspace: personal.id, cwd: "/b")!
+        store.setFocusedWorkspace(work.id)
+        store.selectSession(outside.id) // involuntary jump: filter off, `work` still marked
+
+        // the effective focus already reads nil here, so a delta-guard on it alone would early-return
+        // and keep the mark — and `workspace.filter on` would then resurrect a focus the user dismissed.
+        store.setFocusedWorkspace(nil)
+        #expect(store.markedWorkspaceID == nil)
+        store.setFocusFilterEnabled(true)
+        #expect(store.focusedWorkspaceID == nil)
     }
 
     @Test func flaggedSessionsIgnoreFocus() {
@@ -826,6 +846,63 @@ struct AppStoreOrganizationTests {
         #expect(collapsedFlag() == true)
         store.setWorkspaceExpanded(workspace.id, expanded: true)
         #expect(collapsedFlag() == nil)
+    }
+
+    @Test func applyWorkspaceFilterTogglesTheFilterWithoutForgettingTheMark() {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+        _ = store.addSession(toWorkspace: work.id, cwd: "/a")!
+        let outside = store.addSession(toWorkspace: personal.id, cwd: "/b")!
+        store.setFocusedWorkspace(work.id)
+        store.selectSession(outside.id) // an involuntary jump: filter off, `work` still marked
+
+        store.applyWorkspaceFilter(.toggle) // the re-apply leg
+        #expect(store.focusedWorkspaceID == work.id)
+        store.applyWorkspaceFilter(.on) // idempotent — already on
+        #expect(store.focusedWorkspaceID == work.id)
+        store.applyWorkspaceFilter(.off)
+        #expect(store.focusedWorkspaceID == nil)
+        #expect(store.markedWorkspaceID == work.id) // lifting the filter never forgets the mark
+        #expect(store.visibleWorkspaces.map(\.id) == [work.id, personal.id])
+    }
+
+    @Test func applyWorkspaceFilterIsANoOpWithNothingMarked() {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+
+        store.applyWorkspaceFilter(.on) // nothing marked — there is nothing to filter to
+        #expect(!store.focusFilterEnabled)
+        store.applyWorkspaceFilter(.toggle)
+        #expect(!store.focusFilterEnabled)
+        #expect(store.visibleWorkspaces.map(\.id) == [work.id, personal.id])
+    }
+
+    @Test func controlTreeReportsTheMarkAndTheFilterSeparately() {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+        _ = store.addSession(toWorkspace: work.id, cwd: "/a")!
+        let outside = store.addSession(toWorkspace: personal.id, cwd: "/b")!
+        func node() -> ControlWorkspaceNode? {
+            store.controlTree().workspaces.first { $0.id == work.id.uuidString }
+        }
+
+        #expect(node()?.marked == nil)
+        #expect(store.controlTree().workspaceFilter == false)
+        store.setFocusedWorkspace(work.id)
+        #expect(node()?.marked == true)
+        #expect(node()?.focused == true)
+        #expect(store.controlTree().workspaceFilter == true)
+
+        store.selectSession(outside.id) // involuntary jump: marked but no longer filtering...
+        #expect(node()?.marked == true)   // ...which is readable ONLY because `marked` is reported
+        #expect(node()?.focused == nil)   // `focused` keeps meaning EFFECTIVE focus, as it always did
+        #expect(store.controlTree().workspaceFilter == false)
+
+        store.setFocusedWorkspace(nil) // an EXPLICIT unfocus forgets the mark
+        #expect(node()?.marked == nil)
     }
 
     @Test func collapseStateSurvivesASnapshotRoundTrip() {

@@ -18,6 +18,25 @@ extension ControlServer {
         }
     }
 
+    /// `workspace.filter`: apply/lift a window's workspace focus filter WITHOUT touching which workspace is
+    /// marked, so peeking at the whole tree and coming back costs one call — and so a filter an INVOLUNTARY
+    /// jump switched off (idle auto-follow, attention nav, a notification reveal) can be re-applied at all.
+    /// Window-scoped (no workspace target): the `--window` selector picks the target like
+    /// `sidebar.expand`/`sidebar.collapse`, defaulting to the frontmost, and no open window is an error
+    /// rather than a silent no-op. The whole on/off/toggle mapping is host-free in
+    /// `AppStore.applyWorkspaceFilter`, whose delta guard makes every mode idempotent and turns `on` with
+    /// nothing marked into a clean no-op (there is nothing to filter to). Read back as `tree`'s top-level
+    /// `workspaceFilter`, paired with each workspace node's `marked`.
+    func setWorkspaceFilter(window: String?, mode: ControlToggleMode) -> ControlResponse {
+        if trimmed(window) == nil, library.activeStore == nil {
+            return ControlResponse(ok: false, error: "no open window")
+        }
+        return resolver.resolvePlacementStore(window) { store in
+            store.applyWorkspaceFilter(mode)
+            return ControlResponse(ok: true)
+        }
+    }
+
     /// Collapse (`expanded: false`) or expand (`expanded: true`) a SINGLE workspace in a window's sidebar
     /// tree — the per-workspace analogue of the all-workspace `sidebar.expand`/`sidebar.collapse`. Resolves
     /// the target via `resolveWorkspace` (honoring the global `--window` selector like the other workspace

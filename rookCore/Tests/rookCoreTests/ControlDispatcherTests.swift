@@ -552,6 +552,34 @@ struct ControlDispatcherTests {
         #expect(actions.calls == [.workspaceFocus(target: "workspace", window: "win", "on")])
     }
 
+    @Test func workspaceFilterParsesModeAndRoutesWindowOnly() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let on = await dispatcher.dispatch(ControlRequest(
+            cmd: .workspaceFilter, args: ControlArgs(mode: "on", window: "win")
+        ))
+        // a target is meaningless here (the filter is window-scoped) and must not reach the host.
+        let defaulted = await dispatcher.dispatch(ControlRequest(cmd: .workspaceFilter, target: "workspace"))
+
+        #expect(on == ControlResponse(ok: true))
+        #expect(defaulted == ControlResponse(ok: true))
+        #expect(actions.calls == [
+            .workspaceFilter(window: "win", mode: .on),
+            .workspaceFilter(window: nil, mode: .toggle) // an omitted mode defaults to toggle
+        ])
+    }
+
+    @Test func workspaceFilterRejectsUnknownModeBeforeTheHostRuns() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let bad = await dispatcher.dispatch(ControlRequest(cmd: .workspaceFilter, args: ControlArgs(mode: "sideways")))
+
+        #expect(bad == ControlResponse(ok: false, error: "invalid workspace filter mode: sideways"))
+        #expect(actions.calls.isEmpty) // rejected at the boundary, so it can never half-apply
+    }
+
     @Test func workspaceCollapseAndExpandRouteExpandedFlag() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)
