@@ -75,6 +75,14 @@ final class NotificationManager: NSObject, @preconcurrency UNUserNotificationCen
             return
         }
 
+        // record it on the event ring BEFORE the banner toggle: a watcher wants every accepted
+        // notification, including the ones the toggle swallows — the badge tracks them either way.
+        // The call also resolves the effective title (falling back to the session name), so the ring
+        // and the banner cannot disagree about what was said.
+        guard let effectiveTitle = library?.store(forSession: session.id)?.recordNotificationEvent(
+            forSession: session.id, title: title, body: body
+        ) else { return }
+
         // the badge always tracks the unseen notification; the macOS banner is gated by the toggle.
         session.unseenCount += 1
         bounceDock()
@@ -87,7 +95,7 @@ final class NotificationManager: NSObject, @preconcurrency UNUserNotificationCen
         logger.notice("notify: posting banner for session \(session.id, privacy: .public)")
 
         let content = UNMutableNotificationContent()
-        content.title = title.isEmpty ? session.displayName : title
+        content.title = effectiveTitle
         content.body = body
         content.sound = notificationSound
         // the request identifier is the identity (`<windowID>:<sessionID>:<pane>`): it both coalesces
@@ -106,6 +114,11 @@ final class NotificationManager: NSObject, @preconcurrency UNUserNotificationCen
     @discardableResult
     func send(toSession session: Session, title: String, body: String) -> Bool {
         guard let windowID = library?.windowID(forSession: session.id) else { return false }
+        // recorded on the event ring before the banner toggle, like the OSC path: a watcher sees every
+        // accepted notification, and the effective title is resolved once for both consumers.
+        guard let effectiveTitle = library?.store(forSession: session.id)?.recordNotificationEvent(
+            forSession: session.id, title: title, body: body
+        ) else { return false }
         session.unseenCount += 1
         bounceDock()
         guard bannersEnabled else {
@@ -114,7 +127,7 @@ final class NotificationManager: NSObject, @preconcurrency UNUserNotificationCen
         }
         logger.notice("send: posting banner for session \(session.id, privacy: .public)")
         let content = UNMutableNotificationContent()
-        content.title = title.isEmpty ? session.displayName : title
+        content.title = effectiveTitle
         content.body = body
         content.sound = notificationSound
         let identity = TerminalNotification.identity(windowID: windowID, sessionID: session.id, pane: .main)
