@@ -449,6 +449,58 @@ struct AppStoreOrganizationTests {
         #expect(store.visibleWorkspaces.map(\.id) == [work.id, fresh.id])
     }
 
+    @Test func autoUnfocusKeepsTheMarkSoTheFilterCanBeReapplied() {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+        _ = store.addSession(toWorkspace: work.id, cwd: "/a")!
+        let outside = store.addSession(toWorkspace: personal.id, cwd: "/b")!
+        store.setFocusedWorkspace(work.id)
+        store.selectSession(outside.id) // a notification reveal / idle auto-follow lands here too
+        // the filter is off and the whole tree is visible, exactly as before...
+        #expect(store.focusedWorkspaceID == nil)
+        #expect(store.visibleWorkspaces.map(\.id) == [work.id, personal.id])
+        // ...but WHICH workspace it was survives, so the user has somewhere to come back to.
+        #expect(store.markedWorkspaceID == work.id)
+        #expect(!store.focusFilterEnabled)
+        // only the effective focus is persisted: a mark kept alive by an auto-unfocus is session-scoped.
+        #expect(store.snapshot().focusedWorkspaceID == nil)
+        store.setFocusFilterEnabled(true)
+        #expect(store.focusedWorkspaceID == work.id)
+        #expect(store.visibleWorkspaces.map(\.id) == [work.id])
+    }
+
+    @Test func explicitUnfocusForgetsTheMark() {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+        store.setFocusedWorkspace(work.id)
+        store.setFocusedWorkspace(nil) // the row menu's Unfocus / `workspace.focus … off` / the pill ✕
+        #expect(store.markedWorkspaceID == nil)
+        // re-enabling with nothing marked is a clean no-op — there is nothing to filter to.
+        store.setFocusFilterEnabled(true)
+        #expect(!store.focusFilterEnabled)
+        #expect(store.visibleWorkspaces.map(\.id) == [work.id, personal.id])
+    }
+
+    @Test func markedWorkspaceRemovedWhileFilterOffIsInert() {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+        let spare = store.addWorkspace(name: "spare")
+        _ = store.addSession(toWorkspace: work.id, cwd: "/a")!
+        let outside = store.addSession(toWorkspace: personal.id, cwd: "/b")!
+        store.setFocusedWorkspace(work.id)
+        store.selectSession(outside.id) // filter off, `work` still marked
+        store.removeWorkspace(work.id)  // the mark is now a dangling id
+        // the mark itself SURVIVES the removal — asserting only the two lines below would stay green if
+        // removeWorkspace pruned it, since a nil mark also resolves to nothing and also filters nothing.
+        #expect(store.markedWorkspaceID == work.id)
+        store.setFocusFilterEnabled(true)
+        #expect(store.focusedWorkspace == nil)                                    // stale mark resolves to nothing
+        #expect(store.visibleWorkspaces.map(\.id) == [personal.id, spare.id])     // ...so the tree stays whole
+    }
+
     @Test func flaggedSessionsIgnoreFocus() {
         let store = makeStore()
         let work = store.addWorkspace(name: "work")

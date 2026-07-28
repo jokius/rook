@@ -50,13 +50,16 @@ public final class AppStore {
     /// control command via `setSidebarMode(_:)`.
     public var sidebarMode: SidebarMode = .tree
 
-    /// The workspace the sidebar tree is focused (zoomed) on, or nil for the full tree. Per-window UI
-    /// state, persisted in `Snapshot` (restored on relaunch). When set, the tree renders only that
-    /// workspace (see `visibleWorkspaces`); orthogonal to `sidebarMode` (flagged mode ignores focus).
-    /// Flipped by the workspace row menu, the bottom-bar pill, the View menu, the palette, and the
-    /// `workspace.focus` control command via `setFocusedWorkspace(_:)`. Auto-cleared when the focused
-    /// workspace is removed or when a session outside it becomes selected.
-    public var focusedWorkspaceID: UUID?
+    /// WHICH workspace the sidebar focus filter is pinned to — remembered even while the filter is off.
+    /// Half of the focus state; the other half is `focusFilterEnabled`. Everything outside the focus
+    /// code reads the combined `focusedWorkspaceID` (in `AppStore+Focus.swift`) instead, which is what
+    /// the tree filter, the row menus, the `focused` tree read-back, and the snapshot have always meant.
+    public internal(set) var markedWorkspaceID: UUID?
+
+    /// WHETHER `markedWorkspaceID` currently filters the tree. Split from the mark so an involuntary jump
+    /// across the tree (idle auto-follow, attention nav, a notification reveal) can stop filtering
+    /// without destroying which workspace the user had picked — see `AppStore+Focus.swift`.
+    public internal(set) var focusFilterEnabled = false
 
     /// This window's sidebar width in points. Per-window UI state, persisted in `Snapshot`. Driven by the
     /// sidebar divider drag (clamped to `sidebarWidthMin...sidebarWidthMax`); restored on relaunch.
@@ -370,19 +373,6 @@ public final class AppStore {
         clearAutoResetIndicator(previous)  // leave: a one-time status must not linger on the row you left
         recordRecency()
         scheduleSave() // selection fires on every click/keystroke — coalesce the writes
-    }
-
-    /// Clears focus when the newly selected session lives outside the focused workspace, so an explicit
-    /// cross-set select (`session.select <id>` of a hidden session, a notification reveal, a move/close
-    /// that reselects elsewhere) reveals its target — the active session is then always inside the
-    /// visible set. Session navigation (`navigateSession`/`session.go`, Ctrl-Tab, attention-nav) is now
-    /// scoped to the filtered set (`navigableSessions`), so its targets are always in-set and never
-    /// trip this — it stays the safety net only for the explicit cross-set cases. No-op when unfocused,
-    /// when nothing is selected, or when the selection is inside the focused workspace. Persistence
-    /// rides the caller's `selectSession` save.
-    func autoUnfocusIfOutsideFocus(_ sessionID: UUID?) {
-        guard let focusedWorkspaceID, let sessionID else { return }
-        if workspace(forSession: sessionID)?.id != focusedWorkspaceID { self.focusedWorkspaceID = nil }
     }
 
     /// Reset a session's agent indicator to idle when it is marked `autoReset` (the one-time `completed`
@@ -739,15 +729,6 @@ public final class AppStore {
         save()
     }
 
-    /// Sets (or clears) the focused workspace and persists it. Clean no-op (no write) when unchanged, so
-    /// the delta-computed control/menu callers stay idempotent. Passing nil unfocuses.
-    public func setFocusedWorkspace(_ id: UUID?) {
-        guard focusedWorkspaceID != id else { return }
-        focusedWorkspaceID = id
-        pruneSidebarSelection()
-        save()
-    }
-
     /// Sets one workspace's expand/collapse state and persists it. Clean no-op (no write) for an unknown id
     /// or when unchanged. The sidebar calls this for a GENUINE per-row user toggle only (a row click or the
     /// disclosure triangle), never for a programmatic reveal — so a deliberate collapse survives a later
@@ -773,22 +754,6 @@ public final class AppStore {
             }
         }
         if changed { save() }
-    }
-
-    /// The focused workspace, resolved from `focusedWorkspaceID` — nil when unfocused OR when the id is
-    /// stale (its workspace no longer exists). The single id→workspace lookup the tree filter and the
-    /// bottom-bar focus pill both read, so they can't drift.
-    public var focusedWorkspace: Workspace? {
-        guard let focusedWorkspaceID else { return nil }
-        return workspaces.first(where: { $0.id == focusedWorkspaceID })
-    }
-
-    /// The workspaces the sidebar tree should render: just the focused workspace when `focusedWorkspaceID`
-    /// is set AND that workspace still exists, else all workspaces. The source of truth the tree filters
-    /// on; a stale focus id (its workspace gone) falls back to the full tree.
-    public var visibleWorkspaces: [Workspace] {
-        guard let focused = focusedWorkspace else { return workspaces }
-        return [focused]
     }
 
     /// Sets (or clears) a session's flag — the durable flagged working-set membership the flat sidebar
