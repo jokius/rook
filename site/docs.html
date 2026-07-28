@@ -1067,6 +1067,20 @@
                 parse errors, and a reload button.
               </div>
             </div>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 20px 0 0">
+              <strong style="color: #e6e1d7">Accessibility.</strong> Rook follows two System Settings ▸ Accessibility ▸ Display
+              switches, live — flip one and the app re-dresses itself without a relaunch.
+              <strong style="color: #e6e1d7">Reduce Motion</strong> stops the sidebar status glyph's pulse: the glyph and its color
+              stay, only the repeating animation goes, so a blinking
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--blink</span> status still reads.
+              <strong style="color: #e6e1d7">Reduce Transparency</strong> presents the window opaque and unblurred, and draws the
+              command palette and the Ctrl-Tab switcher on a solid window background instead of a translucent material.
+            </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              Both are effective overrides, not settings edits: your saved background opacity, blur and materials are untouched and
+              come back verbatim the moment the system switch goes off. While Reduce Transparency is on, the Appearance tab's
+              opacity and blur sliders keep working and keep saving — the hint under them just says so.
+            </p>
             <figure
               style="
                 margin: 24px 0 0;
@@ -1114,7 +1128,7 @@
               "
             >
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 0">
-                Looking for the full list? All 72 commands (the count excludes one UI-test-only command with no CLI
+                Looking for the full list? All 73 commands (the count excludes one UI-test-only command with no CLI
                 subcommand), with every argument, return value, and error, live on the
                 <a href="/commands" style="color: #7ece8f; font-weight: 500">Command reference →</a>
               </p>
@@ -1199,6 +1213,8 @@
               ><br />rookctl workspace move --to top
               <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# reorder a workspace</span><br />rookctl workspace focus on
               <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# collapse tree to active ws (on|off|toggle)</span
+              ><br />rookctl workspace filter on
+              <span style="color: #6b727a">&nbsp;&nbsp;# re-apply that filter without changing which ws is marked</span
               ><br />rookctl workspace color <span style="color: #f2b45c">"#ff8800"</span>
               <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# tint the workspace's sidebar icon (or clear)</span
               ><br />rookctl workspace icon hammer.fill
@@ -1969,6 +1985,7 @@
               --sound default --target <span style="color: #5ea1f2">"$ROOK_SESSION_ID"</span><br />rookctl session status
               completed --auto-reset --target <span style="color: #5ea1f2">"$ROOK_SESSION_ID"</span><br />rookctl session
               status blocked --color <span style="color: #5ea1f2">'#ff0000'</span> --target <span style="color: #5ea1f2">"$ROOK_SESSION_ID"</span><br />rookctl session
+              status blocked --shape triangle --target <span style="color: #5ea1f2">"$ROOK_SESSION_ID"</span><br />rookctl session
               status blocked --pane right --target <span style="color: #5ea1f2">"$ROOK_SESSION_ID"</span><br />rookctl session
               status idle --target <span style="color: #5ea1f2">"$ROOK_SESSION_ID"</span>
               <span style="color: #6b727a">&nbsp;# clear it</span>
@@ -2006,6 +2023,32 @@
               >
               session clears its status; an interrupt keystroke, Esc or Ctrl-C, interrupts an
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">active</span> one and clears it too.
+            </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              <strong style="color: #e6e1d7">Shape, when color is not enough.</strong>
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--shape</span>
+              (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">circle</span>|<span
+                style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
+                >square</span
+              >|<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">triangle</span>|<span
+                style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
+                >diamond</span
+              >|<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">capsule</span>|<span
+                style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
+                >star</span
+              >) draws the glyph as that solid silhouette, so two sessions in different states differ by outline as well as hue —
+              for color blindness, a monochrome theme, or simply a small glyph. Like
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--color</span> it is per call and rides
+              the status, so the next status set without it drops back to the default. It reads back on
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tree</span> as
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">statusShape</span>, next to
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">statusColor</span>.
+            </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              This is an opt-in second axis, not a new default: without
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--shape</span> every glyph is exactly what
+              it was — the ellipsis, exclamation mark and check mark above, which name the state without a legend. Nothing about the
+              built-in look changed, and there is no shape picker in Settings.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               When the sidebar is hidden the glyphs go with it, so an optional

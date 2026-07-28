@@ -17,7 +17,7 @@ description: >
 when_to_use: >
   Trigger on: rook, rookctl, rook control socket, session.new, session.close, session.type,
   session.split, session.scratch, session.filetree, session.markdown, markdown preview, session.focus, session.resize, surface.zoom, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status, session.agent, resume agent conversation,
-  session.flag, session.seen, session.reveal, session.background, session.overlay, workspace.new, workspace.select, workspace.move, workspace.focus, workspace.root, workspace.collapse, workspace.expand, window.new, window.list,
+  session.flag, session.seen, session.reveal, session.background, session.overlay, workspace.new, workspace.select, workspace.move, workspace.focus, workspace.filter, workspace focus filter, re-apply the workspace filter, workspace.root, workspace.collapse, workspace.expand, window.new, window.list,
   window.select, window.resize, window.move, window.zoom, window.fullscreen, window.minimize, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, flagged, notify, font.inc, keymap.reload, keymap.list, config.reload,
   theme.set, theme.list, select theme, edit keymap, show an image, display an image inline, show-image,
   events, events.read, rookctl events, event subscription, subscribe to events, watch rook events,
@@ -102,12 +102,14 @@ Inspect the live tree any time with `rookctl tree --json` (workspaces → sessio
 terminal title (e.g. a remote host over SSH), omitted when none was reported — read it when a
 session's local `cwd` is stale because it's connected to a remote. `surfaces[].id` is the
 control address for `surface zoom` (`left`, `right`, `scratch`, or `overlay`), including
-hidden-but-alive split/scratch surfaces. The tree object also carries five
+hidden-but-alive split/scratch surfaces. The tree object also carries six
 read-only top-level fields: `idleMs` (ms since the last user input in the window), `autoFollowMs`
 (the Auto-follow timeout in ms, omitted when Disabled), `sidebarVisible` (whether the window's
 sidebar is currently shown — the read side of the write-only `sidebar` command), `sidebarMode`
-(`tree` or `flagged` — the read side of `sidebar mode`), and `quickVisible` (whether the window's quick
-terminal is shown — the read side of the write-only `quick` command). List windows with
+(`tree` or `flagged` — the read side of `sidebar mode`), `quickVisible` (whether the window's quick
+terminal is shown — the read side of the write-only `quick` command), and `workspaceFilter` (whether
+the sidebar's workspace focus filter currently applies — the read side of `workspace filter`, whose
+pinned-workspace half is each workspace node's `marked`). List windows with
 `rookctl window list --json`; each window also reports `autoFollowMs`, `sidebarVisible`, `geometry`
 (the live frame `{x, y, width, height, display}` in the units `window move`/`window resize` take — the
 read side, so record it then restore the exact frame), `fullscreen`/`zoomed` (the read side of
@@ -135,7 +137,7 @@ you work. For any session-scoped command meant to act on *this* session — `ove
 `type`, `text`, `background`, `status`, `copy`, … — pass `--target "$ROOK_SESSION_ID"`. Omit it and
 you open overlays / type into whatever the user has selected, not your own session.
 
-## Command summary (72 commands)
+## Command summary (73 commands)
 
 Run `rookctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
 **examples.md**. (The count excludes `debug.appearance`, a UI-test-only seam with no `rookctl`
@@ -151,8 +153,9 @@ via `session agent`, omitted when none was reported; the read side of that write
 distinct from `agent`, which is merely WHICH agent runs there), `status` (the agent-status set
 via `session status`: `active`|`completed`|`blocked`, omitted when idle), `statusPane` (which pane set
 that status: `left` (main) | `right` (split) | `scratch`, from `session status --pane`, omitted when
-unset or idle), `statusBlink`/`statusColor` (the status glyph's `--blink` flag and `--color` `#rrggbb`
-override from `session status`, omitted when idle / not blinking / default color), `background` (the background
+unset or idle), `statusBlink`/`statusColor`/`statusShape` (the status glyph's `--blink` flag, its `--color` `#rrggbb`
+override and its `--shape` silhouette from `session status`, omitted when idle / not blinking / default
+color / default semantic glyph), `background` (the background
 spec — image/text watermark or solid color — set via `session background`, omitted when none — the read side of set/clear),
 `unseen` (the unseen-notification badge count — raised by `notify`/OSC 9/777, cleared by `session
 seen` — omitted when zero), `overlaySizePercent` (an open overlay's floating-panel percent 1–100,
@@ -194,7 +197,11 @@ contract.
 script can fill it with `session new --no-select` without it popping open) ·
 `rename <name>` · `delete` · `select` · `move --to up|down|top|bottom` ·
 `focus [on|off|toggle]` (collapse the sidebar tree to a single workspace; read back which workspace is
-focused from the tree workspace node's `focused` flag) · `color <#rrggbb|clear>` (tint the workspace's
+focused from the tree workspace node's `focused` flag, and which one is PINNED from its `marked` flag) ·
+`filter [on|off|toggle] [--window W]` (apply or lift that filter WITHOUT changing which workspace is
+pinned — the way back after an involuntary jump (idle auto-follow, attention nav, a notification reveal)
+switched it off; window-scoped, so it takes no `--target`; read back from the tree's top-level
+`workspaceFilter`) · `color <#rrggbb|clear>` (tint the workspace's
 sidebar icon; persisted, read back from the tree workspace node's `color`) ·
 `icon <symbol|emoji|path|clear>` (set the workspace's sidebar icon — an SF Symbol name like `hammer.fill`,
 a single emoji, or a path to an svg/png/jpeg, which is copied into the state dir; read back from the tree
@@ -260,7 +267,7 @@ of `sidebar collapse`/`sidebar expand`, honoring `--window`; read back from the 
   equivalent — bind it via a `command "rookctl session resize …"` custom action). `--split-ratio` sets
   the absolute left-pane fraction (0..1, clamped to 0.05..0.95); `--grow-left`/`--grow-right` nudge it by
   a fraction. Prints the applied (clamped) fraction.
-- `status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--pane left|right|scratch] [--pane-id TOKEN]` — set the sidebar agent glyph (`--sound default` or a system sound name plays a one-shot sound; `--color` tints the glyph for this call only, reverting on the next status set without it; `--pane` records which pane set it — `left`=main, `right`=split, `scratch` — so foreground typing in another pane won't clear it and any user-initiated GUI selection (auto-follow, attention-nav ⌃⌥↑/↓, plain session nav, the command palettes, a sidebar row click) reveals the blocking pane, read back as the tree `statusPane` field; the socket `session go next-attention` only steps the selection, it does not itself reveal the pane; `--pane-id` takes the shell's stable `$ROOK_PANE_ID` token and OVERRIDES a stale `--pane` — the agent-status hook forwards it for you, so scripts normally leave it to the hook).
+- `status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape NAME] [--pane left|right|scratch] [--pane-id TOKEN]` — set the sidebar agent glyph (`--sound default` or a system sound name plays a one-shot sound; `--color` tints the glyph for this call only, reverting on the next status set without it; `--shape circle|square|triangle|diamond|capsule|star` swaps the glyph for that plain silhouette for this call only, reverting the same way — a second discriminator for when the tint does not read (color blindness, a monochrome theme, a small glyph); omitting it keeps the state's own semantic glyph (ellipsis / exclamation mark / check mark); `--pane` records which pane set it — `left`=main, `right`=split, `scratch` — so foreground typing in another pane won't clear it and any user-initiated GUI selection (auto-follow, attention-nav ⌃⌥↑/↓, plain session nav, the command palettes, a sidebar row click) reveals the blocking pane, read back as the tree `statusPane` field; the socket `session go next-attention` only steps the selection, it does not itself reveal the pane; `--pane-id` takes the shell's stable `$ROOK_PANE_ID` token and OVERRIDES a stale `--pane` — the agent-status hook forwards it for you, so scripts normally leave it to the hook).
 - `agent <claude|codex> [--id ID] [--from-hook] [--clear] [--config-dir DIR] [--pane left|right]` —
   remember which agent CONVERSATION the pane is on, so a restart can RESUME it instead of opening a blank
   agent (needs Settings ▸ General ▸ Resume agent conversations). Normally called by the agent's own

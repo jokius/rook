@@ -355,7 +355,7 @@ rookctl quick show                                 # drop the overlay over whate
 rookctl quick type 'ls -la'$'\n'                   # inject keystrokes (\n runs it)
 echo "some payload" | rookctl quick type --stdin   # pipe stdin in (e.g. a paste helper)
 rookctl quick text --all                           # read its screen + scrollback back
-rookctl tree | jq .quickVisible                    # is it open right now?
+rookctl tree --json | jq .result.tree.quickVisible # is it open right now?
 ```
 
 ## Flag a working set and view just the flagged sessions
@@ -397,6 +397,43 @@ rookctl workspace focus toggle --target a1b2                # flip focus on anot
 rookctl workspace focus off                                 # restore the full tree
 ```
 
+## Peek at the whole tree, then go back to the focused workspace
+
+The focus is two bits: WHICH workspace is pinned (`marked` on the workspace node) and WHETHER the filter
+applies (`workspaceFilter` at the tree's top level). `workspace filter` flips only the second one, so the
+pin survives — that is how you look at everything and come straight back, in two commands and without
+re-naming the workspace.
+
+```bash
+rookctl workspace focus on --target "$ROOK_WORKSPACE_ID"   # pin + filter
+rookctl workspace filter off                               # whole tree, pin kept
+# …look around: select sessions in the other workspaces…
+rookctl workspace filter on                                # back to the pinned workspace
+rookctl workspace filter toggle                            # or flip it (the default mode)
+```
+
+It matters beyond convenience: an INVOLUNTARY jump out of the focused workspace — idle auto-follow to a
+blocked session, attention nav (⌃⌥↑/⌃⌥↓), a click on a notification banner, the dashboard, the
+recent-sessions popover — switches the filter off by itself and keeps the pin. `workspace filter on` is
+the only way to re-apply it; an explicit `workspace focus off` instead FORGETS the pin, and then there is
+nothing to come back to.
+
+```bash
+# what state am I in? focused == marked && workspaceFilter
+rookctl tree --json | jq -r '.result.tree
+  | (.workspaceFilter | tostring) as $f
+  | .workspaces[] | select(.marked) | "\(.name): pinned, filtering=\($f)"'
+
+# re-apply only when something is pinned but not filtering (idempotent either way)
+rookctl tree --json \
+  | jq -e '.result.tree | (.workspaceFilter | not) and ([.workspaces[] | select(.marked)] | length > 0)' \
+  >/dev/null && rookctl workspace filter on
+```
+
+`filter on` with nothing pinned is a plain no-op, and so is `filter on` when the pinned workspace has since
+been deleted — the command still answers `ok`, so read `workspaceFilter` back rather than trusting the exit
+status. It is window-scoped (no `--target`); add `--window W` to drive another window.
+
 ## Give the workspaces their own icons and colors
 
 Both are persisted, so they survive a relaunch, and both read back on the tree workspace node — which
@@ -414,7 +451,7 @@ rookctl workspace icon ~/icons/rocket.svg --target a1b2             # copied int
 rookctl workspace icon clear --target a1b2                          # back to the default glyph
 
 # record the current appearance, change it, restore it
-old=$(rookctl tree --json | jq -r '.workspaces[] | select(.id | startswith("a1b2")) | .icon // "clear"')
+old=$(rookctl tree --json | jq -r '.result.tree.workspaces[] | select(.id | startswith("a1b2")) | .icon // "clear"')
 rookctl workspace icon leaf.fill --target a1b2
 rookctl workspace icon "$old" --target a1b2
 ```
@@ -435,7 +472,7 @@ rookctl session new                                              # → opens in 
 rookctl workspace root clear --target "$ROOK_WORKSPACE_ID"       # back to the global setting
 
 # record the current root, change it, restore it
-old=$(rookctl tree --json | jq -r '.workspaces[] | select(.id | startswith("a1b2")) | .root // "clear"')
+old=$(rookctl tree --json | jq -r '.result.tree.workspaces[] | select(.id | startswith("a1b2")) | .root // "clear"')
 rookctl workspace root /tmp/scratch --target a1b2
 rookctl workspace root "$old" --target a1b2
 ```
@@ -531,6 +568,34 @@ rookctl session status blocked --color '#ff0000' --target "$ROOK_SESSION_ID" # p
 rookctl session status blocked --pane right --target "$ROOK_SESSION_ID"     # a split-pane agent tags its pane (see below)
 rookctl session status idle --target "$ROOK_SESSION_ID"             # clear
 ```
+
+## Tell your states apart by SHAPE, not only by color
+
+The three states already have distinct glyphs (ellipsis / exclamation mark / check mark) in distinct
+colors. Add `--shape` when you need a second discriminator the tint cannot give you — a color-blind user, a
+monochrome theme, a sidebar full of small glyphs, or several agents you want to tell apart at a glance
+while they sit in the same state.
+
+```bash
+# one agent's own visual signature, repeated on every call (the shape is per call, see below)
+rookctl session status active --blink --shape triangle --target "$ROOK_SESSION_ID"
+rookctl session status blocked --shape triangle --color '#ff0000' --target "$ROOK_SESSION_ID"
+rookctl session status completed --auto-reset --shape triangle --target "$ROOK_SESSION_ID"
+
+# or a shape per state, so the outline alone says which is which
+rookctl session status active   --shape capsule  --target "$ROOK_SESSION_ID"
+rookctl session status blocked  --shape triangle --target "$ROOK_SESSION_ID"
+rookctl session status completed --shape circle  --target "$ROOK_SESSION_ID"
+
+# read it back (omitted when idle or drawing the default glyph)
+rookctl tree --json | jq -r '.result.tree.workspaces[].sessions[]
+  | select(.status) | "\(.name): \(.status) \(.statusShape // "default") \(.statusColor // "")"'
+```
+
+Shapes: `circle`, `square`, `triangle`, `diamond`, `capsule`, `star`. It is PER CALL, exactly like
+`--color` — the next `session status` without `--shape` reverts to the state's own semantic glyph, so pass
+it on every call you want shaped. Omitting it changes nothing at all. An unknown name is rejected before
+the status is touched, so a typo leaves the previous status standing rather than half-applying.
 
 ## Tag the blocking pane so navigation lands on it
 

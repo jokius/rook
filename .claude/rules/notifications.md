@@ -131,9 +131,34 @@ paths:
   default `#DBD9E6` muted lavender-grey / system amber / system green; see the Settings + Control API sections)
   — the SwiftUI attention-list `StatusGlyph` resolves through the SAME override helper so the two can't drift —
   with accessibility role `.staticText`, id `agent-status`, value = the state name (so XCUITest matches `app.staticTexts["agent-status"]`;
-  the glyph TINT, per-call or not, is NOT accessibility-observable),
+  neither the glyph TINT nor its silhouette, per-call or not, is accessibility-observable),
   and a `CABasicAnimation` `opacity` pulse added only while visible AND `blink` (the install's `UserPromptSubmit→active --blink`
   hook pulses the in-progress glyph).
+  **Reduce Motion kills the PULSE only.**
+  `apply` gates it on `indicator.blink && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion`, so
+  under the system setting the glyph and its status color still render — only the indefinite repeat dies,
+  and the signal survives.
+  A LIVE system flip lands without a relaunch: `SystemAccessibilityObserver` reposts
+  `.rookAppearanceChanged` and the sidebar Coordinator's sweep re-runs `apply` (see the Settings rule for
+  the observer's `NSWorkspace.shared.notificationCenter` gotcha).
+  **The glyph also has a SHAPE axis on top of its tint (`session.status --shape`), and the defaults did
+  NOT change.**
+  `circle|square|triangle|diamond|capsule|star` swaps the symbol for that plain `.fill` silhouette, so the
+  state stays readable when the COLOR cannot carry it (color blindness, a monochrome theme, a small glyph).
+  It is per-call and rides the ephemeral `AgentIndicator.shape` exactly like `--color`, so the next
+  `session.status` without a shape discards it.
+  The built-in defaults stay SEMANTIC (`ellipsis`/`exclamationmark`/`checkmark`, `idle` = no glyph):
+  the resolver is `AgentStatus.symbolName(shape:)` = `shape?.symbolName ?? symbolName`, so WITHOUT a
+  `--shape` nothing changed — not on screen, not on the wire.
+  (Upstream flattened all three states to a bare `circle.fill` and added a Settings picker to compensate;
+  we took the control leg only, and there is NO shape picker in Settings.)
+  Both render sites go through that ONE host-free resolver — the AppKit `StatusIconView` and the SwiftUI
+  twin `StatusGlyph` — and the shape is threaded through all THREE carriers that feed the twin
+  (`PaletteItem`, `SessionSwitcherRow`, the recent-sessions popover row);
+  miss the last leg and a shaped session draws the shape in the sidebar but the semantic default in the
+  palette, the Ctrl-Tab switcher and the popover.
+  Read back as the `tree` node's `statusShape` — see the Control API rule for the argument, its dispatcher
+  validation and the four-point audit.
   **The glyph carries a hover TOOLTIP** — the three states differ only by shape and tint, so nothing on the
   row names them in words.
   The text is the host-free `AgentIndicator.tooltipText` (`Agent status: Blocked`), which says more than the

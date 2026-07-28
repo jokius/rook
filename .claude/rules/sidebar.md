@@ -276,12 +276,22 @@ paths:
   swallow (the row would keep the old picture until relaunch).
   There is NO SF Symbol picker in the GUI on purpose — no public API enumerates SF Symbols, so it would mean
   hand-curating a list; symbols and emoji are the agent/CLI surface.
-- **Focus filter (`AppStore.focusedWorkspaceID`).**
+- **Focus filter (`AppStore.focusedWorkspaceID`) — ONE public property, TWO bits of state
+  (`AppStore+Focus.swift`).**
   A per-workspace toggle collapses the `.tree` to a single root: `visibleWorkspaces` is the focused workspace
   when `focusedWorkspaceID` is set AND still present, else ALL workspaces — the source of truth the tree
   filters on (the data source maps `store.visibleWorkspaces` in `.tree`).
   Focus is ORTHOGONAL to flagged: the flat flagged view ignores focus (it always shows the full cross-workspace
   set).
+  Behind that property the state is `markedWorkspaceID` (WHICH workspace) + `focusFilterEnabled` (WHETHER
+  it filters), and `focusedWorkspaceID` is their conjunction — the EFFECTIVE focus, `focusFilterEnabled ?
+  markedWorkspaceID : nil`; assigning an id marks it AND enables the filter, assigning nil disables AND
+  forgets the mark.
+  Everything OUTSIDE `AppStore+Focus.swift` still reads and writes `focusedWorkspaceID`, so "focused" keeps
+  meaning exactly what it always did (the tree is collapsed to this workspace) and the snapshot, the row
+  menus, the pill and the `tree` `focused` read-back needed NO change; an old snapshot restores unchanged.
+  The split exists because rook has many ways to jump across the tree that the USER did not ask for, most
+  of which fire while they are away from the keyboard — see the auto-unfocus bullet below.
   `setFocusedWorkspace(_:)` (delta-guarded so callers stay idempotent, nil unfocuses,
   saves) is driven by the workspace-row context-menu Focus/Unfocus → `AppActions.focusWorkspace(_:)`,
   the bottom-bar `focus-pill` ("<name> ✕" — the focused workspace name with no "Focused:" prefix,
@@ -289,7 +299,26 @@ paths:
   analogous to `deleteActiveWorkspace`) wired to `BuiltinAction.focusWorkspace` + a View-menu/palette
   "Focus Workspace", and `AppActions.clearFocus()` (a plain menu/palette "Clear Focus",
   NOT a `BuiltinAction`).
+  Its nil case guards on `focusedWorkspaceID != id || (id == nil && markedWorkspaceID != nil)`, NOT on the
+  effective focus alone: an explicit unfocus issued while the filter is ALREADY off (the state an
+  involuntary jump leaves) must still forget the mark, or `workspace.filter on` would later resurrect a
+  focus the user had just dismissed.
   `removeWorkspace` clears focus when the removed workspace was the focused one.
+- **`setFocusFilterEnabled(_:)` / `workspace.filter` — the come-back leg.**
+  It flips the flag WITHOUT touching the mark, and is the ONLY way to re-apply a filter an involuntary
+  jump dropped; `applyWorkspaceFilter(_:)` maps the control command's `on|off|toggle` onto it host-free
+  (see the Control API rule for the command, its window-scoped addressing, and the `marked` +
+  `workspaceFilter` read-back).
+  Delta-guarded like every other setter, so all three modes are idempotent.
+  ENABLING is refused in two cases: with nothing marked (there is nothing to filter to), and when the mark
+  names a workspace that no longer EXISTS (`focusedWorkspaceExists`) — the latter would switch filtering on
+  while filtering nothing, which a script reads as "focus restored" while the whole tree is on screen.
+  DISABLING is never gated: `off` must always be able to undo.
+  A dangling mark is otherwise harmless — `focusedWorkspace` resolves it to nil and `visibleWorkspaces`
+  falls back to the full tree, and if the removal is UNDONE inside the grace window the same id comes back
+  live.
+  The mark is IN-MEMORY only past a relaunch: `Snapshot.focusedWorkspaceID` still stores the EFFECTIVE
+  focus (that is why no `Snapshot` change was needed), so a mark whose filter is off is not persisted.
 - **Scoped session navigation (the VISIBLE/FILTERED set).**
   Session navigation operates over `AppStore.navigableSessions`, NOT the whole tree:
   `sidebarMode == .flagged ? flaggedSessions : visibleWorkspaces.flatMap(\.sessions)` — i.e. the flagged
@@ -310,10 +339,19 @@ paths:
   This SUPERSEDES the earlier "global nav reveals its target" behavior.
 - **Focus×selection auto-unfocus contract (load-bearing, now the cross-set safety net).** Because nav
   is scoped, its targets are ALWAYS in-set, so nav never crosses the focus boundary.
-  `selectSession` still AUTO-CLEARS focus when the newly selected session is NOT in the focused workspace
-  (`workspace(forSession:)?.id != focusedWorkspaceID` → `focusedWorkspaceID = nil`) — but this now only
+  `selectSession` still stops FILTERING when the newly selected session is NOT in the focused workspace
+  (`autoUnfocusIfOutsideFocus`: `workspace(forSession:)?.id != markedWorkspaceID` → `focusFilterEnabled =
+  false`) — but this now only
   fires for an EXPLICIT cross-set select: `session.select <id>` of a hidden session,
   a notification reveal, or a move/close that reselects elsewhere.
+  **It drops the FLAG only and KEEPS the mark.**
+  None of its callers is the user saying they are done with the focus — an idle auto-follow to a blocked
+  session, attention navigation, a notification-click reveal, the dashboard, the recent-sessions popover
+  mostly fire while nobody is at the keyboard — so nilling the focus outright (what it used to do) could
+  kill a filter unattended with nothing left to go back to.
+  Now `setFocusFilterEnabled(true)` / `rookctl workspace filter on` returns to the same workspace.
+  An EXPLICIT unfocus (the row menu, the palette, the pill ✕, `workspace.focus … off`) still forgets the
+  mark — that IS the user saying they are done.
   This keeps the active session inside the visible set for those cases, which also keeps `currentWorkspaceID`
   (new-session placement) consistent with NO special-case.
   No-op when unfocused or nothing selected.

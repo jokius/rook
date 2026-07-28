@@ -79,13 +79,17 @@ paths:
   The read field is populated in `AppStore.controlTree` and, like the other optionals, omitted from the
   JSON when nil.
   Existing pairs to mirror: `session.background`/`background`, `notify`+`session.seen`/`unseen`,
-  `session.status`/`status`+`statusPane` (+`statusBlink`/`statusColor` for `--blink`/`--color`),
+  `session.status`/`status`+`statusPane`
+  (+`statusBlink`/`statusColor`/`statusShape` for `--blink`/`--color`/`--shape`),
   `session.agent`/`agentSession`+`splitAgentSession`,
   `session.flag`/`flagged`, `session.filetree`/`fileTreeVisible`+`fileTreeRoot`,
   `session.markdown`/`markdownPath` (the open file IS the panel's visibility, so one field covers both),
   `session.focus`/`splitFocused`, `session.resize`/`splitRatio`,
   `session.overlay.resize`/`overlaySizePercent`, `sidebar`/`sidebarVisible` (top-level),
   `sidebar.mode`/`sidebarMode`, `workspace.focus`/`focused` (workspace node),
+  `workspace.filter`/`workspaceFilter` (top-level, `tree`-only) + `marked` (workspace node) — the two
+  ADDITIVE halves of the focus state, see the `workspace.focus`/`workspace.filter` section for why the
+  meaning of `focused` was NOT widened instead,
   `workspace.collapse`+`workspace.expand`+`workspace.new --collapsed`/`collapsed` (workspace node),
   `quick`/`quickVisible` (top-level),
   `font.*`/`fontSize`+`splitFontSize`+`scratchFontSize` (the per-pane LIVE font size — the split/scratch
@@ -310,10 +314,10 @@ paths:
   rules, then remaining targets resolve inside that same store so one command never mutates multiple windows.
   The top-level `target` also carries the first explicit batch target so a new CLI talking to a still-running
   pre-batch server degrades to a named session instead of accidentally acting on `active`.
-- **Command catalog (72 commands):**
+- **Command catalog (73 commands):**
   The count is every `Command` case MINUS `debug.appearance` (the UI-test-only seam below, which has no
   `rookctl` subcommand and is not in the skill) — `awk '/^public enum Command/,/^}/' rookCore/Sources/rookCore/ControlProtocol.swift | grep -cE '^\s+case '`
-  minus one (73 cases → 72).
+  minus one (74 cases → 73).
   The same number must appear in `README.md`, `site/docs.html`, `site/commands.html` (four places there:
   the meta description, the two social-card descriptions, and the page intro), and the bundled
   `agent-skill/SKILL.md`;
@@ -321,7 +325,7 @@ paths:
   - `tree`
   - `events.read` — its own family, NOT part of `tree`: the ring is app-wide and the command is a
     cursor-paged read of what HAPPENED, while `tree` is a snapshot of what IS
-  - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.color`/`workspace.icon`/`workspace.root`/`workspace.collapse`/`workspace.expand`
+  - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.filter`/`workspace.color`/`workspace.icon`/`workspace.root`/`workspace.collapse`/`workspace.expand`
   - `session.new`/`session.close`/`session.select`/`session.rename`/`session.duplicate`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.agent`/`session.flag`/`session.seen`/`session.background`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
   - `surface.zoom`
   - `dashboard`
@@ -347,7 +351,7 @@ paths:
   Setting echoes the resulting effective side in `result.text`; the BARE form (no name) reads the side
   the last config feed applied (`SettingsModel.lastAppliedIsDark`), which the test polls to prove the
   flip actually drove the reload.
-  `AppearanceFlipUITests` is its only consumer; the public command count stays 72.
+  `AppearanceFlipUITests` is its only consumer; the public command count stays 73.
 
   **`events.read` — the READ leg of a bounded event ring, control-NATIVE (no GUI surface at all).**
   It exists because polling `tree --json` and diffing a ~31-field-per-session snapshot cannot see a
@@ -1132,6 +1136,51 @@ paths:
   + `AgentStatusTests` (indicator color + Equatable) + CLI mapping in `CommandsTests` + the e2e
   `testSessionStatusColorValidatesHex` in `ControlSidebarStatusUITests` (asserts the command path — the
   glyph TINT itself is not accessibility-observable).
+  **`args.shape` (`session.status --shape circle|square|triangle|diamond|capsule|star`) is the SECOND
+  visual axis, an OPT-IN addition to the semantic glyph — never a new default.**
+  It exists because the tint alone does not always read (color blindness, a monochrome theme, a small
+  glyph), so the silhouette can carry the state too.
+  The raw value parses to the host-free `StatusShape` (its `rawValue` IS the SF Symbol base name; the
+  drawn symbol is the `.fill` variant, so a shaped glyph is a solid silhouette rather than an outline),
+  and an unknown name is rejected in the DISPATCHER before any mutation —
+  `invalid shape: <raw> (circle|square|triangle|diamond|capsule|star)`, built from
+  `StatusShape.validNamesList` so the message can't go stale — leaving the status UNCHANGED, exactly like
+  a bad `--color`/`--pane` (the whole point of `dispatchSessionStatus` validating every argument up front:
+  a typo can never both change the status and return an error).
+  The CLI pre-validates the same set in `validate()` (`shape must be one of: circle, square, …`, from
+  `StatusShape.validNamesPhrase`).
+  It rides the ephemeral `AgentIndicator.shape` exactly like `--color`, so the next `session.status`
+  WITHOUT a shape discards it — there is no explicit clear.
+  **Our built-in defaults stay SEMANTIC and are deliberately NOT upstream's.**
+  Upstream's series (agterm `21d17537`+`03e0e83b`+`939e3d1b`) also flipped the built-in glyphs so all three
+  states draw a bare `circle.fill` and differ only by tint, and added a Settings shape picker to compensate
+  for that regression; we took the CONTROL leg only.
+  `active`=`ellipsis.circle.fill`, `blocked`=`exclamationmark.circle.fill`,
+  `completed`=`checkmark.circle.fill`, `idle`=no glyph are unchanged, so the resolver is
+  `AgentStatus.symbolName(shape:)` = `shape?.symbolName ?? symbolName` — with no `--shape` passed, every
+  glyph on screen and every field on the wire is byte-for-byte what it was (pinned by an `AgentStatusTests`
+  case over all states).
+  There is NO Settings shape picker and no per-status configured default: that is upstream's phase 2, worth
+  taking only if our defaults ever stop being semantic.
+  Both render sites go through that ONE host-free resolver — the AppKit sidebar `StatusIconView` and the
+  SwiftUI twin `StatusGlyph` — and the shape is threaded through all THREE carriers that feed the twin
+  (`PaletteItem.statusShape`, `SessionSwitcherRow.statusShape`, the recent-sessions popover row);
+  without that last leg the parameter would exist but nothing would pass it, and a shaped session would
+  draw the shape in the sidebar and the semantic default in the palette / Ctrl-Tab switcher / popover.
+  Read back as `ControlSessionNode.statusShape` (the `StatusShape` raw value, omitted when idle or drawing
+  the semantic default), next to `statusColor`/`statusBlink` — the PER-CALL override only, so
+  record-then-restore treats tint and silhouette alike.
+  Four-point keep-in-sync audit for `session.status --shape`: (1) the `StatusShape` enum +
+  `AgentStatus.symbolName(shape:)` + `AgentIndicator.shape` + `ControlArgs.shape` +
+  `ControlSessionStatusUpdate.shape` + `ControlSessionNode.statusShape` in `rookCore`, plus the dispatcher
+  parse/validation in `dispatchSessionStatus`, (2) the `.sessionStatus` arm threading `update.shape` into
+  the indicator + the two render sites + the three carriers, (3) the `session status --shape` option
+  (`validate()`-guarded) in `rookctlKit`, (4) round-trip + omit-when-nil in `ControlProtocolTests` +
+  dispatcher validation in `ControlDispatcherTests` + `AgentStatusTests` (the resolver over every state ×
+  shape, including the no-shape identity over `AgentStatus.allCases`) + the tree read-back in
+  `AppStoreOrganizationTests` + CLI mapping in `CommandsTests`.
+  Control-native like `--color`/`--sound`: no GUI sets it, and the silhouette is no more
+  accessibility-observable than the tint (the `agent-status` element's value stays the state name).
   `args.pane` (`left`|`right`|`scratch`, REUSING the shared `--pane` addressing vocabulary — parsed to the
   host-free `StatusPane` and validated by the dispatcher, an `--pane must be left, right, or scratch` error
   that leaves the status UNCHANGED) records WHICH pane set the status onto the ephemeral `AgentIndicator.statusPane`
@@ -1150,10 +1199,11 @@ paths:
   (see the Menu/actions rule).
   It reads back on each `tree` node as `ControlSessionNode.statusPane` (omitted when nil, gated on the SAME
   non-idle condition as `status` so an idle node reports neither).
-  The `--blink` flag and `--color` override read back the same way — `ControlSessionNode.statusBlink`
-  (`true` when blinking, omitted otherwise) and `statusColor` (the `#rrggbb`, omitted when using the default
-  color), both populated in the tree builder gated on the SAME non-idle condition — so a script can record
-  the FULL status (state + pane + blink + color) and restore it.
+  The `--blink` flag and the `--color`/`--shape` overrides read back the same way —
+  `ControlSessionNode.statusBlink` (`true` when blinking, omitted otherwise), `statusColor` (the `#rrggbb`,
+  omitted when using the default color) and `statusShape` (the `StatusShape` raw value, omitted when
+  drawing the semantic default glyph), all populated in the tree builder gated on the SAME non-idle
+  condition — so a script can record the FULL status (state + pane + blink + color + shape) and restore it.
   Four-point keep-in-sync audit for `session.status --pane`: (1) the `StatusPane` enum + `AgentIndicator.statusPane`
   + `AgentIndicator.clearedBy(pane:isInterrupt:)` + `ControlSessionStatusUpdate.pane` + `ControlSessionNode.statusPane`
   + `SurfaceEnvironment.session(pane:)` (injects `ROOK_PANE`) in `rookCore`, plus the dispatcher `StatusPane`
@@ -1475,7 +1525,8 @@ paths:
   unknown mode = error), drives `focusWorkspace` → `AppStore.setFocusedWorkspace`,
   honors the global `--window` selector, and returns the workspace id.
   Per-window + persisted, orthogonal to `sidebar.mode` (the flat flagged list ignores focus);
-  selecting a session outside the focused workspace auto-unfocuses (see the Sidebar section).
+  selecting a session outside the focused workspace stops the filter WITHOUT forgetting the workspace
+  (see the Sidebar section).
   It is the control half of the workspace-row Focus/Unfocus + the `focus-pill` ✕ + `BuiltinAction.focusWorkspace`/`focusActiveWorkspace`
   + the Clear Focus menu/palette item.
   Its READ side is `ControlWorkspaceNode.focused` on each `tree` workspace node (`workspace.id == focusedWorkspaceID ? true : nil`
@@ -1486,6 +1537,52 @@ paths:
   (3) the `workspace focus on|off|toggle` subcommand (`Focus`) in `rookctlKit`,
   (4) round-trip in `ControlProtocolTests` + the e2e `testWorkspaceFocusHidesOtherWorkspaces` in `ControlSidebarStatusUITests`
   plus the `FocusWorkspaceUITests` XCUITest.
+  **`workspace.filter on|off|toggle` is the RE-APPLY leg of that focus, and the only way to switch the
+  filter back on.**
+  The focus state is two bits behind the same public `AppStore.focusedWorkspaceID`: WHICH workspace is
+  marked (`markedWorkspaceID`) and WHETHER the filter applies (`focusFilterEnabled`) — see the Sidebar
+  rule.
+  An INVOLUNTARY jump across the tree (idle auto-follow to a blocked session, attention nav, a
+  notification reveal, the dashboard, the recent-sessions popover) drops only the FLAG and keeps the mark,
+  which left the focus unrecoverable until this command existed.
+  It is WINDOW-scoped, so unlike every other `workspace.*` command it takes NO `--target`: the global
+  `--window` selector picks the store like `sidebar.expand`/`sidebar.collapse` (frontmost by default,
+  `no open window` when there is none), and the CLI shape is `rookctl workspace filter [on|off|toggle]
+  [--window W]` (mode defaults to `toggle`).
+  The mode parses through the shared `ControlToggleMode` in the dispatcher (`invalid workspace filter
+  mode: <raw>`); the on/off/toggle semantics are host-free in `AppStore.applyWorkspaceFilter` →
+  `setFocusFilterEnabled`, whose delta guard makes all three modes idempotent, so the app-side arm
+  (`ControlServer.setWorkspaceFilter`) is pure store resolution.
+  Enabling with NOTHING marked is a clean no-op — there is nothing to filter to — and so is enabling on a
+  mark whose workspace has been DELETED: that would switch the filter on while filtering nothing, which a
+  script reads as "focus restored" while the whole tree is on screen.
+  Disabling is never gated: `off` must always be able to undo.
+  **Read-back is two ADDITIVE fields, a DELIBERATE divergence from upstream (agterm `6722755a`).**
+  `ControlWorkspaceNode.marked` says whether a workspace is the pinned one regardless of the flag, and the
+  `tree` top-level `workspaceFilter` says whether the filter currently applies (`tree`-only like
+  `sidebarMode`, since an involuntary jump flips it with no command involved and a `window.list` copy would
+  go stale), with the invariant **`focused == marked && workspaceFilter`**.
+  Upstream instead REDEFINED `focused` itself, from "the tree is collapsed to this workspace" to mere
+  membership.
+  Here that would be a SILENT breaking change: a script doing record-then-restore through `focused` would
+  start reading `true` while the tree is NOT collapsed and "restore" a focus that was never applied — a
+  regression that never fails, it just does the wrong thing in code we cannot see.
+  So `focused` keeps exactly its old meaning (the EFFECTIVE focus, nil the moment the filter stops
+  applying) and the new state is read through the new fields.
+  Without `marked`, "pinned but not filtering" and "nothing pinned at all" would look identical from
+  outside and a script could not tell whether `workspace.filter on` has anywhere to go.
+  An EXPLICIT unfocus (`workspace.focus … off`, the row menu, the palette, the pill ✕) still forgets the
+  mark, so `marked` goes nil too.
+  Four-point keep-in-sync audit: (1) `case workspaceFilter = "workspace.filter"` in `ControlProtocol.swift`
+  (reuses `ControlArgs.mode`) + `ControlWorkspaceNode.marked` + `ControlTree.workspaceFilter` +
+  `AppStore.applyWorkspaceFilter`/`setFocusFilterEnabled` in `rookCore`, (2) the `.workspaceFilter`
+  dispatch arm → `ControlActions.setWorkspaceFilter` in `ControlServer+WorkspaceCommands.swift`,
+  (3) the `workspace filter [on|off|toggle]` subcommand (`Filter`, `ClientOptions` only — no `--target`)
+  in `rookctlKit`, (4) round-trip + omit-when-nil in `ControlProtocolTests` + dispatcher routing/mode
+  rejection in `ControlDispatcherTests` + `AppStoreOrganizationTests` (the mutator, the deleted-mark
+  refusal, and the tree read-back) + CLI mapping in `CommandsTests`.
+  The upstream commit's other legs — a multi-workspace focus SET, its `add` mode, the UI toggle and the
+  snapshot migration — were deliberately left out.
   `workspace.color` (target = workspace) tints that workspace's sidebar ICON — the positional arg is a
   `#rrggbb` hex or the literal `clear` (which, like an omitted color, resets it to the theme default),
   REUSING `ControlArgs.color` (no new arg) and validated by the shared `WatermarkConfig.isValidColorHex`

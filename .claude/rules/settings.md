@@ -4,6 +4,7 @@ paths:
   - "rook/Views/SettingsView.swift"
   - "rook/SettingsCatalog.swift"
   - "rook/Views/WindowAppearance.swift"
+  - "rook/SystemAccessibilityObserver.swift"
   - "rook/NSColor+RookHex.swift"
   - "rookCore/Sources/rookCore/AppSettings.swift"
   - "rookCore/Sources/rookCore/SettingsStore.swift"
@@ -206,6 +207,11 @@ paths:
   Captions under controls are dropped for self-explanatory controls, which is nearly all of them.
   A caption is kept ONLY when it carries information the label can't — currently just two:
   `Blur needs opacity below 100%` (a functional dependency) and the Ghostty-config edit-path hint.
+  That first one SWAPS its text while the system's Reduce Transparency is on
+  (`@Environment(\.accessibilityReduceTransparency)` in `AppearanceSettingsView`) — it then reads
+  `Reduce Transparency is on; saved opacity and blur apply when it is off.`, because the blur dependency
+  is no longer the reason the window looks opaque.
+  The sliders keep working and keep SAVING either way; only the presentation is overridden.
   This keeps the busiest tab short enough that the 480×590 window fits every tab without scrolling.
   The notification toggle (`AppSettings.notificationsEnabled`, nil = on) is mirrored to `NotificationManager.bannersEnabled`
   by `SettingsModel`; it gates only the OS banner, never the badge, and is NOT a ghostty config key (no
@@ -230,6 +236,34 @@ paths:
   not the window CGS blur — close, not pixel-identical).
   All of this re-applies on every `sync`, which `TitleProbeView` already drives on window key/main/fullscreen
   transitions + `.rookAppearanceChanged`.
+- **Reduce Transparency is an EFFECTIVE override, never a settings write.**
+  `WindowAppearance.sync` folds `NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency` into the
+  same `transparent` condition as the fullscreen force-opaque rule, so the window presents opaque and
+  unblurred; the SwiftUI floating panels (the command palette and the Ctrl-Tab `SessionSwitcher`) swap
+  their `.regularMaterial` background for `Color(nsColor: .windowBackgroundColor)`, which keeps
+  system-label text legible in both light and dark.
+  `AppSettings.backgroundOpacity`/`backgroundBlur` are NOT touched: turn the system setting back off and
+  the user's saved values apply again verbatim.
+  Treat this as the pattern for any future accessibility gate — resolve it at RENDER time, never persist it.
+- **A live accessibility flip needs `SystemAccessibilityObserver` (`rook/SystemAccessibilityObserver.swift`),
+  because AppKit posts the notification on the WRONG center.**
+  `NSWorkspace.accessibilityDisplayOptionsDidChangeNotification` is posted on
+  `NSWorkspace.shared.notificationCenter`, NOT `NotificationCenter.default` — the obvious default-center
+  observer never fires, silently.
+  The observer registers on the workspace center (with `object: nil` — the SDK documents the center, not
+  the sender) and REPOSTS `.rookAppearanceChanged` rather than opening a channel of its own: every AppKit
+  consumer that cares already re-asserts on that one idempotently (`WindowAccessor` → `WindowAppearance.sync`
+  re-resolves Reduce Transparency, the sidebar Coordinator → `reapplyStatusRows()` re-resolves Reduce
+  Motion on the status glyph — see the Notifications rule).
+  SwiftUI consumers need nothing from it: they read `\.accessibilityReduceMotion` /
+  `\.accessibilityReduceTransparency` and refresh themselves.
+  The block HOPS to the main queue before posting (the `GhosttyCallbacks` convention) — load-bearing,
+  since `.rookAppearanceChanged` has synchronous `@MainActor` observers that would otherwise run on the
+  caller's thread.
+  Started from the scene `.task` and idempotent (`start()` guards on the stored token), lifetime = the
+  process, like `SystemAppearanceObserver`.
+  Pure system-driven presentation → control-API keep-in-sync EXEMPT: there is nothing for a script to set,
+  and no Settings shape/motion picker exists to drive.
 - **`configDirectory` + the keymap (see the Keymap section).**
   `AppSettings.configDirectory: String?` (nil = the default) holds the directory that contains `keymap.conf`.
   `SettingsModel` resolves it through the host-free `ConfigPaths.configDirectory(setting:stateDir:home:)`

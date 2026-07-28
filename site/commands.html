@@ -6,7 +6,7 @@
     <title>Command reference — rook | rookctl control API</title>
     <meta
       name="description"
-      content="Complete rookctl reference: all 72 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, events, themes, and keymaps, with arguments and return values."
+      content="Complete rookctl reference: all 73 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, events, themes, and keymaps, with arguments and return values."
     />
     <meta
       name="keywords"
@@ -18,7 +18,7 @@
     <meta property="og:title" content="Command reference — rook" />
     <meta
       property="og:description"
-      content="All 72 rookctl control commands with arguments, return values, and errors."
+      content="All 73 rookctl control commands with arguments, return values, and errors."
     />
     <meta property="og:url" content="https://rook.app/commands" />
     <meta property="og:image" content="https://rook.app/assets/rook-og.png" />
@@ -30,7 +30,7 @@
     <meta name="twitter:title" content="Command reference — rook" />
     <meta
       name="twitter:description"
-      content="All 72 rookctl control commands with arguments, return values, and errors."
+      content="All 73 rookctl control commands with arguments, return values, and errors."
     />
     <meta name="twitter:image" content="https://rook.app/assets/rook-og.png" />
     <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
@@ -193,7 +193,7 @@
             Command reference
           </h1>
           <p style="font-size: 19px; line-height: 1.6; color: #bfbab0; margin: 0 0 8px">
-            All 72 commands of the rook control API, with arguments and return values. Every one is reachable from the
+            All 73 commands of the rook control API, with arguments and return values. Every one is reachable from the
             <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl</span> CLI and from the local
             control socket.
           </p>
@@ -398,6 +398,9 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusPane</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusBlink</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusColor</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusShape</span> (the per-call glyph silhouette, the
+                read side of <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session status --shape</span>;
+                omitted when idle or drawing the status's own glyph),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">foreground</span> /
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">splitForeground</span> (each pane's live foreground
                 argv, omitted at the shell prompt),
@@ -425,7 +428,14 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">sessions</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">focused</span> (the read side of
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace focus</span>, distinct from
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span>),
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span>; the tree is collapsed to this workspace
+                right now),
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked</span> (this is the workspace the focus filter is
+                pinned to, reported whether or not the filter currently applies — so
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked</span> without
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">focused</span> is exactly the state
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace filter on</span> re-applies;
+                omitted when it is not the pinned one),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">collapsed</span> (the read side of
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace collapse</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">expand</span>
                 and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace new --collapsed</span>;
@@ -447,8 +457,15 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span>-only),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">autoFollowMs</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">sidebarVisible</span>,
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">sidebarMode</span>, and
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">quickVisible</span>. All five are read-only
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">sidebarMode</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">quickVisible</span>, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">workspaceFilter</span> (whether the window's workspace
+                focus filter applies — the read side of
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace filter</span>, and the
+                other half of a workspace node's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked</span>:
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">focused</span> is exactly their conjunction. Always
+                present, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span>-only, since an involuntary jump
+                across the tree flips it off with no command involved). These are read-only
                 projections of GUI state.
               </p>
             </div>
@@ -553,6 +570,55 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session select</span> of a session outside it
                 auto-unfocuses. Read back via the workspace node's
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">focused</span> field.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                An <em>involuntary</em> jump out of the focused workspace — idle auto-follow to a blocked session, attention
+                navigation, a click on a notification, the dashboard, the recent-sessions popover — only lifts the filter and
+                leaves the workspace <em>marked</em>, so
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace filter on</span> puts you
+                back on it. An explicit
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace focus off</span> forgets the
+                mark for good.
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl workspace filter [on|off|toggle] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.filter</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Apply or lift the sidebar's workspace focus filter <em>without</em> changing which workspace is marked — the
+                re-apply leg of <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace focus</span>,
+                and the only way to turn a lifted filter back on. So a script can peek at the whole tree and come back in one call,
+                and a filter an involuntary jump switched off can be restored at all.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">on</span> applies it,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">off</span> lifts it, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">toggle</span> (the default) flips — all three are
+                idempotent. An unknown mode errors.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                Window-scoped like
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">sidebar expand</span>: it takes no
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--target</span>, only
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--window</span> (the frontmost by default), and no open
+                window is an error (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">no open window</span>) rather than a
+                silent no-op.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">on</span> with nothing marked is a clean no-op — there is
+                nothing to filter to — and so is
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">on</span> with a mark whose workspace has since been
+                deleted, which would otherwise switch filtering on while filtering nothing and read to a script as "focus restored".
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">off</span> is never gated — it must always be able to undo.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                Read back as the tree's top-level
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">workspaceFilter</span> (does the filter apply) paired with
+                each workspace node's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked</span> (where it would land);
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">focused</span> keeps its old meaning and is exactly
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked &amp;&amp; workspaceFilter</span>. So
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked</span> with
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">workspaceFilter: false</span> is a focus waiting to be
+                re-applied, distinct from nothing being marked at all.
               </p>
             </div>
 
@@ -1034,7 +1100,8 @@
             <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
                 rookctl session status &lt;idle|active|completed|blocked&gt; [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb]
-                [--pane left|right|scratch] [--pane-id TOKEN] [--target T] [--window W]
+                [--shape circle|square|triangle|diamond|capsule|star] [--pane left|right|scratch] [--pane-id TOKEN] [--target T]
+                [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.status</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1058,14 +1125,34 @@
                 this call only; the next status set without it reverts.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--shape</span>
+                (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">circle</span> |
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">square</span> |
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">triangle</span> |
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">diamond</span> |
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">capsule</span> |
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">star</span>) draws the glyph as that solid silhouette
+                instead of the state's own symbol — a second discriminator for when the tint cannot carry the state (color
+                blindness, a monochrome theme, a small glyph). It rides the status exactly like
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--color</span>, so the next status set without it reverts.
+                Omitting it changes nothing: the built-in glyphs stay semantic —
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span> an ellipsis,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">blocked</span> an exclamation mark,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">completed</span> a check mark,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">idle</span> none. An unknown name errors
+                (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">invalid shape: …</span>) before
+                anything is applied, so a typo cannot half-change the status.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--pane</span> (default
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">left</span>) records which pane set the status. It
                 makes keystroke-clear pane-scoped — a status set from a background pane survives typing in a different pane — and it
                 makes any user-initiated GUI selection reveal and focus the tagged pane. An agent running in a split or scratch
                 should set its own pane. Read back as the session node's
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusPane</span>,
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusBlink</span>, and
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusColor</span>.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusBlink</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusColor</span>, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusShape</span>.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--pane-id</span> takes a shell's

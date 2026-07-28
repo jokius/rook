@@ -64,8 +64,11 @@ flagged working-set), `status` (the agent-status — `active`|`completed`|`block
 idle), `statusPane` (which pane set that status — `left` (main) | `right` (split) | `scratch` — the
 `--pane` value from `session status`, omitted when unset or idle; gated on the same non-idle condition
 as `status`, so it is never reported without a `status`), `statusBlink` (`true` when the status glyph is
-set to blink — the `--blink` value; omitted when idle or not blinking) and `statusColor` (the `#rrggbb`
-glyph-tint override — the `--color` value; omitted when idle or using the default color),
+set to blink — the `--blink` value; omitted when idle or not blinking), `statusColor` (the `#rrggbb`
+glyph-tint override — the `--color` value; omitted when idle or using the default color) and
+`statusShape` (the glyph-silhouette override — the `--shape` value, one of
+`circle`|`square`|`triangle`|`diamond`|`capsule`|`star`; omitted when idle or drawing the status' own
+semantic glyph. Per-call like `statusColor`, so record-then-restore treats the two alike),
 `foreground`/`splitForeground` (the live argv of each pane's foreground
 process — what it is running — omitted when the pane sits at its shell prompt), `agent` (the coding agent
 detected in the session's FOCUSED pane — `claude` | `codex`, omitted when it runs anything else; the
@@ -96,7 +99,14 @@ FLOATING overlay even though it is visually on screen; address by `id`/`kind`, a
 from the top-level `zoomedSurface`. Workspace nodes carry
 `id`, `name`, `active`, `sessions`, `focused` (whether the sidebar
 tree is collapsed to this workspace — the read side of `workspace focus`, distinct from `active` the
-SELECTED workspace; omitted unless this is the focused one, and absent entirely when nothing is focused),
+SELECTED workspace; omitted unless this is the focused one, and absent entirely when nothing is focused.
+EFFECTIVE focus, not membership: it goes away the moment the filter stops applying, even though the
+workspace stays pinned), `marked` (whether this workspace is the one the focus filter is PINNED to,
+reported independently of whether the filter currently applies; omitted unless this is the pinned one.
+Read it with the tree's top-level `workspaceFilter`: `marked` says WHERE the filter would land,
+`workspaceFilter` says WHETHER it lands, and `focused` is exactly their conjunction — so `marked` with no
+`focused` is the state `workspace filter on` re-applies, and an explicit `workspace focus … off` drops
+both),
 `collapsed` (whether this workspace's row is CLOSED in the sidebar tree — `true` when collapsed, omitted
 when expanded, since expanded is the default. The read side of `workspace collapse`/`workspace expand` and
 `workspace new --collapsed`, so a script can record a workspace's open/closed state and restore it, or
@@ -111,14 +121,17 @@ glyph. The read side of `workspace icon`: feeding `icon` straight back restores 
 and `root` (the workspace's root directory — the read side of `workspace root`; omitted when unset, so a
 script can record a root, change it, and restore it).
 
-The tree object itself carries ten top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries eleven top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `sidebarVisible` (whether the
 window's sidebar is currently shown — the read side of the write-only `sidebar` command, so a script
 can restore it, e.g. a tmux-style zoom that hides the sidebar and must re-show it only when it was
 visible before), `sidebarMode` (`tree` or `flagged` — the sidebar view mode, the read side of
 `sidebar mode`), `quickVisible` (whether the window's quick terminal is currently shown — the read
-side of the write-only `quick` command, so a script can make the toggle idempotent), `zoomedSurface`
+side of the write-only `quick` command, so a script can make the toggle idempotent), `workspaceFilter`
+(whether the window's workspace focus filter currently APPLIES — the read side of the write-only
+`workspace filter` command, and the flag half of the focus state whose pinned-workspace half is each
+workspace node's `marked`), `zoomedSurface`
 (the control id of the surface terminal zoom currently fills the window with —
 `surface:<session-id>:<kind>` or `quick`; omitted when nothing is zoomed — the read side of the
 write-only `surface zoom` command, so a script can check "is it already zoomed" and
@@ -130,9 +143,10 @@ that exact pane), `dashboardFontSize` (the absolute font size in points applied 
 the mode is `untouched`), and `dashboardFontMode` (`auto` for `--auto-size`, `fixed` for `--font-size`, or
 `untouched`). `idleMs` is live
 and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible` is on
-both; `sidebarMode`, `quickVisible`, `zoomedSurface`, and the four `dashboard*` fields are `tree`-only
-(a GUI/keyboard change would leave a cached copy stale).
-All ten are read-only projections of GUI state.
+both; `sidebarMode`, `quickVisible`, `workspaceFilter`, `zoomedSurface`, and the four `dashboard*` fields
+are `tree`-only (a GUI/keyboard change would leave a cached copy stale — an involuntary jump flips
+`workspaceFilter` off with no command involved at all).
+All eleven are read-only projections of GUI state.
 
 ## events
 
@@ -239,7 +253,27 @@ bare event object (NDJSON — pipe it straight into `jq`).
   flips. Per-window and persisted; orthogonal to `sidebar mode` (the flagged flat list ignores focus).
   While a workspace is focused, `session go` navigation is scoped to that workspace's sessions (and to
   the flagged set in flagged mode); an explicit `session select` of a session outside the focused
-  workspace still auto-unfocuses to reveal it. An unknown mode errors.
+  workspace still auto-unfocuses to reveal it. An unknown mode errors (`invalid focus mode: <mode>`).
+  The focus is TWO bits behind one flag: which workspace is pinned (the node's `marked`) and whether the
+  filter applies (the tree's `workspaceFilter`), and `focused` is their conjunction. `on`/`toggle` set
+  both; `off` drops BOTH — an explicit unfocus is the user saying they are done with that workspace. (With
+  the filter already off there is no "currently focused" workspace, so an `off` on any target clears
+  whatever mark is left.) An INVOLUNTARY jump out of the focused workspace (idle auto-follow to a blocked
+  session, attention nav, a notification reveal, the dashboard, the recent-sessions popover) drops only
+  the FLAG and keeps the mark, which is what `workspace filter on` re-applies.
+- `workspace filter [on|off|toggle] [--window W]` — apply, lift, or flip the sidebar's workspace focus
+  filter WITHOUT touching which workspace is pinned; prints `ok`. This is the way BACK after an
+  involuntary jump switched the filter off, and the cheap way to peek at the whole tree and return
+  (`filter off` … `filter on`) without re-naming the workspace.
+  Window-scoped, so it takes NO `--target` — it flips the window's filter rather than acting on one
+  workspace, exactly like `sidebar expand`/`sidebar collapse`; `--window` picks the window (default the
+  frontmost), and no open window at all errors (`no open window`).
+  All three modes are idempotent (`toggle` is the default when the mode is omitted). Two refusals are
+  deliberate no-ops rather than errors: `on` with NOTHING pinned does nothing (there is nowhere to filter
+  to), and so does `on` when the pinned workspace has since been DELETED — switching the filter on while
+  it filters nothing would read as "focus restored" to a script while the whole tree is on screen.
+  Check `workspaceFilter` in the tree to see what actually happened. An unknown mode errors
+  (`invalid workspace filter mode: <mode>`; the CLI rejects it locally too).
 - `workspace color <#rrggbb|clear> [--target] [--window W]` — tint the workspace's sidebar ICON (only
   the icon; the row text keeps the theme color); returns the workspace id. `clear` resets it to the
   theme default. A malformed color errors (`invalid color (expected #rrggbb)`) and leaves the workspace
@@ -422,7 +456,7 @@ bare event object (NDJSON — pipe it straight into `jq`).
   `0.05..0.95` and persisted, and the applied (clamped) fraction is printed (and returned as `result.ratio`
   under `--json`). Errors when the session has no split. Resizing a hidden split updates the stored
   fraction; it takes effect when the split is next shown.
-- `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--pane left|right|scratch] [--pane-id TOKEN] [--target] [--window W]` —
+- `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape NAME] [--pane left|right|scratch] [--pane-id TOKEN] [--target] [--window W]` —
   set the sidebar agent-status glyph. `--blink` pulses it (for attention). `--auto-reset` clears it
   back to idle once the session is visited (use for a one-shot completion flash). `--sound` plays a
   one-shot sound when the status is set: `default` (the system alert sound) or a system sound name
@@ -436,6 +470,16 @@ bare event object (NDJSON — pipe it straight into `jq`).
   session needing attention reads at a glance; `active` stays glyph-only, and the user can turn the wash off
   (Settings ▸ Agent Status ▸ Highlight blocked and completed rows). `--color` tints the wash too.
   Use it to distinguish states beyond the fixed palette (e.g. a caller-specific blocked color).
+  `--shape` (`circle`|`square`|`triangle`|`diamond`|`capsule`|`star`) is the SECOND visual axis: it swaps
+  the glyph for that plain filled silhouette, so two states differ by outline as well as hue — the one that
+  still reads when the tint does not (color blindness, a monochrome theme, a small glyph). Per-call exactly
+  like `--color`: it rides the status, so the next `session status` WITHOUT `--shape` drops back to the
+  default. Omitting it changes nothing — the defaults stay SEMANTIC and say what is happening on their own
+  (`active` an ellipsis, `blocked` an exclamation mark, `completed` a check mark; `idle` draws no glyph at
+  all, so a shape on it has nothing to draw). There is no Settings picker and no per-status default: the
+  shape is an agent-set override, nothing else. An unknown name errors
+  (`invalid shape: <name> (circle|square|triangle|diamond|capsule|star)`) BEFORE anything is applied, so a
+  typo cannot leave the status half-changed. Read it back on `tree` as the session node's `statusShape`.
   `--pane` (`left`|`right`|`scratch`, `left`=main, `right`=split; defaults to `left` when omitted) records
   which pane set the status. It has two effects: (1) keystroke-clear becomes pane-scoped — a status set
   from a background pane survives typing in a DIFFERENT pane (so a `right`- or `scratch`-tagged block is
@@ -933,6 +977,7 @@ user-edited file read at launch — there is no control command for it.
 `invalid fit` / `invalid position` / `invalid opacity` / `invalid color` / `text too long` /
 `unsupported image (PNG or JPEG only)` / `no such image file` / `image path must not contain control characters` / `invalid background mode` (session background),
 `invalid sidebar mode` (sidebar), `invalid focus mode` (workspace focus),
+`invalid workspace filter mode: <mode>` (workspace filter — the CLI rejects it locally too),
 `no such file: <path>` / `session.markdown open requires a path` / `invalid markdown mode` (session markdown),
 `invalid color (expected #rrggbb)` (workspace color — the CLI rejects it locally too),
 `unknown SF Symbol: <name>` / `no such image file: <path>` / `unsupported icon image (svg, png, or jpeg)` (workspace icon),
@@ -946,6 +991,8 @@ user-edited file read at launch — there is no control command for it.
 cursor failures, each returned with the current anchor still in `result.events`),
 `unknown theme: <name>` (theme set), `unknown sound: <name>` (session status --sound),
 `invalid color (expected #rrggbb)` (session status --color),
+`invalid shape: <name> (circle|square|triangle|diamond|capsule|star)` (session status --shape — the CLI
+rejects it locally with `shape must be one of: circle, square, triangle, diamond, capsule, star`),
 `--pane must be left, right, or scratch` (the `--pane` value check — the `rookctl` CLI rejects a bad pane
 with this for session status/type/text, and over the raw socket `session.status` returns this same string;
 `session.type`/`session.text` over the raw socket instead return `invalid pane: <value>`). Unknown commands fail to decode and return a structured error, never a crash.
