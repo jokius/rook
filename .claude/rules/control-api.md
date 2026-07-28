@@ -65,13 +65,21 @@ paths:
   NOT add fresh validation/response logic inline in the `ControlServer` switch.
   (This is the control-channel case of the root `CLAUDE.md` "hoist host-free logic down into `rookCore`"
   module-boundary rule.)
-  **Where the app-side arm goes: NOT `ControlServer+SessionActions.swift` any more — it is FULL** (994 of
-  the 1000-line swiftlint budget), which is why the last two ports landed their `ControlActions` witnesses
-  in fresh per-family files, `ControlServer+WorkspaceCommands.swift` (`workspace.new --collapsed`,
-  `workspace.collapse`/`workspace.expand`) and `ControlServer+KeymapCommands.swift` (`keymap.list`).
-  The conformance declaration stays in `+SessionActions.swift`; an extension in any file can satisfy it.
-  Add the next arm to the matching family file (`+WindowCommands`/`+Appearance`/`+SurfaceIO`/`+WorkspaceCommands`/`+KeymapCommands`)
+  **Where the app-side arm goes: a per-family file, NOT `ControlServer+SessionActions.swift`.**
+  That file is the historical dumping ground and reached the 1000-line swiftlint budget once already,
+  which is why recent ports landed their `ControlActions` witnesses in fresh per-family files —
+  `ControlServer+WorkspaceCommands.swift`, `ControlServer+KeymapCommands.swift`,
+  `ControlServer+EventCommands.swift` — and why the `surface.zoom` family was moved out to
+  `ControlServer+SurfaceZoom.swift` (855 lines left behind; the headroom is for breathing room, not for
+  the next arm).
+  The conformance declaration stays in `+SessionActions.swift`; an extension in any file of the module
+  can satisfy it.
+  Add the next arm to the matching family file (`+WindowCommands`/`+Appearance`/`+SurfaceIO`/`+WorkspaceCommands`/`+KeymapCommands`/`+EventCommands`/`+SurfaceZoom`)
   or start a new one — do not grow `+SessionActions.swift`.
+  A NEW file needs `xcodegen generate` before it builds: the target globs the `rook/` directory, but the
+  checked-in `rook.xcodeproj` is generated, so a fresh file is invisible until it is regenerated — the
+  symptom is `type 'ControlServer' does not conform to protocol 'ControlActions'` pointing at the
+  conformance line, not at the missing file.
 - **The four-point audit is the WRITE path; a state-mutating command also owes a READ-BACK field.**
   Whenever a command SETS or MUTATES per-session state, surface that state on `ControlSessionNode` (or
   the tree top-level) so a script can query the value it just wrote: record-then-restore, read-modify-write,
@@ -1025,7 +1033,7 @@ paths:
   identical zoomed or not, and `visible` reads false for a pane behind a FLOATING overlay even though
   that pane is visually on screen — documented as a caveat on the node type and in the skill.
   Four-point keep-in-sync audit: (1) `case surfaceZoom = "surface.zoom"` + `ControlSurfaceNode`/`ControlSessionNode.surfaces`
-  + `ControlTree.zoomedSurface` in `ControlProtocol.swift`, (2) the `.surfaceZoom` arm (`setSurfaceZoom`) in `ControlServer+SessionActions.swift`
+  + `ControlTree.zoomedSurface` in `ControlProtocol.swift`, (2) the `.surfaceZoom` arm (`setSurfaceZoom`) in `ControlServer+SurfaceZoom.swift`
   + the `surfaces`/`zoomedSurface` population in `AppStore.controlTree`/`buildTree`, (3) the `surface zoom` subcommand in `rookctlKit`,
   (4) round-trip in `ControlProtocolTests` (incl. `treeRoundTripsWithZoomedSurface`/`…OmitsZoomedSurfaceWhenNil`)
   + `TerminalZoomTests` + the e2e `ControlSurfaceZoomUITests` (incl. the tree read-back and the
