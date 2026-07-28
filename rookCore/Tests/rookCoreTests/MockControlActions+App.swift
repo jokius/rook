@@ -8,6 +8,11 @@ extension MockControlActions {
         return nextTreeResponse
     }
 
+    func readEvents(_ options: ControlEventReadOptions) -> ControlResponse {
+        calls.append(.eventsRead(options))
+        return nextEventsReadResponse
+    }
+
     func font(_ target: String?, window: String?, pane: String?, action: String) -> ControlResponse {
         calls.append(.font(target: target, window: window, pane: pane, action))
         return nextFontResponse

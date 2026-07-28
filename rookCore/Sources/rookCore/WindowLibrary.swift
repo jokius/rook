@@ -93,6 +93,14 @@ public final class WindowLibrary {
     /// the `windows/` subdirectory.
     @ObservationIgnored private let directory: URL
     @ObservationIgnored private let recentClosedStore: RecentClosedStore
+    /// One bounded run-identified ring shared by every window store for this library/app lifetime.
+    @ObservationIgnored private let controlEventRing: ControlEventRing
+    /// Per-window coalescers for the structural `tree.changed` signal, so a batch mutation collapses to one.
+    @ObservationIgnored private var treeEventDebouncers: [UUID: Debouncer] = [:]
+    /// True only while `init` runs `bootstrap()`. rook has no `launchRestore` flag on `loadStore`, so this
+    /// latch IS the launch-restore suppression: every store the launch path opens/restores emits into a
+    /// dead sink, and the ring starts empty instead of replaying the whole restored tree as new sessions.
+    @ObservationIgnored private var isBootstrapping = true
 
     /// Set once the launch reopen-all has run, so the scene `.task` (which fires per window) drives
     /// it exactly once. `@ObservationIgnored`: a launch-flow latch, not view state.
@@ -123,14 +131,17 @@ public final class WindowLibrary {
 
     /// Creates the library rooted at `directory`, running migration/recovery so the resulting
     /// window set is always valid and non-empty.
-    public init(directory: URL = PersistenceStore.defaultDirectory) {
+    public init(directory: URL = PersistenceStore.defaultDirectory,
+                controlEventRing: ControlEventRing? = nil) {
         self.directory = directory
         self.recentClosedStore = RecentClosedStore(directory: directory)
+        self.controlEventRing = controlEventRing ?? ControlEventRing()
         self.stores = [:]
         self.windows = []
         self.recentClosedItems = recentClosedStore.load()
         self.frontmostWindowID = nil
         bootstrap()
+        isBootstrapping = false
     }
 
     // MARK: - Lookup
@@ -185,6 +196,25 @@ public final class WindowLibrary {
                                      fullscreen: live?.fullscreen, zoomed: live?.zoomed,
                                      minimized: live?.minimized)
         }
+    }
+
+    /// Reads the app-wide ring and maps both pages and cursor failures onto the stable control response.
+    /// A failure still carries the ring's CURRENT anchor, so a caller that decides to rebaseline can do it
+    /// from the same reply — but it has to decide, which is the whole point of failing loudly.
+    public func readEvents(_ options: ControlEventReadOptions) -> ControlResponse {
+        switch controlEventRing.read(cursor: options.cursor, kinds: options.kinds, limit: options.limit) {
+        case .batch(let batch):
+            return ControlResponse(ok: true, result: ControlResult(events: batch))
+        case .failure(let error, let anchor):
+            return ControlResponse(ok: false, result: ControlResult(events: anchor), error: error.rawValue)
+        }
+    }
+
+    /// Test seam: synchronously fires every pending per-window structural invalidation, including one
+    /// queued for a window that has just been removed from the catalog. Deliberately NOT wired to quit —
+    /// by then no consumer is left to read the ring, which does not outlive the app run anyway.
+    func flushTreeEvents() {
+        for debouncer in treeEventDebouncers.values { debouncer.flush() }
     }
 
     /// Resolve a control window target against the library's ordered window set. All known windows are
@@ -323,7 +353,7 @@ public final class WindowLibrary {
     @discardableResult
     public func newWindow(name: String? = nil) -> WindowInfo {
         let info = WindowInfo(name: name?.trimmedOrNil ?? defaultWindowName)
-        let store = makeStore(persistence: persistenceStore(for: info.id))
+        let store = makeStore(for: info.id, persistence: persistenceStore(for: info.id))
         let workspace = store.addWorkspace(name: "workspace 1")
         store.addSession(toWorkspace: workspace.id, cwd: FileManager.default.homeDirectoryForCurrentUser.path)
         windows.append(info)
@@ -345,9 +375,13 @@ public final class WindowLibrary {
         guard windows.contains(where: { $0.id == id }) else { return nil }
         if let existing = stores[id] { return existing }
         let persistence = persistenceStore(for: id)
-        let store = makeStore(persistence: persistence)
+        let store = makeStore(for: id, persistence: persistence)
         store.restore(from: persistence.load())
         stores[id] = store
+        // opening a window makes its whole tree observable for the first time. During `bootstrap()` the
+        // sink is dead, so a launch restore emits nothing — only a genuine (re)open reaches the ring.
+        store.emitAllSessionsCreated()
+        store.scheduleTreeChanged()
         saveIndex()
         return store
     }
@@ -384,7 +418,9 @@ public final class WindowLibrary {
         // cancel any queued claim for this id so a window still attaching can't re-open it after a
         // close that raced its registration (window.new immediately followed by window.close).
         pendingClaim.removeAll { $0 == id }
-        guard stores[id] != nil else { return }
+        guard let store = stores[id] else { return }
+        store.emitAllSessionsClosed()
+        store.scheduleTreeChanged()
         stores[id] = nil
         if frontmostWindowID == id { frontmostWindowID = activeWindowID }
         saveIndex()
@@ -394,7 +430,9 @@ public final class WindowLibrary {
     /// An empty/whitespace-only name is ignored. Persists the index.
     public func renameWindow(_ id: UUID, to name: String) {
         guard let trimmed = name.trimmedOrNil, let index = windows.firstIndex(where: { $0.id == id }) else { return }
+        guard windows[index].name != trimmed else { return } // a same-value rename is not a tree change
         windows[index].name = trimmed
+        scheduleTreeChanged(for: id)
         saveIndex()
     }
 
@@ -407,6 +445,8 @@ public final class WindowLibrary {
     /// `frontmostWindowID` if it pointed at the removed window.
     public func removeWindow(_ id: UUID) {
         guard canRemoveWindow, let index = windows.firstIndex(where: { $0.id == id }) else { return }
+        stores[id]?.emitAllSessionsClosed()
+        scheduleTreeChanged(for: id) // fires even for a CLOSED window: the window itself leaves the catalog
         // cancel the store's pending debounced save BEFORE deleting the file — a save scheduled by a
         // just-before-delete selectSession/setFontSize captures the store weakly and fires ~0.3 s out;
         // since the delete-path willClose teardown skips its own save() (the window is no longer open),
@@ -576,7 +616,7 @@ public final class WindowLibrary {
         guard !snapshot.workspaces.isEmpty else { return false }
         // first window, so `defaultWindowName` yields "window 1" (windows is empty at this point).
         let info = WindowInfo(name: defaultWindowName)
-        let store = makeStore(persistence: persistenceStore(for: info.id))
+        let store = makeStore(for: info.id, persistence: persistenceStore(for: info.id))
         store.restore(from: snapshot)
         store.save()
         windows = [info]
@@ -598,9 +638,36 @@ public final class WindowLibrary {
         PersistenceStore(directory: windowsDirectory, fileName: "\(id.uuidString).json")
     }
 
-    private func makeStore(persistence: PersistenceStore) -> AppStore {
-        AppStore(persistence: persistence, recentClosedStore: recentClosedStore) { [weak self] in
-            self?.refreshRecentClosedItems()
+    private func makeStore(for windowID: UUID, persistence: PersistenceStore) -> AppStore {
+        AppStore(
+            persistence: persistence,
+            recentClosedStore: recentClosedStore,
+            recentClosedDidChange: { [weak self] in self?.refreshRecentClosedItems() },
+            controlEventSink: { [weak self] draft in
+                guard let self, !self.isBootstrapping else { return }
+                // the store is window-agnostic; the window id is stamped here, on its way into the ring.
+                if draft.kind == .treeChanged {
+                    self.scheduleTreeChanged(for: windowID)
+                    return
+                }
+                self.controlEventRing.append(ControlEventDraft(
+                    kind: draft.kind,
+                    window: windowID.uuidString,
+                    workspace: draft.workspace,
+                    session: draft.session,
+                    payload: draft.payload
+                ))
+            }
+        )
+    }
+
+    /// Coalesces this window's structural invalidations into one `tree.changed` ~100 ms after the burst
+    /// settles: a multi-session move or a workspace reopen is ONE tree change to a watcher, not N.
+    private func scheduleTreeChanged(for windowID: UUID) {
+        let debouncer = treeEventDebouncers[windowID] ?? Debouncer()
+        treeEventDebouncers[windowID] = debouncer
+        debouncer.schedule(after: 0.1) { [weak self] in
+            self?.controlEventRing.append(ControlEventDraft(kind: .treeChanged, window: windowID.uuidString))
         }
     }
 

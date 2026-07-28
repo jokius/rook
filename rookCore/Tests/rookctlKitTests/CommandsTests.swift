@@ -28,6 +28,15 @@ struct CommandsTests {
         #expect(try request(["tree"]) == ControlRequest(cmd: .tree))
     }
 
+    /// `events` is registered on the root and is NOT a `RequestCommand` — it owns a poll loop rather than
+    /// a single round trip, so it is reached here instead of through the `request(_:)` helper.
+    @Test func eventsIsRegisteredAsAPollingSubcommand() throws {
+        let parsed = try Rookctl.parseAsRoot(["events", "--kind", "status"])
+        let events = try #require(parsed as? Events)
+        #expect(try events.makeInitialRequest() == ControlRequest(cmd: .eventsRead,
+                                                                 args: ControlArgs(kinds: ["status"])))
+    }
+
     @Test func workspaceNewWithName() throws {
         #expect(try request(["workspace", "new", "Work"]) == ControlRequest(cmd: .workspaceNew, args: ControlArgs(name: "Work")))
     }

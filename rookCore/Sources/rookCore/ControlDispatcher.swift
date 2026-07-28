@@ -6,6 +6,9 @@ import Foundation
 @MainActor
 public protocol ControlActions {
     func controlTree(window: String?) -> ControlResponse
+    /// Reads one page from the app-run event ring. The dispatcher owns cursor/kind/limit validation;
+    /// the host only reaches the ring, which is app-wide (not per-window), so no target resolution.
+    func readEvents(_ options: ControlEventReadOptions) -> ControlResponse
     func createSession(_ options: ControlSessionCreateOptions) -> ControlResponse
     func duplicateSession(_ target: String?, window: String?) -> ControlResponse
     func selectSession(_ target: String?, window: String?) -> ControlResponse
@@ -170,6 +173,8 @@ public struct ControlDispatcher {
         switch request.cmd {
         case .tree:
             return actions.controlTree(window: request.args?.window)
+        case .eventsRead:
+            return dispatchEventsRead(request)
         case .sessionNew, .sessionDuplicate, .sessionSelect, .sessionGo, .sessionClose, .sessionRename,
                 .sessionReveal, .sessionMove, .sessionFlag, .sessionSeen, .sessionStatus, .sessionAgent:
             return dispatchSessionCommand(request)
@@ -199,6 +204,46 @@ public struct ControlDispatcher {
             // UI-test-only seam handled app-side in `ControlServer` (needs AppKit + `ContentView.isUITestLaunch`).
             return nil
         }
+    }
+
+    /// Validates and normalizes an `events.read` request. `--run`/`--after` are a PAIR — one without the
+    /// other is a caller bug, not a bootstrap, so it is rejected rather than silently re-anchoring the
+    /// consumer at the tail (which would drop everything since its last page without saying so).
+    private func dispatchEventsRead(_ request: ControlRequest) -> ControlResponse {
+        let args = request.args
+        let cursor: ControlEventCursor?
+        switch (args?.run, args?.after) {
+        case (nil, nil):
+            cursor = nil
+        case (.some, nil), (nil, .some):
+            return ControlResponse(ok: false, error: ControlEventRequestError.cursorPair)
+        case let (.some(runText), .some(afterText)):
+            guard let run = UUID(uuidString: runText) else {
+                return ControlResponse(ok: false, error: ControlEventRequestError.invalidRun)
+            }
+            guard let after = UInt64(afterText) else {
+                return ControlResponse(ok: false, error: ControlEventRequestError.invalidCursor)
+            }
+            cursor = ControlEventCursor(run: run, after: after)
+        }
+
+        let limit = args?.limit ?? 100
+        guard (1...1_000).contains(limit) else {
+            return ControlResponse(ok: false, error: ControlEventRequestError.invalidLimit)
+        }
+
+        var parsedKinds = Set<ControlEventKind>()
+        for field in args?.kinds ?? [] {
+            for component in field.split(separator: ",", omittingEmptySubsequences: false) {
+                let rawKind = component.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let kind = ControlEventKind(rawValue: rawKind) else {
+                    return ControlResponse(ok: false, error: ControlEventRequestError.invalidKind(rawKind))
+                }
+                parsedKinds.insert(kind)
+            }
+        }
+        let kinds: Set<ControlEventKind>? = parsedKinds.isEmpty ? nil : parsedKinds
+        return actions.readEvents(ControlEventReadOptions(cursor: cursor, kinds: kinds, limit: limit))
     }
 
     private func dispatchSessionCommand(_ request: ControlRequest) -> ControlResponse {

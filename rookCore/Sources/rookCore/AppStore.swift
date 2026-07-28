@@ -110,6 +110,9 @@ public final class AppStore {
     @ObservationIgnored let persistence: PersistenceStore
     @ObservationIgnored let recentClosedStore: RecentClosedStore?
     @ObservationIgnored var recentClosedDidChange: (() -> Void)?
+    /// The control-event seam: `WindowLibrary` supplies a closure that stamps this store's window id onto
+    /// each draft and appends it to the app-wide ring. nil in a standalone store — emits are then no-ops.
+    @ObservationIgnored let controlEventSink: ((ControlEventDraft) -> Void)?
 
     /// Coalesces the high-frequency selection/font saves: a click-storm or a font ramp schedules one
     /// write ~0.3 s after the burst settles instead of hitting disk per event. `save()` cancels any
@@ -159,12 +162,14 @@ public final class AppStore {
     public init(workspaces: [Workspace] = [], selectedSessionID: UUID? = nil,
                 persistence: PersistenceStore = PersistenceStore(),
                 recentClosedStore: RecentClosedStore? = nil,
-                recentClosedDidChange: (() -> Void)? = nil) {
+                recentClosedDidChange: (() -> Void)? = nil,
+                controlEventSink: ((ControlEventDraft) -> Void)? = nil) {
         self.workspaces = workspaces
         self.selectedSessionID = selectedSessionID
         self.persistence = persistence
         self.recentClosedStore = recentClosedStore
         self.recentClosedDidChange = recentClosedDidChange
+        self.controlEventSink = controlEventSink
     }
 
     /// The currently selected session, derived from `selectedSessionID`.
@@ -274,6 +279,7 @@ public final class AppStore {
         let workspace = Workspace(name: name, isExpanded: !collapsed)
         workspaces.append(workspace)
         if clearFocus { focusedWorkspaceID = nil }
+        scheduleTreeChanged()
         save()
         return workspace
     }
@@ -320,6 +326,7 @@ public final class AppStore {
             autoUnfocusIfOutsideFocus(session.id) // a control-driven add into another workspace must reveal it
             recordRecency()
         }
+        emitSessionCreated(session, workspace: workspaceID)
         save()
         return session
     }
@@ -379,10 +386,11 @@ public final class AppStore {
     }
 
     /// Reset a session's agent indicator to idle when it is marked `autoReset` (the one-time `completed`
-    /// flash). No-op for nil / an unknown id / a non-autoReset indicator.
+    /// flash). No-op for nil / an unknown id / a non-autoReset indicator. Routed through `setAgentIndicator`
+    /// (not a direct assign) so the clear is a real status transition — a watcher must see the flash END.
     private func clearAutoResetIndicator(_ id: UUID?) {
         guard let id, let session = session(withID: id), session.agentIndicator.autoReset else { return }
-        session.agentIndicator = AgentIndicator()
+        setAgentIndicator(AgentIndicator(), forSession: id)
     }
 
     /// Clears a session's unseen-notification badge — it's been looked at. No-op for an unknown id.
@@ -399,6 +407,7 @@ public final class AppStore {
     /// triggers a `save()`.
     public func setAgentIndicator(_ indicator: AgentIndicator, forSession id: UUID) {
         guard let session = session(withID: id) else { return }
+        let previous = session.agentIndicator
         let wasBlocked = session.agentIndicator.status == .blocked
         var indicator = indicator
         // normalize a `.right` tag to `.left` when the session has NO split. A promoted survivor's
@@ -422,6 +431,9 @@ public final class AppStore {
         // this session, so it can pull the user here once more; a re-asserted blocked-over-blocked is not a
         // new episode and stays muted (see Session.autoFollowConsumed).
         if !wasBlocked, indicator.status == .blocked { session.autoFollowConsumed = false }
+        // compare the NORMALIZED indicator (post `.right`→`.left`), else a re-asserted `--pane right` on a
+        // splitless session emits a spurious status event on every call.
+        if previous != indicator { emitStatusChanged(indicator, for: session, id: id) }
     }
 
     /// Pushes the current selection to the front of the recency stack (the Ctrl-Tab order).
@@ -438,15 +450,21 @@ public final class AppStore {
     /// `customName` to nil, reverting the row to the auto basename.
     public func renameSession(_ sessionID: UUID, to name: String) {
         guard let session = session(withID: sessionID) else { return }
-        session.customName = name.trimmedOrNil
+        let renamed = name.trimmedOrNil
+        guard session.customName != renamed else { return } // a same-value rename is not a tree change
+        session.customName = renamed
+        scheduleTreeChanged()
         save()
     }
 
     /// Renames a workspace. An empty (or whitespace-only) name is ignored —
     /// workspaces have no auto fallback, so a blank name is rejected.
     public func renameWorkspace(_ workspaceID: UUID, to name: String) {
-        guard let trimmed = name.trimmedOrNil, let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return }
+        guard let trimmed = name.trimmedOrNil,
+              let index = workspaces.firstIndex(where: { $0.id == workspaceID }),
+              workspaces[index].name != trimmed else { return } // blank and same-value names are no-ops
         workspaces[index].name = trimmed
+        scheduleTreeChanged()
         save()
     }
 
@@ -458,6 +476,7 @@ public final class AppStore {
         let wasActive = selectedSessionID == sessionID
         let workspace = workspaces[location.workspaceIndex]
         let removed = workspaces[location.workspaceIndex].sessions.remove(at: location.sessionIndex)
+        emitSessionClosed(removed, workspace: workspace.id)
         recordRecentClosedSession(removed, workspaceID: workspace.id, workspaceName: workspace.name,
                                   workspaceIndex: location.workspaceIndex, sessionIndex: location.sessionIndex)
         removed.surface?.teardown()
@@ -492,6 +511,7 @@ public final class AppStore {
         let workspace = workspaces[index]
         let removingActive = selectedSessionID.map { id in workspace.sessions.contains { $0.id == id } } ?? false
         recordRecentClosedWorkspace(workspace, selectedSessionID: removingActive ? selectedSessionID : nil)
+        emitWorkspaceClosed(workspace)
         for session in workspace.sessions {
             session.surface?.teardown()
             session.splitSurface?.teardown()
@@ -528,12 +548,14 @@ public final class AppStore {
     public func moveSession(_ sessionID: UUID, toWorkspace targetID: UUID, at index: Int? = nil) {
         guard let source = location(ofSession: sessionID) else { return }
         guard let targetIndex = workspaces.firstIndex(where: { $0.id == targetID }) else { return }
+        let before = workspaces.map { $0.sessions.map(\.id) }
 
         let session = workspaces[source.workspaceIndex].sessions.remove(at: source.sessionIndex)
         let destination = max(0, min(index ?? workspaces[targetIndex].sessions.count, workspaces[targetIndex].sessions.count))
         workspaces[targetIndex].sessions.insert(session, at: destination)
         if sessionID == selectedSessionID { autoUnfocusIfOutsideFocus(sessionID) }
         pruneSidebarSelection()
+        if before != workspaces.map({ $0.sessions.map(\.id) }) { scheduleTreeChanged() }
         save()
     }
 
@@ -545,6 +567,7 @@ public final class AppStore {
     @discardableResult
     public func moveSessions(_ sessionIDs: [UUID], toWorkspace targetID: UUID, at index: Int? = nil) -> Int {
         guard workspaces.contains(where: { $0.id == targetID }) else { return 0 }
+        let before = workspaces.map { $0.sessions.map(\.id) }
         var movingIDs = orderedSessionIDs(matching: Set(sessionIDs))
         // A one-element batch is wire-equivalent to `moveSession`: even within the destination
         // workspace it moves to the end. Multi-selection context moves leave existing members in place.
@@ -567,6 +590,7 @@ public final class AppStore {
         workspaces[targetIndex].sessions.insert(contentsOf: moving, at: destination)
         if let selectedSessionID, movingIDs.contains(selectedSessionID) { autoUnfocusIfOutsideFocus(selectedSessionID) }
         pruneSidebarSelection()
+        if before != workspaces.map({ $0.sessions.map(\.id) }) { scheduleTreeChanged() }
         save()
         return moving.count
     }
@@ -586,9 +610,11 @@ public final class AppStore {
     /// the move's removal (clamped to bounds). No-op on an unknown id.
     public func moveWorkspace(_ id: UUID, at index: Int) {
         guard let current = workspaces.firstIndex(where: { $0.id == id }) else { return }
+        let before = workspaces.map(\.id)
         let workspace = workspaces.remove(at: current)
         let dest = max(0, min(index, workspaces.count))
         workspaces.insert(workspace, at: dest)
+        if before != workspaces.map(\.id) { scheduleTreeChanged() }
         save()
     }
 
