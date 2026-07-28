@@ -161,6 +161,23 @@ final class KeymapUITests: XCTestCase {
         }, "the custom leader ctrl+a>g should run its command and touch the marker file")
     }
 
+    // a custom command bound to an ARROW chord fires: bind ⌘⇧← to `touch <file>`, focus the terminal,
+    // press it, assert the file appears. Arrows only became chord keys when they joined
+    // `bindableNamedKeys` — before that this line died as an `invalid chord` and the command silently
+    // fell back to palette-only, so the keypress did nothing. The host-free tests cover the PARSER; this
+    // covers DELIVERY, which is a separate table: `CustomCommandRunner` spells the pressed key through
+    // `Keybind.namedKey(forKeyCode:)`, so an arrow the parser accepts but the runtime can't name is a
+    // command that parses and never fires.
+    func testCustomCommandArrowChordFires() throws {
+        let marker = markerDir.appendingPathComponent("arrow")
+        seedKeymap("command \"Touch Left\" cmd+shift+left touch '\(marker.path)'\n")
+        app.launchForUITest()
+        focusTerminal()
+
+        XCTAssertTrue(chordFiresMarker(marker) { app.typeKey(.leftArrow, modifierFlags: [.command, .shift]) },
+                      "a custom command bound to cmd+shift+left should fire when ⌘⇧← is pressed")
+    }
+
     // "Reload Keymap" re-reads keymap.conf: launch with ⌘⇧J bound to touch fileC1, then rewrite the
     // file so ⌘⇧J touches fileC2 instead, invoke Reload Keymap (File menu), and assert the POST-reload
     // chord touches fileC2 — proving the reload picked up the rewritten file.
@@ -188,6 +205,45 @@ final class KeymapUITests: XCTestCase {
         focusTerminal()
         XCTAssertTrue(chordFiresMarker(after) { app.typeKey("j", modifierFlags: [.command, .shift]) },
                       "after Reload Keymap the rewritten binding should touch the second marker")
+    }
+
+    // ⌘W must come BACK to Close Session after a keymap reload moved close_session away and back.
+    // close_session is the one built-in default with a stock competitor — AppKit's File ▸ Close
+    // (`performClose:`) — and SwiftUI resolves that key-equivalent collision by unbinding OUR item, so a
+    // menu built while close_session sat on ⌘E leaves ⌘W closing the whole WINDOW, and restoring the
+    // binding never reclaimed it (AppDelegate+CloseChord now asserts the split from AppKit instead).
+    //
+    // Three sessions so both legs are observable as a row-count delta, and so the ⌘W leg has a survivor
+    // to leave behind: a window close would take EVERY row with it, which is what tells the two apart.
+    // No sheet assertion — close confirmation is suppressed under an XCUITest launch
+    // (`ContentView.shouldBypassCloseConfirmation`), so a dialog check would assert nothing here.
+    func testCloseSessionChordReclaimsCommandWAfterKeymapReload() throws {
+        seedKeymap("map cmd+e close_session\n")
+        app.launchForUITest()
+        XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 20), "seeded session should exist")
+        XCTAssertTrue(poll { self.sessionRowCount() == 1 }, "should start with the one seeded session")
+        app.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(poll { self.sessionRowCount() == 2 }, "⌘N should create a second session")
+        app.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(poll { self.sessionRowCount() == 3 }, "⌘N should create a third session")
+
+        // positive control: with close_session mapped to ⌘E, that chord closes a session. Without it the
+        // ⌘W leg below could pass on a keymap that was never applied at all — ⌘W is the shipped default.
+        reloadKeymapFromMenu()
+        app.typeKey("e", modifierFlags: .command)
+        XCTAssertTrue(poll { self.sessionRowCount() == 2 }, "the override chord ⌘E should close a session")
+
+        // hand close_session its default chord back and reload: ⌘W must close a SESSION again, not the
+        // window that the stock File ▸ Close took the chord for while close_session was away.
+        seedKeymap("map cmd+w close_session\n")
+        reloadKeymapFromMenu()
+        app.typeKey("w", modifierFlags: .command)
+        // the row count IS the whole assertion: if the stock File ▸ Close still owned ⌘W, close_session
+        // would never run and the count would stay at 2. Asserting the WINDOW survived would be
+        // permanently green — the stock close routes through `windowShouldClose`, which refuses while the
+        // window still has sessions, so the window count cannot move either way.
+        XCTAssertTrue(poll { self.sessionRowCount() == 1 },
+                      "after the reload ⌘W should close the active session, not leave the chord with the stock File ▸ Close")
     }
 
     // the Key Mapping settings tab renders the parse diagnostics and its Reload button re-reads the
@@ -293,6 +349,35 @@ final class KeymapUITests: XCTestCase {
             if poll({ FileManager.default.fileExists(atPath: marker.path) }, timeout: perAttempt) { return true }
         }
         return false
+    }
+
+    /// Invoke File ▸ Reload Keymap, then re-open the File menu once and dismiss it with Esc.
+    ///
+    /// That second open is a SYNC GATE, not decoration. XCUITest events reach the app in order, so the
+    /// menu coming back up proves the app already handled the Reload click — and with it the
+    /// `.rookKeymapChanged` reconcile that re-asserts the ⌘W split. A chord pressed after this therefore
+    /// cannot race the reload; it also gives the menu-tracking leg of the same reconcile its turn.
+    private func reloadKeymapFromMenu() {
+        openFileMenu().click()
+        openFileMenu()
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
+    /// Open the File menu and return its Reload Keymap item once it is in the AX tree, RETRYING the
+    /// menu-bar click each tick — a click that lands while a just-dismissed menu is still tracking is
+    /// silently swallowed, so the retry (the `settingsControl` idiom) is what keeps this non-flaky.
+    @discardableResult
+    private func openFileMenu(timeout: TimeInterval = 10,
+                              file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
+        let reload = app.menuItems["Reload Keymap"]
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if reload.exists { return reload }
+            app.menuBars.menuBarItems["File"].click()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        XCTFail("the File menu never offered Reload Keymap", file: file, line: line)
+        return reload
     }
 
     private func openPalette(_ menuTitle: String) {

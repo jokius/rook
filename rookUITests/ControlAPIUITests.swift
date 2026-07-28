@@ -1421,6 +1421,96 @@ final class ControlAPIUITests: ControlAPITestCase {
         XCTAssertGreaterThanOrEqual(count, 1, "a broken keymap line should yield at least one diagnostic: \(response)")
     }
 
+    // keymap.list answers with BOTH halves — the host-free model projection (path, every built-in with its
+    // resolved chord, the custom commands, the diagnostics) and the LIVE `NSApp.mainMenu` key equivalents —
+    // and the point of the command is that a row in each half compares as a STRING. That comparison is the
+    // only coverage `chordSyntax` (app-side, no unit-test bundle to reach it) has: it has to render an
+    // AppKit key equivalent in the model's kitty syntax, in the model's modifier order, or the two lists can
+    // never agree and the diagnostic quietly reports a mismatch on every row.
+    func testKeymapListReportsResolvedChordsAndLiveMenu() throws {
+        let keymap = try keymapListPayload()
+        XCTAssertTrue((keymap["path"] as? String ?? "").hasSuffix("keymap.conf"), "keymap.list should name the file it read: \(keymap)")
+        XCTAssertNotNil(keymap["commands"] as? [[String: Any]], "keymap.list should carry a commands array: \(keymap)")
+        XCTAssertEqual((keymap["diagnostics"] as? [[String: Any]])?.count, 0, "the all-comment starter keymap parses clean: \(keymap)")
+
+        let actions = try XCTUnwrap(keymap["actions"] as? [[String: Any]], "keymap.list should list the built-in actions: \(keymap)")
+        // a keyless built-in is LISTED with no chord rather than dropped, so `actions` is the full action set.
+        let keyless = try XCTUnwrap(actionRow(actions, "rename_session"), "the keyless rename_session should still be listed: \(actions)")
+        XCTAssertNil(keyless["chord"], "a keyless action carries no chord: \(keyless)")
+
+        let menu = try XCTUnwrap(keymap["menu"] as? [[String: Any]], "keymap.list should carry the live menu half: \(keymap)")
+
+        // anchor 1 — close_session/⌘W: a plain cmd+letter, and the one chord the app asserts onto its menu
+        // item by hand (AppDelegate+CloseChord), so the two halves must render it identically.
+        let closeChord = try XCTUnwrap(actionRow(actions, "close_session")?["chord"] as? String, "close_session should resolve a chord: \(actions)")
+        XCTAssertEqual(closeChord, "cmd+w", "close_session ships on ⌘W")
+        XCTAssertNil(actionRow(actions, "close_session")?["overridden"], "nothing is overridden on the starter keymap: \(actions)")
+        let closeItem = try XCTUnwrap(menuRow(menu, "Close Session"), "the File menu should carry rook's Close Session item: \(menu)")
+        XCTAssertEqual(closeItem["chord"] as? String, closeChord, "the menu half must render the model half's chord verbatim: \(closeItem)")
+        XCTAssertEqual(closeItem["menu"] as? String, "File", "a menu row is attributed to its top-level menu: \(closeItem)")
+        XCTAssertEqual(closeItem["selector"] as? String, "menuAction:", "Close Session is rook's own SwiftUI item, not a stock AppKit competitor: \(closeItem)")
+
+        // anchor 2 — new_workspace/⌘⇧N: covers the shift leg. AppKit may hand the item either ("n", ⌘⇧) or
+        // the SHIFTED character ("N", ⌘); chordSyntax has to fold both to the same `cmd+shift+n` the grammar
+        // uses, so an un-lowercased key (`cmd+N`) or a dropped implied shift can never equal the model row.
+        let workspaceChord = try XCTUnwrap(actionRow(actions, "new_workspace")?["chord"] as? String, "new_workspace should resolve a chord: \(actions)")
+        XCTAssertEqual(workspaceChord, "cmd+shift+n", "new_workspace ships on ⌘⇧N")
+        let workspaceItem = try XCTUnwrap(menuRow(menu, "New Workspace"), "the File menu should carry New Workspace: \(menu)")
+        XCTAssertEqual(workspaceItem["chord"] as? String, workspaceChord, "the menu half must fold the shifted key back to the grammar's base key: \(workspaceItem)")
+
+        // anchor 3 — previous_session/⌥⌘↑: the arrow leg, and the reason `namedKey(forKeyEquivalent:)` exists.
+        // AppKit spells an arrow as a 0xF700 private-use scalar, which without the translation renders as an
+        // invisible key (the `cmd+opt+` of the commit message) that could never equal `cmd+opt+up`.
+        // Compared as a SUFFIX rather than equality on purpose: a function-key equivalent may legitimately
+        // carry the globe/fn modifier, which chordSyntax reports (it has no keymap spelling) by PREPENDING
+        // `fn+` — so the model chord is the tail either way, and asserting equality would be a coin flip on
+        // an AppKit detail this test is not about.
+        let prevChord = try XCTUnwrap(actionRow(actions, "previous_session")?["chord"] as? String, "previous_session should resolve a chord: \(actions)")
+        XCTAssertEqual(prevChord, "cmd+opt+up", "previous_session ships on ⌥⌘↑")
+        let prevMenuChord = try XCTUnwrap(menuRow(menu, "Previous Session")?["chord"] as? String, "the Navigate menu should carry Previous Session: \(menu)")
+        XCTAssertTrue(prevMenuChord.hasSuffix(prevChord), "the menu half must name the arrow key, not its raw scalar: got \(prevMenuChord), model says \(prevChord)")
+    }
+
+    // a seeded keymap.conf reads back through the model half: a `map` line that MOVES an action reports
+    // `overridden`, a redundant one that restates the action's own default does NOT (the flag compares
+    // CHORDS, not the presence of a map line), and a broken line reports as a diagnostic carrying its
+    // 1-based file line plus the offending text.
+    func testKeymapListReportsOverridesAndDiagnostics() throws {
+        try relaunch(withKeymap: "# seeded by the test\nmap cmd+e close_session\nmap cmd+n new_session\nbogus verb here\n")
+        let keymap = try keymapListPayload()
+        let actions = try XCTUnwrap(keymap["actions"] as? [[String: Any]], "keymap.list should list the built-in actions: \(keymap)")
+
+        let close = try XCTUnwrap(actionRow(actions, "close_session"), "close_session should be listed: \(actions)")
+        XCTAssertEqual(close["chord"] as? String, "cmd+e", "the map line should move close_session off its ⌘W default: \(close)")
+        XCTAssertEqual(close["overridden"] as? Bool, true, "a moved action reports overridden: \(close)")
+
+        let new = try XCTUnwrap(actionRow(actions, "new_session"), "new_session should be listed: \(actions)")
+        XCTAssertEqual(new["chord"] as? String, "cmd+n", "the redundant map leaves new_session on its default: \(new)")
+        XCTAssertNil(new["overridden"], "a map line restating the default is not an override: \(new)")
+
+        let diagnostics = try XCTUnwrap(keymap["diagnostics"] as? [[String: Any]], "keymap.list should carry the diagnostics: \(keymap)")
+        let broken = try XCTUnwrap(diagnostics.first { $0["line"] as? Int == 4 }, "the broken line 4 should be diagnosed by line number: \(diagnostics)")
+        XCTAssertTrue((broken["message"] as? String ?? "").contains("bogus"), "the diagnostic should name the offending verb: \(broken)")
+    }
+
+    /// Send `keymap.list` and return `result.keymap`, asserting the response shape.
+    private func keymapListPayload() throws -> [String: Any] {
+        let response = try sendCommand(#"{"cmd":"keymap.list"}"#)
+        XCTAssertEqual(response["ok"] as? Bool, true, "keymap.list should succeed: \(response)")
+        let result = try XCTUnwrap(response["result"] as? [String: Any], "keymap.list should carry a result: \(response)")
+        return try XCTUnwrap(result["keymap"] as? [String: Any], "result should carry a keymap payload: \(response)")
+    }
+
+    /// The `actions` row for a built-in's `keymap.conf` name, or nil when it isn't listed.
+    private func actionRow(_ actions: [[String: Any]], _ name: String) -> [String: Any]? {
+        actions.first { $0["action"] as? String == name }
+    }
+
+    /// The `menu` row for a menu item title, or nil when no live item carries that title with a key equivalent.
+    private func menuRow(_ menu: [[String: Any]], _ title: String) -> [String: Any]? {
+        menu.first { $0["title"] as? String == title }
+    }
+
     // MARK: - Config
 
     // config.reload re-reads the rook-scoped ghostty.conf and returns the config-diagnostic count.

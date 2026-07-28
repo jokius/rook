@@ -441,6 +441,151 @@ final class MultiWindowUITests: XCTestCase {
         XCTAssertTrue(waitForCount(quick, equals: 0, timeout: 10), "the quick terminal should hide")
     }
 
+    // the inline rename is scoped to ONE window: with two windows open, File ▸ Rename Session opens an
+    // edit field in the frontmost window's sidebar only. Before the scoping fix both `renameActiveSession`
+    // and the sidebar Coordinator used a nil notification object, so EVERY open window's sidebar started an
+    // edit — leaving an editor nobody opened plus an unbalanced `suppressAutoFollow` in each of them.
+    // The two-row precondition is load-bearing: it proves BOTH windows' sidebars are in the accessibility
+    // tree, so "exactly one editor" cannot pass vacuously because the second window was never observable.
+    func testInlineRenameOpensAnEditorInOnlyOneWindow() throws {
+        try seedTwoWindowsWithKnownSessions()
+        launch()
+
+        XCTAssertTrue(pollWindowCount(atLeast: 2, timeout: 30), "two windows should open, got \(app.windows.count)")
+        XCTAssertTrue(pollIndexOpenState([windowAID: true, windowBID: true], timeout: 10), "both windows should be open")
+
+        // precondition: each window contributes its own seeded session row, so an editor opened in EITHER
+        // window is visible to the assertions below (a rename swaps that row's identifier to `edit-field`).
+        let rows = app.staticTexts.matching(identifier: "session-row")
+        XCTAssertTrue(waitForCount(rows, equals: 2, timeout: 30),
+                      "both windows' sidebars should expose their seeded session row, got \(rows.count)")
+
+        // rename the frontmost window's active session from the menu — the palette and the keymap action
+        // post the SAME notification, so the menu covers all three callers.
+        app.menuBars.menuBarItems["File"].click()
+        let rename = app.menuItems["Rename Session"]
+        XCTAssertTrue(rename.waitForExistence(timeout: 5), "the File menu should offer Rename Session")
+        rename.click()
+
+        let editors = app.descendants(matching: .any).matching(identifier: "edit-field")
+        XCTAssertTrue(editors.firstMatch.waitForExistence(timeout: 10), "the rename should open an inline editor")
+        // both windows' coordinators observe the same notification NAME, and with the nil object both
+        // started their edit in the same runloop batch — so sample the count for a couple of seconds
+        // instead of reading it once, which would race the second editor rather than catch it.
+        XCTAssertEqual(maxCount(editors, over: 2), 1, "the rename must open an inline editor in exactly ONE window")
+    }
+
+    // `focusSplitPane` gates on a quick terminal in the SESSION's window, not the frontmost one.
+    //
+    // Direction under test: the quick terminal is up in window B (which owns the session) while window A is
+    // frontmost, and `session.focus --pane right` re-asserts the pane B ALREADY has focused. The frontmost
+    // check saw window A (no quick terminal), so it moved first responder onto the pane BEHIND B's quick
+    // terminal, stealing the keyboard from the cover that owns it; the session-scoped check leaves it alone.
+    //
+    // Re-asserting the ALREADY-focused pane is what makes this observable: `splitFocused` does not change,
+    // so the deck's own `TerminalView.focusIfNeeded` (which grabs first responder whenever a pane's
+    // `isActive` flips) cannot fire, and `focusSplitPane` is the only thing left that can move first
+    // responder. The oracle is therefore real keystrokes (`typeText` reaches whatever holds first
+    // responder) read back off both buffers — `splitFocused` itself proves nothing here, since
+    // `setSplitFocus` writes it BEFORE calling `focusSplitPane` and it is set on both code paths.
+    func testSessionFocusLeavesTheOwningWindowsQuickTerminalFocused() throws {
+        try seedTwoWindowsWithKnownSessions()
+        launch()
+
+        XCTAssertTrue(pollWindowCount(atLeast: 2, timeout: 30), "two windows should open, got \(app.windows.count)")
+        XCTAssertTrue(pollIndexOpenState([windowAID: true, windowBID: true], timeout: 10), "both windows should be open")
+        let bSession = try XCTUnwrap(sessionByWindow[windowBID], "window B's seeded session id")
+
+        // raise B and split its (selected) session: a genuinely new split opens focused on the RIGHT pane.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"window.select","target":"\#(windowBID.uuidString)"}"#)["ok"] as? Bool, true,
+                       "selecting window B should succeed")
+        let split = try sendCommand(
+            #"{"cmd":"session.split","target":"\#(bSession.uuidString)","args":{"mode":"on","window":"\#(windowBID.uuidString)"}}"#)
+        XCTAssertEqual(split["ok"] as? Bool, true, "splitting window B's session should succeed: \(split)")
+
+        // positive control #1: keystrokes land in the split's right pane, so the pane read works AND the
+        // right pane is the focused one (which is what makes the later re-assert a no-op flip).
+        XCTAssertTrue(try typeUntilVisible("919191") { try self.paneText(session: bSession, window: self.windowBID, pane: "right") },
+                      "the freshly opened split's right pane should hold first responder in window B")
+
+        // raise B's quick terminal — it is a window-level cover and takes first responder from the pane.
+        let shown = try sendCommand(#"{"cmd":"quick","args":{"mode":"show"}}"#)
+        XCTAssertEqual(shown["ok"] as? Bool, true, "quick show should succeed: \(shown)")
+        let quick = app.descendants(matching: .any).matching(identifier: "quick-terminal")
+        XCTAssertTrue(quick.firstMatch.waitForExistence(timeout: 10), "window B's quick terminal should appear")
+
+        // positive control #2: the quick terminal now owns first responder in window B.
+        XCTAssertTrue(try typeUntilVisible("929292") { try self.quickText() },
+                      "window B's quick terminal should hold first responder while it is up")
+
+        // make window A frontmost. B keeps its quick terminal up — visibility is per-window state.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"window.select","target":"\#(windowAID.uuidString)"}"#)["ok"] as? Bool, true,
+                       "selecting window A should succeed")
+        XCTAssertEqual(quick.count, 1, "window B's quick terminal stays up while window A is frontmost, got \(quick.count)")
+
+        // the command under test: the frontmost window (A) has no quick terminal, the session's window (B)
+        // does. Asking the wrong window moves first responder onto the pane under B's cover.
+        let focused = try sendCommand(
+            #"{"cmd":"session.focus","target":"\#(bSession.uuidString)","args":{"pane":"right","window":"\#(windowBID.uuidString)"}}"#)
+        XCTAssertEqual(focused["ok"] as? Bool, true, "session.focus --pane right should succeed: \(focused)")
+
+        // back to B and type: the cover must still be the one receiving keystrokes.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"window.select","target":"\#(windowBID.uuidString)"}"#)["ok"] as? Bool, true,
+                       "re-selecting window B should succeed")
+        // the positive read IS the assertion: the marker reaching the quick terminal's buffer proves the
+        // cover still holds first responder. Asserting the pane behind it stayed clean would be flaky
+        // rather than stricter — `typeUntilVisible` retypes up to three times, so a first attempt that
+        // landed in the pane (window B not yet key) followed by a second that landed in the cover puts
+        // the marker in BOTH buffers and fails a correct build.
+        XCTAssertTrue(try typeUntilVisible("939393") { try self.quickText() },
+                      "a cross-window session.focus must not pull first responder out of the owning window's quick terminal")
+    }
+
+    /// Samples `query.count` for `duration` and returns the LARGEST count observed. A one-shot read races
+    /// a second element that appears a runloop turn later, which is exactly the regression the
+    /// "exactly one editor" assertion has to catch.
+    private func maxCount(_ query: XCUIElementQuery, over duration: TimeInterval) -> Int {
+        var maximum = 0
+        let deadline = Date().addingTimeInterval(duration)
+        while Date() < deadline {
+            maximum = max(maximum, query.count)
+            usleep(150_000)
+        }
+        return maximum
+    }
+
+    /// Types `marker` (no Return — it stays on the prompt line and never executes) into whatever holds
+    /// first responder in the app's key window, then polls `read` until that buffer shows it. Real
+    /// keystrokes are the only XCUITest probe for first-responder identity: the terminal surfaces carry no
+    /// accessibility identifier, and `session.type`/`quick.type` inject into a NAMED surface regardless of
+    /// focus. Re-types between attempts, since a freshly realized surface can drop the first keystrokes.
+    private func typeUntilVisible(_ marker: String, attempts: Int = 3, perAttempt: Int = 10,
+                                  read: () throws -> String?) rethrows -> Bool {
+        for _ in 0..<attempts {
+            app.activate()
+            app.typeText(marker)
+            for _ in 0..<perAttempt {
+                if let text = try read(), text.contains(marker) { return true }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+            }
+        }
+        return false
+    }
+
+    /// The frontmost window's quick-terminal buffer (`quick.text --all`), or nil when the read failed.
+    private func quickText() throws -> String? {
+        let response = try sendCommand(#"{"cmd":"quick.text","args":{"all":true}}"#)
+        return (response["result"] as? [String: Any])?["text"] as? String
+    }
+
+    /// A session pane's buffer (`session.text --pane <pane> --all`), scoped to the owning window so the
+    /// read can't drift to a same-prefix session in another store.
+    private func paneText(session: UUID, window: UUID, pane: String) throws -> String? {
+        let response = try sendCommand(
+            #"{"cmd":"session.text","target":"\#(session.uuidString)","args":{"pane":"\#(pane)","all":true,"window":"\#(window.uuidString)"}}"#)
+        return (response["result"] as? [String: Any])?["text"] as? String
+    }
+
     // the spawned shell sees the ROOK_* env: create a session over the control socket (so its surface
     // is realized after the socket bound, and ROOK_SOCKET is populated), then type `echo "$ROOK_WINDOW_ID"`
     // / `echo "$ROOK_SESSION_ID"` into it and read the written files back (the split-test write-to-file

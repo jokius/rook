@@ -163,6 +163,120 @@ final class ControlWindowUITests: ControlAPITestCase {
                        "window should restore toward \(normal) after exiting full screen, got \(window.frame.size)")
     }
 
+    // window.minimize parks the window in the Dock and brings it back, with `minimized` reading back on
+    // window.list. Everything is asserted over the control channel: a miniaturized window is off-screen, so
+    // an XCUIElement query against it hangs on event synthesis instead of failing. Nothing needs to restore
+    // the window if an assertion unwinds early — tearDown's `app.terminate()` takes the parked window down
+    // with the process. A parked window also stays parked: `bringForwardForUITests` latches on its first
+    // tick (the window is already on screen by then), so the rest of its schedule is inert.
+    func testWindowMinimizeAndRestore() throws {
+        let windowID = try XCTUnwrap(try windowList().first?["id"] as? String, "the seeded window should have an id")
+        let before = try XCTUnwrap(windowNode(windowID, in: try windowList())?["geometry"] as? [String: Any],
+                                   "an open window should report its geometry")
+
+        let on = try sendCommand(#"{"cmd":"window.minimize","target":"\#(windowID)","args":{"mode":"on"}}"#)
+        XCTAssertEqual(on["ok"] as? Bool, true, "window.minimize on should succeed: \(on)")
+        XCTAssertTrue(pollWindowList(timeout: 10) { windowNode(windowID, in: $0)?["minimized"] as? Bool == true },
+                      "window.list should report minimized:true after window.minimize on")
+
+        // the payoff for a record-then-restore script: a parked window keeps reporting the frame it comes
+        // back to, in the same coordinates window.move/window.resize accept. `NSWindow.screen` is nil while
+        // miniaturized, so without the overlap-based screen fallback `geometry` is dropped from the node
+        // exactly in the state window.minimize creates.
+        let parked = try XCTUnwrap(windowNode(windowID, in: try windowList())?["geometry"] as? [String: Any],
+                                   "a minimized window must still report its geometry")
+        for key in ["x", "y", "width", "height", "display"] {
+            XCTAssertEqual(parked[key] as? Int, before[key] as? Int,
+                           "\(key) should survive minimizing: before=\(before) now=\(parked)")
+        }
+
+        let off = try sendCommand(#"{"cmd":"window.minimize","target":"\#(windowID)","args":{"mode":"off"}}"#)
+        XCTAssertEqual(off["ok"] as? Bool, true, "window.minimize off should succeed: \(off)")
+        XCTAssertTrue(pollWindowList(timeout: 10) { windowNode(windowID, in: $0)?["minimized"] as? Bool == false },
+                      "window.list should report minimized:false after window.minimize off")
+        // only now is the window back on screen, so an element query is safe again.
+        XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 10),
+                      "the restored window should be back in the accessibility tree")
+    }
+
+    // window.new --minimized creates the window ALREADY parked, so a script can build a set of project
+    // windows without each one flashing on screen and taking focus. Two things must hold: it comes up
+    // minimized (the command waits out WindowAccessor's deferred present before parking — that present
+    // deminiaturizes, so parking any earlier is silently undone), and it must NOT be left frontmost, or
+    // every later untargeted command would route into a window sitting in the Dock.
+    func testWindowNewMinimizedStaysParkedAndNotFrontmost() throws {
+        let launchID = try XCTUnwrap(try windowList().first?["id"] as? String, "the seeded window should have an id")
+
+        let created = try sendCommand(#"{"cmd":"window.new","args":{"name":"parked","minimized":true}}"#)
+        XCTAssertEqual(created["ok"] as? Bool, true, "window.new --minimized should succeed: \(created)")
+        let newID = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String,
+                                  "window.new should return the new id")
+
+        let list = try windowList()
+        let made = try XCTUnwrap(windowNode(newID, in: list), "the new window should be listed: \(list)")
+        XCTAssertEqual(made["minimized"] as? Bool, true, "window.new --minimized must report minimized: \(made)")
+        XCTAssertEqual(made["active"] as? Bool, false, "a parked window must not be left frontmost: \(made)")
+        XCTAssertEqual(windowNode(launchID, in: list)?["active"] as? Bool, true,
+                       "the still-visible window should hold frontmost: \(list)")
+
+        // and it STAYS parked past WindowAccessor's UI-test present schedule (its last tick is ~0.95 s in):
+        // that retry used to stay armed after a window presented itself and dragged this one back out.
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        let settled = try windowList()
+        XCTAssertEqual(windowNode(newID, in: settled)?["minimized"] as? Bool, true,
+                       "the parked window must not be dragged back out of the Dock: \(settled)")
+    }
+
+    // Parking the FRONTMOST window must hand frontmost to a window that is still visible. `activeWindowID`
+    // only falls back when the frontmost window's STORE is gone, and a minimized window keeps its store, so
+    // without the handoff every untargeted command (tree, session.new, the palette) keeps routing into a
+    // window in the Dock — the exact state a park-all-but-one script produces. AppKit keys another window
+    // on a minimize only while the APP is active, which a script driving in the background never is, so it
+    // cannot be left to AppKit.
+    func testMinimizingFrontmostHandsOffActive() throws {
+        let launchID = try XCTUnwrap(try windowList().first?["id"] as? String, "the seeded window should have an id")
+        let created = try sendCommand(#"{"cmd":"window.new","args":{"name":"second"}}"#)
+        let newID = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String,
+                                  "window.new should return the new id")
+        XCTAssertTrue(pollWindowList(timeout: 10) { windowNode(newID, in: $0)?["active"] as? Bool == true },
+                      "the new window should be frontmost before it is parked")
+
+        let parked = try sendCommand(#"{"cmd":"window.minimize","target":"\#(newID)","args":{"mode":"on"}}"#)
+        XCTAssertEqual(parked["ok"] as? Bool, true, "window.minimize on should succeed: \(parked)")
+        let handedOff = pollWindowList(timeout: 10) { list in
+            windowNode(newID, in: list)?["minimized"] as? Bool == true
+                && windowNode(launchID, in: list)?["active"] as? Bool == true
+        }
+        let settled = (try? windowList()) ?? []
+        XCTAssertTrue(handedOff, "parking the frontmost window should make the visible one active: \(settled)")
+    }
+
+    // Minimize on a natively full-screen window must ERROR rather than answer ok: AppKit silently no-ops
+    // `miniaturize` there, so an ok would tell a script the window is parked while it still fills the
+    // screen — and the caller would then "restore" a window that never left. Drives the same
+    // window.fullscreen path testWindowFullscreen already proves works, gates on window.list's `fullscreen`
+    // flag (the styleMask minimize actually checks, not the frame), and always leaves the app OUT of full
+    // screen so it cannot wedge a later test on a separate Space.
+    func testWindowMinimizeOnFullscreenWindowErrors() throws {
+        let windowID = try XCTUnwrap(try windowList().first?["id"] as? String, "the seeded window should have an id")
+        XCTAssertEqual(try sendCommand(#"{"cmd":"window.fullscreen"}"#)["ok"] as? Bool, true)
+        XCTAssertTrue(pollWindowList(timeout: 20) { windowNode(windowID, in: $0)?["fullscreen"] as? Bool == true },
+                      "the window should report fullscreen before minimize is attempted")
+
+        let refused = try sendCommand(#"{"cmd":"window.minimize","target":"\#(windowID)","args":{"mode":"on"}}"#)
+        XCTAssertEqual(refused["ok"] as? Bool, false, "minimize on a full-screen window should fail: \(refused)")
+        XCTAssertEqual(refused["error"] as? String,
+                       "cannot minimize a full-screen window — window.fullscreen it first",
+                       "should return the full-screen refusal: \(refused)")
+        let after = try windowList()
+        XCTAssertEqual(windowNode(windowID, in: after)?["minimized"] as? Bool, false,
+                       "a refused minimize must leave the window on screen: \(after)")
+
+        XCTAssertEqual(try sendCommand(#"{"cmd":"window.fullscreen"}"#)["ok"] as? Bool, true)
+        XCTAssertTrue(pollWindowList(timeout: 20) { windowNode(windowID, in: $0)?["fullscreen"] as? Bool == false },
+                      "the window should leave full screen again")
+    }
+
     // A point 14pt below the top edge, horizontally centred: clears the top resize strip, lands inside the
     // titlebar band (compact 30 / normal 48), and sits in the empty header (a Spacer) — clear of the traffic
     // lights on the left and the toolbar buttons on the right, so the click falls through the decorative
@@ -424,6 +538,12 @@ final class ControlWindowUITests: ControlAPITestCase {
         XCTAssertEqual(response["ok"] as? Bool, true, "window.list should succeed: \(response)")
         let result = try XCTUnwrap(response["result"] as? [String: Any], "window.list should carry a result")
         return try XCTUnwrap(result["windows"] as? [[String: Any]], "window.list should return windows")
+    }
+
+    /// The `window.list` node for `id` (ids round-trip through JSON with either case), or nil when the
+    /// window isn't listed.
+    private func windowNode(_ id: String, in list: [[String: Any]]) -> [String: Any]? {
+        list.first { ($0["id"] as? String)?.lowercased() == id.lowercased() }
     }
 
     /// Re-issues `window.select` for `id` while polling `window.list` for that window's `active` flag.

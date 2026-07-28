@@ -178,6 +178,21 @@ final class PaneAwareStatusUITests: ControlAPITestCase {
         app.staticTexts["session-row"].firstMatch.click()
         usleep(800_000)
 
+        // the `right` case needs a LIVE split. `setAgentIndicator` coerces a `.right` tag to `.left` on a
+        // session with NO split (the promoted-survivor normalization), which would hand the block to the very
+        // pane this test types into and let the Escape legitimately clear it — so the `right` iteration would
+        // pass for the WRONG reason. A `right` tag is only a BACKGROUND pane once the right pane really
+        // exists. Opening the split focuses the NEW right pane, so hand focus back to the main pane before
+        // typing.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.split","target":"\#(sessionA)","args":{"mode":"on"}}"#)["ok"] as? Bool,
+                       true, "split on should succeed")
+        XCTAssertTrue(pollActiveSessionSplit(true, timeout: 10), "the split should be live before tagging the right pane")
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.focus","target":"\#(sessionA)","args":{"pane":"left"}}"#)["ok"] as? Bool,
+                       true, "focusing the left pane should succeed")
+        XCTAssertTrue(try pollSplitFocused(sessionA, equals: false, timeout: 10),
+                      "focus should be back on the main pane before typing")
+        usleep(800_000)
+
         // a right- or scratch-tagged block survives Escape typed into the main pane.
         for tag in ["right", "scratch"] {
             try blockPane("blocked", pane: tag, target: sessionA)
@@ -338,7 +353,68 @@ final class PaneAwareStatusUITests: ControlAPITestCase {
         XCTAssertFalse(onScreen.contains("\(mainTag)-42"), "the idle-session selection must not dismiss the scratch to the main pane")
     }
 
+    // `session.status --pane-id <token>` end to end (the whole path the agent-status hook walks: the app bakes
+    // ROOK_PANE_ID into the shell env → the pane's shell reports it → the CLI/socket carries it → the app
+    // resolves it against the session's LIVE surfaces). Read the MAIN pane's REAL `$ROOK_PANE_ID` out of its
+    // buffer, then set a status carrying that main-slot token but the STALE role `--pane right` (the
+    // promoted-survivor shape): the tree's `statusPane` must read `left` — the token won. A MUSHY token then
+    // resolves to nothing and must fall back to the baked `--pane right` (the pre-token behavior, which is
+    // what keeps shells spawned before the token — and an older installed hook — working).
+    // The split is load-bearing for the fallback leg: without one, `setAgentIndicator` would coerce `.right`
+    // to `.left` and the fallback assertion would pass for the coercion's reason, not the fallback's.
+    func testPaneIDOverridesStaleRoleThenFallsBack() throws {
+        let sessionA = try activeSessionID()
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.split","target":"\#(sessionA)","args":{"mode":"on"}}"#)["ok"] as? Bool,
+                       true, "split on should succeed")
+        XCTAssertTrue(pollActiveSessionSplit(true, timeout: 10), "the session should report split:true")
+
+        let mainToken = try readPaneToken(target: sessionA, pane: "left")
+        XCTAssertFalse(mainToken.isEmpty, "the main pane's shell should expose a non-empty ROOK_PANE_ID")
+
+        // --pane-id resolves to the main slot and OVERRIDES the stale --pane right → statusPane reads left.
+        XCTAssertEqual(try sendStatus(target: sessionA, pane: "right", paneID: mainToken)["ok"] as? Bool, true,
+                       "session.status with --pane-id should succeed")
+        XCTAssertEqual(try statusPane(of: sessionA), "left",
+                       "a main-slot --pane-id must override the stale --pane right")
+
+        // an UNKNOWN token resolves to nothing and falls back to the baked --pane right (pre-token behavior).
+        XCTAssertEqual(try sendStatus(target: sessionA, pane: "right", paneID: "not-a-real-token")["ok"] as? Bool, true,
+                       "session.status with a bogus --pane-id should still succeed")
+        XCTAssertEqual(try statusPane(of: sessionA), "right",
+                       "an unknown --pane-id falls back to the baked --pane right")
+    }
+
     // MARK: - Helpers
+
+    /// Send `session.status blocked --pane <pane> --pane-id <paneID>` on `target`, returning the raw response.
+    private func sendStatus(target: String, pane: String, paneID: String) throws -> [String: Any] {
+        let args: [String: Any] = ["status": "blocked", "pane": pane, "paneID": paneID]
+        let obj: [String: Any] = ["cmd": "session.status", "target": target, "args": args]
+        let line = String(decoding: try! JSONSerialization.data(withJSONObject: obj), as: UTF8.self)
+        return try sendCommand(line)
+    }
+
+    /// Read a pane's stable spawn token straight from its shell's `$ROOK_PANE_ID` — the exact value the
+    /// installed agent-status hook forwards as `--pane-id`. Echoes `<tag>-42[<token>]`, where the arithmetic
+    /// 42 (from `$((6*7))`) proves the shell RAN the line (the typed command shows `$((6*7))`, only its
+    /// output shows `42`), then extracts the token between the brackets. Reuses `seedPaneMarker`'s
+    /// `pollPaneText` readiness-retry so a freshly-spawned pane's dropped first keystrokes are re-injected.
+    private func readPaneToken(target: String, pane: String) throws -> String {
+        let tag = "PIDR-\(UUID().uuidString.prefix(8))"
+        let needle = "\(tag)-42["
+        let buffer = try pollPaneText(target: target, pane: pane, contains: needle, retype: {
+            _ = try self.sendCommand(self.typeRequest(
+                text: "printf '\(tag)-%s[%s]\\n' \"$((6*7))\" \"$ROOK_PANE_ID\"\n",
+                target: target, select: false, pane: pane))
+        })
+        let text = try XCTUnwrap(buffer, "reading the \(pane) pane's ROOK_PANE_ID should land in its buffer")
+        let pattern = NSRegularExpression.escapedPattern(for: needle) + "([-0-9A-Fa-f]+)\\]"
+        let regex = try NSRegularExpression(pattern: pattern)
+        let match = try XCTUnwrap(regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                                  "the \(pane) pane should echo a non-empty ROOK_PANE_ID")
+        let tokenRange = try XCTUnwrap(Range(match.range(at: 1), in: text))
+        return String(text[tokenRange])
+    }
 
     /// Type Escape into the focused surface until the agent-status glyph clears (retrying rides out a
     /// still-settling keyboard focus). Mirrors `ControlSidebarStatusUITests`'s typeUntilGlyphCleared idiom.
@@ -473,6 +549,18 @@ final class PaneAwareStatusUITests: ControlAPITestCase {
             usleep(250_000)
         }
         return try activeNodeID() == want
+    }
+
+    /// Polls the tree until `target`'s `splitFocused` read-back equals `expected` (`false` = the main pane
+    /// holds focus), or times out. The `session.focus` read-back, so a test can wait for the focus move
+    /// instead of guessing at a sleep.
+    private func pollSplitFocused(_ target: String, equals expected: Bool, timeout: TimeInterval) throws -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if try sessionNode(id: target)?["splitFocused"] as? Bool == expected { return true }
+            usleep(250_000)
+        }
+        return try sessionNode(id: target)?["splitFocused"] as? Bool == expected
     }
 
     /// Polls the tree until `target`'s `scratch` flag equals `expected`, or times out.

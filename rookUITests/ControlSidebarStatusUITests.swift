@@ -239,11 +239,15 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
         XCTAssertNil(try workspaceNode(wsID)["iconKind"])
     }
 
-    private func workspaceNodes() throws -> [[String: Any]] {
+    /// The `tree` root object (`result.tree`) — the top-level fields plus `workspaces`.
+    private func treeRoot() throws -> [String: Any] {
         let tree = try sendCommand(#"{"cmd":"tree"}"#)
         let result = try XCTUnwrap(tree["result"] as? [String: Any], "tree should carry a result")
-        let t = try XCTUnwrap(result["tree"] as? [String: Any], "result should carry a tree")
-        return try XCTUnwrap(t["workspaces"] as? [[String: Any]], "tree should carry workspaces")
+        return try XCTUnwrap(result["tree"] as? [String: Any], "result should carry a tree")
+    }
+
+    private func workspaceNodes() throws -> [[String: Any]] {
+        try XCTUnwrap(try treeRoot()["workspaces"] as? [[String: Any]], "tree should carry workspaces")
     }
 
     private func workspaceNode(_ id: String) throws -> [String: Any] {
@@ -298,6 +302,231 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
     private func sessionRowValueExists(containing needle: String) -> Bool {
         app.staticTexts.matching(NSPredicate(format: "identifier == %@ AND value CONTAINS %@", "session-row", needle))
             .firstMatch.exists
+    }
+
+    /// Polls until a `session-row` carrying `needle` in its value exists (`wanted == true`) or is gone
+    /// (`wanted == false`), returning whether that state was reached inside `timeout`. The negative form is a
+    /// BOUNDED wait, not a one-shot: a broken collapse reveals the row asynchronously, so `XCTAssertFalse` on
+    /// a single immediate read would pass before the outline had a chance to be wrong.
+    private func pollSessionRowValue(_ needle: String, exists wanted: Bool, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if sessionRowValueExists(containing: needle) == wanted { return true }
+            usleep(200_000)
+        }
+        return sessionRowValueExists(containing: needle) == wanted
+    }
+
+    /// The `collapsed` flag of one workspace node in a freshly built tree — nil when the workspace is
+    /// EXPANDED (the field is omitted, expanded being the default), `true` when collapsed.
+    private func workspaceCollapsed(_ id: String) throws -> Bool? {
+        try workspaceNode(id)["collapsed"] as? Bool
+    }
+
+    /// The three focus read-back fields of one workspace, from a SINGLE `tree` snapshot so they can never be
+    /// read across a mutation: the node's `focused` (the EFFECTIVE focus — the tree is collapsed to this
+    /// workspace) and `marked` (the pinned workspace, filter applied or not), plus the tree TOP-LEVEL
+    /// `workspaceFilter` (whether the filter applies at all). The documented invariant is
+    /// `focused == marked && workspaceFilter`, which only one snapshot can check.
+    private func focusState(ofWorkspace id: String) throws -> (focused: Bool?, marked: Bool?, filter: Bool?) {
+        let root = try treeRoot()
+        let nodes = try XCTUnwrap(root["workspaces"] as? [[String: Any]], "tree should carry workspaces")
+        let node = try XCTUnwrap(nodes.first { $0["id"] as? String == id }, "workspace \(id) should be in the tree")
+        return (node["focused"] as? Bool, node["marked"] as? Bool, root["workspaceFilter"] as? Bool)
+    }
+
+    // workspace.collapse/workspace.expand fold ONE workspace, and the `collapsed` read-back is driven by the
+    // STORE, not by the live outline: the arm persists `Workspace.isExpanded` FIRST and only then pokes the
+    // sidebar. Driving it with the sidebar HIDDEN is what proves that ordering — `WorkspaceSidebar` is an `if
+    // store.sidebarVisible` branch of the split, so it is UNMOUNTED while hidden and a notification-only arm
+    // (which is what sidebar.expand/sidebar.collapse still are) would answer ok and change nothing a script
+    // can read. The notification leg cannot cover for a missing store write either: its handler brackets
+    // expandItem/collapseItem in `suppressExpansionPersist`, so the outline never writes expansion back.
+    // Re-showing the sidebar then proves the persisted state is what the re-mounted outline renders.
+    func testWorkspaceCollapseExpandWritesStoreWithSidebarHidden() throws {
+        XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 10), "seeded session row")
+
+        let firstWs = try XCTUnwrap((try workspaceNodes()).first, "should have a workspace")
+        let firstWsID = try XCTUnwrap(firstWs["id"] as? String, "should have a seeded workspace id")
+        let seededID = try XCTUnwrap((firstWs["sessions"] as? [[String: Any]])?.first?["id"] as? String,
+                                     "should have a seeded session")
+        XCTAssertNil(firstWs["collapsed"], "an expanded workspace must omit `collapsed`")
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.rename","target":"\#(seededID)","args":{"name":"stay"}}"#)["ok"] as? Bool,
+                       true, "renaming the seeded session should succeed")
+
+        // a second workspace with its own session, so a collapse has something observable to fold away.
+        let newWs = try sendCommand(#"{"cmd":"workspace.new","args":{"name":"second"}}"#)
+        let secondWsID = try XCTUnwrap((newWs["result"] as? [String: Any])?["id"] as? String, "workspace.new should return an id")
+        let created = try sendCommand(#"{"cmd":"session.new","args":{"workspace":"\#(secondWsID)"}}"#)
+        let newSessID = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String, "session.new should return an id")
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.rename","target":"\#(newSessID)","args":{"name":"hidden"}}"#)["ok"] as? Bool,
+                       true, "renaming the new session should succeed")
+        XCTAssertTrue(pollSessionRowCount(2, timeout: 10), "both rows should be present with both workspaces expanded")
+
+        // the ACTIVE session must live in the FIRST workspace: the sidebar view-only expands the selected
+        // session's owner when it reveals it, which would mask the collapse this test asserts.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.select","target":"\#(seededID)"}"#)["ok"] as? Bool, true,
+                       "selecting the seeded session should succeed")
+
+        // hide the sidebar: the outline unmounts, so nothing is left to receive the poke.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"sidebar","args":{"mode":"hide"}}"#)["ok"] as? Bool, true,
+                       "sidebar hide should succeed")
+        XCTAssertTrue(app.staticTexts["session-row"].waitForNonExistence(timeout: 10),
+                      "hiding the sidebar should remove the session rows (the outline is gone)")
+
+        // the point of the test: with no sidebar mounted, only the store-first write can make this read back.
+        let collapse = try sendCommand(#"{"cmd":"workspace.collapse","target":"\#(secondWsID)"}"#)
+        XCTAssertEqual(collapse["ok"] as? Bool, true, "workspace.collapse should succeed: \(collapse)")
+        XCTAssertEqual(((collapse["result"] as? [String: Any])?["id"] as? String)?.lowercased(),
+                       secondWsID.lowercased(), "workspace.collapse should echo the resolved workspace id")
+        XCTAssertEqual(try workspaceCollapsed(secondWsID), true,
+                       "collapsed must read back with the sidebar hidden — the arm writes the store, not just the outline")
+        XCTAssertNil(try workspaceCollapsed(firstWsID), "the untargeted workspace must stay expanded")
+
+        // idempotent: setWorkspaceExpanded is delta-guarded, so a repeat is a clean no-op.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"workspace.collapse","target":"\#(secondWsID)"}"#)["ok"] as? Bool, true,
+                       "a repeated workspace.collapse should still succeed")
+        XCTAssertEqual(try workspaceCollapsed(secondWsID), true, "a repeated collapse keeps the workspace collapsed")
+
+        // re-showing the sidebar renders the PERSISTED state: the collapsed workspace's row stays folded.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"sidebar","args":{"mode":"show"}}"#)["ok"] as? Bool, true,
+                       "sidebar show should succeed")
+        XCTAssertTrue(pollSessionRowValue("stay", exists: true, timeout: 10), "the outline should re-mount with its rows")
+        XCTAssertTrue(pollSessionRowCount(1, timeout: 10), "the collapsed workspace's rows should stay folded")
+        XCTAssertFalse(sessionRowValueExists(containing: "hidden"), "the collapsed workspace's session should be hidden")
+
+        // expand (sidebar now visible) clears the read-back AND drives the live outline.
+        let expand = try sendCommand(#"{"cmd":"workspace.expand","target":"\#(secondWsID)"}"#)
+        XCTAssertEqual(expand["ok"] as? Bool, true, "workspace.expand should succeed: \(expand)")
+        XCTAssertNil(try workspaceCollapsed(secondWsID), "an expanded workspace omits `collapsed` again")
+        XCTAssertTrue(pollSessionRowCount(2, timeout: 10), "expanding should restore the folded rows")
+        XCTAssertTrue(sessionRowValueExists(containing: "hidden"), "the folded session's row should return")
+
+        // an unknown target errors through the shared workspace resolver rather than silently no-opping.
+        let bad = try sendCommand(#"{"cmd":"workspace.collapse","target":"deadbeef"}"#)
+        XCTAssertEqual(bad["ok"] as? Bool, false, "an unknown workspace should fail: \(bad)")
+        XCTAssertTrue((bad["error"] as? String ?? "").hasPrefix("no such workspace"),
+                      "should report no such workspace, got: \(bad)")
+    }
+
+    // workspace.new --collapsed creates the workspace already folded, so a script can build one and fill it
+    // with `session.new --no-select` without it popping open (a SELECTING create would view-only expand the
+    // owner to reveal the new session, which is why the fill is a background one). Both legs are asserted:
+    // the `collapsed` read-back AND the rendered outline, so the flag has to reach the sidebar and not just
+    // the model — and expanding at the end proves the row was absent because it was FOLDED, not missing.
+    func testWorkspaceNewCollapsedStaysFoldedWhileFilled() throws {
+        XCTAssertTrue(pollSessionRowCount(1, timeout: 10), "the seeded session should be the only row")
+
+        let created = try sendCommand(#"{"cmd":"workspace.new","args":{"name":"prebuilt","collapsed":true}}"#)
+        XCTAssertEqual(created["ok"] as? Bool, true, "workspace.new --collapsed should succeed: \(created)")
+        let wsID = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String, "workspace.new should return an id")
+        XCTAssertEqual(try workspaceCollapsed(wsID), true, "--collapsed should create the workspace folded")
+
+        // fill it in the background: the workspace must stay folded and its session's row must not appear.
+        let session = try sendCommand(#"{"cmd":"session.new","args":{"workspace":"\#(wsID)","noSelect":true}}"#)
+        XCTAssertEqual(session["ok"] as? Bool, true, "a background session.new should succeed: \(session)")
+        let sessionID = try XCTUnwrap((session["result"] as? [String: Any])?["id"] as? String, "session.new should return an id")
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.rename","target":"\#(sessionID)","args":{"name":"folded"}}"#)["ok"] as? Bool,
+                       true, "renaming the background session should succeed")
+
+        // the session really is in the model (both workspaces hold one) before asserting it is NOT rendered.
+        XCTAssertTrue(pollSessionCounts([1, 1], timeout: 10), "the background session should land in the new workspace")
+        XCTAssertEqual(try workspaceCollapsed(wsID), true, "a background add must not pop the workspace open")
+        XCTAssertFalse(pollSessionRowValue("folded", exists: true, timeout: 3),
+                       "the background session's row must stay folded away")
+
+        // expanding reveals it — so the absence above was the collapse, not a session that never existed.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"workspace.expand","target":"\#(wsID)"}"#)["ok"] as? Bool, true,
+                       "workspace.expand should succeed")
+        XCTAssertTrue(pollSessionRowValue("folded", exists: true, timeout: 10), "expanding should reveal the filled session")
+        XCTAssertTrue(pollSessionRowCount(2, timeout: 10), "both rows should be present once expanded")
+    }
+
+    // workspace.filter is the RE-APPLY leg of workspace.focus, and the reason the focus state is TWO bits.
+    // An INVOLUNTARY jump — here `session.select` of a session in ANOTHER workspace, the same store path idle
+    // auto-follow, attention nav and a notification reveal take — drops only the FILTER and KEEPS the mark, so
+    // `workspace.filter on` returns to the same workspace; before the split it nilled the focus outright and
+    // the focus was gone for good. Read back on all three fields from one snapshot: `focused` (the EFFECTIVE
+    // focus, whose meaning is deliberately unchanged), the node's `marked`, and the tree-level
+    // `workspaceFilter` — plus the visible tree, which is what those fields describe.
+    func testWorkspaceFilterReappliesFocusAfterInvoluntaryJump() throws {
+        XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 10), "seeded session row")
+
+        let firstWs = try XCTUnwrap((try workspaceNodes()).first, "should have a workspace")
+        let firstWsID = try XCTUnwrap(firstWs["id"] as? String, "should have a seeded workspace id")
+        let seededID = try XCTUnwrap((firstWs["sessions"] as? [[String: Any]])?.first?["id"] as? String,
+                                     "should have a seeded session")
+        XCTAssertNil(firstWs["marked"], "an unfocused workspace must omit `marked`")
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.rename","target":"\#(seededID)","args":{"name":"stay"}}"#)["ok"] as? Bool,
+                       true, "renaming the seeded session should succeed")
+
+        let newWs = try sendCommand(#"{"cmd":"workspace.new","args":{"name":"second"}}"#)
+        let secondWsID = try XCTUnwrap((newWs["result"] as? [String: Any])?["id"] as? String, "workspace.new should return an id")
+        let created = try sendCommand(#"{"cmd":"session.new","args":{"workspace":"\#(secondWsID)"}}"#)
+        let newSessID = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String, "session.new should return an id")
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.rename","target":"\#(newSessID)","args":{"name":"hidden"}}"#)["ok"] as? Bool,
+                       true, "renaming the new session should succeed")
+        XCTAssertTrue(pollSessionRowCount(2, timeout: 10), "both rows should be present unfocused")
+
+        // focus the first workspace with its own session selected, so nothing lifts the filter immediately.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.select","target":"\#(seededID)"}"#)["ok"] as? Bool, true)
+        let focus = try sendCommand(#"{"cmd":"workspace.focus","target":"\#(firstWsID)","args":{"mode":"on"}}"#)
+        XCTAssertEqual(focus["ok"] as? Bool, true, "workspace.focus on should succeed: \(focus)")
+        var state = try focusState(ofWorkspace: firstWsID)
+        XCTAssertEqual(state.focused, true, "the focused workspace should report focused")
+        XCTAssertEqual(state.marked, true, "…and be the marked one")
+        XCTAssertEqual(state.filter, true, "…with the tree-level filter applied")
+        XCTAssertTrue(pollSessionRowCount(1, timeout: 10), "the tree should collapse to the focused workspace")
+
+        // the involuntary jump: selecting a session in ANOTHER workspace must reveal it, so the filter lifts.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.select","target":"\#(newSessID)"}"#)["ok"] as? Bool, true)
+        state = try focusState(ofWorkspace: firstWsID)
+        XCTAssertNil(state.focused, "an involuntary jump must lift the effective focus")
+        XCTAssertEqual(state.marked, true, "…but must NOT forget which workspace was focused")
+        XCTAssertEqual(state.filter, false, "…and the tree-level filter should read off")
+        XCTAssertTrue(pollSessionRowCount(2, timeout: 10), "the whole tree should be visible again")
+
+        // the leg that did not exist before: re-apply the surviving mark.
+        let on = try sendCommand(#"{"cmd":"workspace.filter","args":{"mode":"on"}}"#)
+        XCTAssertEqual(on["ok"] as? Bool, true, "workspace.filter on should succeed: \(on)")
+        state = try focusState(ofWorkspace: firstWsID)
+        XCTAssertEqual(state.focused, true, "re-enabling the filter should restore the focus")
+        XCTAssertEqual(state.filter, true, "…and the tree-level filter")
+        XCTAssertTrue(pollSessionRowCount(1, timeout: 10), "the tree should collapse back to the marked workspace")
+        XCTAssertTrue(sessionRowValueExists(containing: "stay"), "the marked workspace's session should show")
+        XCTAssertFalse(sessionRowValueExists(containing: "hidden"), "the other workspace's session should hide again")
+
+        // an IN-SET select keeps the filter (only a cross-set jump lifts it), then jump out again so the
+        // explicit unfocus below runs while the filter is ALREADY off.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.select","target":"\#(seededID)"}"#)["ok"] as? Bool, true)
+        XCTAssertEqual(try focusState(ofWorkspace: firstWsID).focused, true, "an in-set select must not lift the filter")
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.select","target":"\#(newSessID)"}"#)["ok"] as? Bool, true)
+        XCTAssertEqual(try focusState(ofWorkspace: firstWsID).marked, true, "the mark should survive the second jump")
+
+        // an EXPLICIT unfocus forgets the mark even though the effective focus already reads nil — the delta
+        // guard used to compare only the effective focus and silently kept the mark, so `workspace.filter on`
+        // resurrected a focus the user had just dismissed.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"workspace.focus","target":"\#(firstWsID)","args":{"mode":"off"}}"#)["ok"] as? Bool,
+                       true, "an explicit workspace.focus off should succeed")
+        state = try focusState(ofWorkspace: firstWsID)
+        XCTAssertNil(state.marked, "an explicit unfocus must forget the mark")
+        XCTAssertNil(state.focused, "…so nothing is focused")
+        XCTAssertEqual(state.filter, false, "…and the filter stays off")
+
+        // with nothing marked there is nothing to filter to, so enabling is a clean no-op.
+        let again = try sendCommand(#"{"cmd":"workspace.filter","args":{"mode":"on"}}"#)
+        XCTAssertEqual(again["ok"] as? Bool, true, "workspace.filter on with nothing marked should still succeed: \(again)")
+        state = try focusState(ofWorkspace: firstWsID)
+        XCTAssertNil(state.marked, "a no-op enable must not invent a mark")
+        XCTAssertNil(state.focused, "…and must not resurrect the dismissed focus")
+        XCTAssertEqual(state.filter, false, "…so the tree-level filter stays off")
+        XCTAssertTrue(pollSessionRowCount(2, timeout: 10), "the whole tree stays visible")
+
+        // an invalid mode errors rather than half-applying.
+        let bad = try sendCommand(#"{"cmd":"workspace.filter","args":{"mode":"sideways"}}"#)
+        XCTAssertEqual(bad["ok"] as? Bool, false, "an invalid filter mode should error: \(bad)")
+        XCTAssertTrue((bad["error"] as? String ?? "").contains("invalid workspace filter mode"),
+                      "should report the invalid mode: \(bad)")
     }
 
     // session.status sets a session's agent indicator: a valid state returns ok + the resolved id, an
