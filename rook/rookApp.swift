@@ -244,10 +244,14 @@ struct rookApp: App {
         let hadForeground = session.foregroundCommand != nil
         let restoreInput = Self.restoreInitialInput(session.foregroundCommand, agent: session.agentSession)
         session.foregroundCommand = nil
-        let plan = CommandRestore.restorePlan(wasRestored: session.wasRestored,
-                                              restoreEnabled: GhosttyApp.shared.restoreRunningCommand,
-                                              hadForeground: hadForeground, foregroundInput: restoreInput,
-                                              initialCommand: session.initialCommand)
+        // the pin is consumed here, ONCE: `takePendingRestoreOverride` empties the transient slot that a
+        // launch-time restore armed, so a later respawn of this pane (the shell exited, ⌘D re-opened it)
+        // comes up as a plain shell rather than re-running the pinned line unasked.
+        let plan = CommandRestore.restorePlan(.init(wasRestored: session.wasRestored,
+                                                    restoreEnabled: GhosttyApp.shared.restoreRunningCommand,
+                                                    hadForeground: hadForeground, foregroundInput: restoreInput,
+                                                    initialCommand: session.initialCommand,
+                                                    restoreOverride: session.takePendingRestoreOverride(pane: .left)))
         let view = GhosttySurfaceView(workingDirectory: session.initialCwd, fontSize: session.fontSize.map(Float.init),
                                       command: plan.command, initialInput: plan.initialInput,
                                       waitAfterCommand: session.commandWait, env: env)
@@ -414,9 +418,15 @@ struct rookApp: App {
         // the parent session's window/workspace/session ids in the env.
         // restore-running-command: re-run the split pane's captured foreground command via initial_input
         // (consumed run-once). Splits never carry an `initialCommand`, so no mutual-exclusion guard.
-        let restoreInput = Self.restoreInitialInput(session.splitForegroundCommand,
-                                                    agent: session.splitAgentSession)
+        let captured = Self.restoreInitialInput(session.splitForegroundCommand,
+                                                agent: session.splitAgentSession)
         session.splitForegroundCommand = nil
+        // same consume-once pin as the main pane; a split carries no `initialCommand`, so it needs only
+        // the input half of the decision rather than the whole `restorePlan`.
+        let restoreInput = CommandRestore.restoreInput(
+            restoreEnabled: GhosttyApp.shared.restoreRunningCommand,
+            restoreOverride: session.takePendingRestoreOverride(pane: .right),
+            capturedInput: captured)
         let view = GhosttySurfaceView(workingDirectory: session.initialSplitCwd ?? session.effectiveCwd,
                                       fontSize: session.fontSize.map(Float.init), initialInput: restoreInput, env: env)
         view.session = session

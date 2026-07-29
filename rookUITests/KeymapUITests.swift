@@ -222,10 +222,14 @@ final class KeymapUITests: XCTestCase {
         app.launchForUITest()
         XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 20), "seeded session should exist")
         XCTAssertTrue(poll { self.sessionRowCount() == 1 }, "should start with the one seeded session")
-        app.typeKey("n", modifierFlags: .command)
-        XCTAssertTrue(poll { self.sessionRowCount() == 2 }, "⌘N should create a second session")
-        app.typeKey("n", modifierFlags: .command)
-        XCTAssertTrue(poll { self.sessionRowCount() == 3 }, "⌘N should create a third session")
+        // the two extra sessions come from the MENU ITEM, not ⌘N: this test seeds a keymap and reloads it,
+        // so driving setup through a key equivalent would make the setup depend on the very menu-rebuild
+        // timing the test is here to probe — and it did, failing on the ⌘N step before reaching its
+        // subject. Clicking File ▸ New Session is timing-independent.
+        newSessionFromMenu()
+        XCTAssertTrue(poll { self.sessionRowCount() == 2 }, "File ▸ New Session should create a second session")
+        newSessionFromMenu()
+        XCTAssertTrue(poll { self.sessionRowCount() == 3 }, "File ▸ New Session should create a third session")
 
         // positive control: with close_session mapped to ⌘E, that chord closes a session. Without it the
         // ⌘W leg below could pass on a keymap that was never applied at all — ⌘W is the shipped default.
@@ -378,6 +382,20 @@ final class KeymapUITests: XCTestCase {
         }
         XCTFail("the File menu never offered Reload Keymap", file: file, line: line)
         return reload
+    }
+
+    /// Clicks File ▸ New Session, retrying the menu-bar click like `openFileMenu` does — a click landing
+    /// while a just-dismissed menu still tracks is swallowed silently.
+    private func newSessionFromMenu(timeout: TimeInterval = 10,
+                                    file: StaticString = #filePath, line: UInt = #line) {
+        let item = app.menuItems["New Session"]
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if item.exists { item.click(); return }
+            app.menuBars.menuBarItems["File"].click()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        XCTFail("the File menu never offered New Session", file: file, line: line)
     }
 
     private func openPalette(_ menuTitle: String) {

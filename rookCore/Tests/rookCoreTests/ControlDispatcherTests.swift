@@ -1890,4 +1890,63 @@ struct ControlDispatcherTests {
         ])
     }
 
+    // MARK: - session.restore (the per-pane restore-command override)
+
+    @Test func sessionRestoreRoutesTheThreeModesAndCarriesThePane() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        // a pinned line goes through VERBATIM — metacharacters are the point, so nothing may re-quote it.
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionRestore, target: "s",
+                                                     args: ControlArgs(mode: "set", command: "cd api && npm run dev",
+                                                                       window: "win", pane: "right",
+                                                                       paneID: "tok")))
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionRestore, target: "s",
+                                                     args: ControlArgs(mode: "none")))
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionRestore, target: "s",
+                                                     args: ControlArgs(mode: "clear")))
+
+        #expect(actions.calls == [
+            .sessionRestore(target: "s", window: "win",
+                            ControlSessionRestoreUpdate(pin: .pin("cd api && npm run dev"),
+                                                        pane: .right, paneID: "tok")),
+            .sessionRestore(target: "s", window: nil, ControlSessionRestoreUpdate(pin: .pinNone)),
+            .sessionRestore(target: "s", window: nil, ControlSessionRestoreUpdate(pin: .unpin))
+        ])
+    }
+
+    @Test func sessionRestoreRejectsBadModeCommandAndPaneWithoutMutating() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        let long = String(repeating: "x", count: ControlRestoreOverride.maxCommandBytes + 1)
+
+        let badMode = await dispatcher.dispatch(ControlRequest(cmd: .sessionRestore, target: "s",
+                                                               args: ControlArgs(mode: "pin")))
+        let noCommand = await dispatcher.dispatch(ControlRequest(cmd: .sessionRestore, target: "s",
+                                                                 args: ControlArgs(mode: "set")))
+        let control = await dispatcher.dispatch(ControlRequest(cmd: .sessionRestore, target: "s",
+                                                               args: ControlArgs(mode: "set", command: "a\nrm -rf /")))
+        let tooLong = await dispatcher.dispatch(ControlRequest(cmd: .sessionRestore, target: "s",
+                                                               args: ControlArgs(mode: "set", command: long)))
+        let badPane = await dispatcher.dispatch(ControlRequest(cmd: .sessionRestore, target: "s",
+                                                               args: ControlArgs(mode: "none", pane: "middle")))
+
+        #expect(badMode == ControlResponse(ok: false, error: "invalid restore mode: pin (set|none|clear)"))
+        #expect(noCommand == ControlResponse(ok: false, error: "session.restore set requires a command"))
+        #expect(control == ControlResponse(ok: false, error: "command must not contain control characters"))
+        #expect(tooLong == ControlResponse(ok: false, error: "command too long (max 1024 bytes)"))
+        #expect(badPane == ControlResponse(ok: false, error: "--pane must be left, right, or scratch"))
+        #expect(actions.calls.isEmpty) // every rejection lands before the host, so no pin is written
+    }
+
+    @Test func sessionRestoreTreatsAnEmptyCommandAsPinnedToNothing() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        // `set ""` and `none` are the SAME third state, so a caller need not special-case an empty value.
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionRestore, target: "s",
+                                                     args: ControlArgs(mode: "set", command: "")))
+        #expect(actions.calls == [.sessionRestore(target: "s", window: nil,
+                                                  ControlSessionRestoreUpdate(pin: .pin("")))])
+    }
+
 }

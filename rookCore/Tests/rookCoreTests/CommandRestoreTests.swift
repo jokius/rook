@@ -135,42 +135,112 @@ struct CommandRestoreTests {
 
     // MARK: - restorePlan (the surface-seed gate/precedence)
 
+    /// `RestoreInputs` with the two knobs each precedence test actually varies; `restoreOverride` defaults
+    /// to nil (no pin), which is the whole pre-override behavior these tests pin down.
+    private func inputs(wasRestored: Bool, restoreEnabled: Bool, hadForeground: Bool,
+                        foregroundInput: String? = nil, initialCommand: String? = nil,
+                        restoreOverride: String? = nil) -> CommandRestore.RestoreInputs {
+        CommandRestore.RestoreInputs(wasRestored: wasRestored, restoreEnabled: restoreEnabled,
+                                     hadForeground: hadForeground, foregroundInput: foregroundInput,
+                                     initialCommand: initialCommand, restoreOverride: restoreOverride)
+    }
+
     @Test func freshCommandSessionAlwaysRunsItsCommand() {
         // a freshly created --command session runs its command via the exec path, toggle irrelevant
         for enabled in [true, false] {
-            let plan = CommandRestore.restorePlan(wasRestored: false, restoreEnabled: enabled,
-                                                  hadForeground: false, foregroundInput: nil, initialCommand: "ssh host")
+            let plan = CommandRestore.restorePlan(inputs(wasRestored: false, restoreEnabled: enabled,
+                                                         hadForeground: false, initialCommand: "ssh host"))
             #expect(plan == CommandRestore.RestorePlan(command: "ssh host", initialInput: nil))
         }
     }
 
     @Test func restoredCommandSessionRunsCommandOnlyWhenEnabled() {
-        let on = CommandRestore.restorePlan(wasRestored: true, restoreEnabled: true, hadForeground: false,
-                                            foregroundInput: nil, initialCommand: "ssh host")
+        let on = CommandRestore.restorePlan(inputs(wasRestored: true, restoreEnabled: true, hadForeground: false,
+                                                   initialCommand: "ssh host"))
         #expect(on == CommandRestore.RestorePlan(command: "ssh host", initialInput: nil))
-        let off = CommandRestore.restorePlan(wasRestored: true, restoreEnabled: false, hadForeground: false,
-                                             foregroundInput: nil, initialCommand: "ssh host")
+        let off = CommandRestore.restorePlan(inputs(wasRestored: true, restoreEnabled: false, hadForeground: false,
+                                                    initialCommand: "ssh host"))
         #expect(off == CommandRestore.RestorePlan(command: nil, initialInput: nil)) // opt-out → plain shell
     }
 
     @Test func capturedForegroundPreemptsInitialCommand() {
         // a live child captured at quit wins over the persisted creation command (typed, not exec)
-        let plan = CommandRestore.restorePlan(wasRestored: true, restoreEnabled: true, hadForeground: true,
-                                              foregroundInput: "top\n", initialCommand: "ssh host")
+        let plan = CommandRestore.restorePlan(inputs(wasRestored: true, restoreEnabled: true, hadForeground: true,
+                                                     foregroundInput: "top\n", initialCommand: "ssh host"))
         #expect(plan == CommandRestore.RestorePlan(command: nil, initialInput: "top\n"))
     }
 
     @Test func suppressedForegroundYieldsPlainShellNotStaleCommand() {
         // a foreground was captured but suppressed (denylisted/off → nil input): a plain shell, NOT a
         // fall-through to the stale creation command
-        let plan = CommandRestore.restorePlan(wasRestored: true, restoreEnabled: true, hadForeground: true,
-                                              foregroundInput: nil, initialCommand: "ssh host")
+        let plan = CommandRestore.restorePlan(inputs(wasRestored: true, restoreEnabled: true, hadForeground: true,
+                                                     initialCommand: "ssh host"))
         #expect(plan == CommandRestore.RestorePlan(command: nil, initialInput: nil))
     }
 
     @Test func noCommandAndNoForegroundIsPlainShell() {
-        let plan = CommandRestore.restorePlan(wasRestored: true, restoreEnabled: true, hadForeground: false,
-                                              foregroundInput: nil, initialCommand: nil)
+        let plan = CommandRestore.restorePlan(inputs(wasRestored: true, restoreEnabled: true, hadForeground: false))
         #expect(plan == CommandRestore.RestorePlan(command: nil, initialInput: nil))
+    }
+
+    // MARK: - the pinned restore-command override (session.restore)
+
+    @Test func pinnedOverrideBeatsCaptureAndInitialCommand() {
+        // the whole point: a pin wins over BOTH the captured foreground and the creation command, and
+        // never takes the exec `command` path (so it can't inherit close-on-exit).
+        let plan = CommandRestore.restorePlan(inputs(wasRestored: true, restoreEnabled: true, hadForeground: true,
+                                                     foregroundInput: "top\n", initialCommand: "ssh host",
+                                                     restoreOverride: "cd api && npm run dev"))
+        #expect(plan == CommandRestore.RestorePlan(command: nil, initialInput: "cd api && npm run dev\n"))
+    }
+
+    @Test func pinnedCommandIsTypedVerbatimNotShellQuoted() {
+        // a pin is a shell LINE, so the pipeline/redirect/&& survive as written — this is what fixes the
+        // documented "compound lines don't restore" limitation of the argv capture.
+        let line = "tail -f log | grep -i err > /tmp/e 2>&1"
+        let plan = CommandRestore.restorePlan(inputs(wasRestored: true, restoreEnabled: true, hadForeground: false,
+                                                     restoreOverride: line))
+        #expect(plan.initialInput == line + "\n")
+        #expect(plan.initialInput != CommandRestore.shellQuotedLine([line]) + "\n")
+    }
+
+    @Test func pinnedToNothingSuppressesCaptureAndInitialCommand() {
+        // `""` is the third state: a plain shell, distinct from "no pin" which would restore the capture.
+        let plan = CommandRestore.restorePlan(inputs(wasRestored: true, restoreEnabled: true, hadForeground: true,
+                                                     foregroundInput: "top\n", initialCommand: "ssh host",
+                                                     restoreOverride: ""))
+        #expect(plan == CommandRestore.RestorePlan(command: nil, initialInput: nil))
+    }
+
+    @Test func noPinLeavesTheCapturePathUntouched() {
+        // nil override == the pre-feature behavior, so an old snapshot (no key → nil) restores identically.
+        let plan = CommandRestore.restorePlan(inputs(wasRestored: true, restoreEnabled: true, hadForeground: true,
+                                                     foregroundInput: "top\n", restoreOverride: nil))
+        #expect(plan == CommandRestore.RestorePlan(command: nil, initialInput: "top\n"))
+    }
+
+    @Test func pinObeysTheRestoreToggle() {
+        // the global "restore running commands" switch is the master gate: off restores NOTHING, pin
+        // included — and it must not fall through to the capture or the creation command either.
+        let plan = CommandRestore.restorePlan(inputs(wasRestored: true, restoreEnabled: false, hadForeground: true,
+                                                     foregroundInput: "top\n", initialCommand: "ssh host",
+                                                     restoreOverride: "npm run dev"))
+        #expect(plan == CommandRestore.RestorePlan(command: nil, initialInput: nil))
+    }
+
+    @Test func restoreInputPrefersPinOverCapture() {
+        // the split pane's whole decision (no initialCommand there), so it is tested directly too.
+        #expect(CommandRestore.restoreInput(restoreEnabled: true, restoreOverride: "htop",
+                                            capturedInput: "top\n") == "htop\n")
+        #expect(CommandRestore.restoreInput(restoreEnabled: true, restoreOverride: "",
+                                            capturedInput: "top\n") == nil)
+        #expect(CommandRestore.restoreInput(restoreEnabled: true, restoreOverride: nil,
+                                            capturedInput: "top\n") == "top\n")
+        #expect(CommandRestore.restoreInput(restoreEnabled: false, restoreOverride: "htop",
+                                            capturedInput: "top\n") == nil)
+        // toggle off with NO pin: the captured input arrives already gated app-side, so it passes through
+        // unchanged rather than being re-gated here.
+        #expect(CommandRestore.restoreInput(restoreEnabled: false, restoreOverride: nil,
+                                            capturedInput: nil) == nil)
     }
 }

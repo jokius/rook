@@ -376,7 +376,10 @@ public final class WindowLibrary {
         if let existing = stores[id] { return existing }
         let persistence = persistenceStore(for: id)
         let store = makeStore(for: id, persistence: persistence)
-        store.restore(from: persistence.load())
+        // `launchRestore` arms each session's pending restore-command pin, and ONLY a launch restore may:
+        // reopening a closed window mid-run (ContentView's resolveStore) must not re-run a pinned command
+        // the user is not expecting. `isBootstrapping` already draws exactly that line for the event ring.
+        store.restore(from: persistence.load(), launchRestore: isBootstrapping)
         stores[id] = store
         // opening a window makes its whole tree observable for the first time. During `bootstrap()` the
         // sink is dead, so a launch restore emits nothing — only a genuine (re)open reaches the ring.

@@ -69,6 +69,12 @@ extension MockControlActions {
         return ControlResponse(ok: true)
     }
 
+    func setSessionRestore(_ target: String?, window: String?,
+                           update: ControlSessionRestoreUpdate) -> ControlResponse {
+        calls.append(.sessionRestore(target: target, window: window, update))
+        return nextSessionRestoreResponse
+    }
+
     func setAgentSession(_ target: String?, window: String?,
                          update: ControlAgentSessionUpdate) -> ControlResponse {
         calls.append(.sessionAgent(target: target, window: window, update))

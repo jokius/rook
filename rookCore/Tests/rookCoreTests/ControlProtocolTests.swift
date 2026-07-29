@@ -1611,4 +1611,53 @@ struct ControlProtocolTests {
             try JSONDecoder().decode(ControlRequest.self, from: Data(json.utf8))
         }
     }
+
+    // MARK: - session.restore
+
+    @Test func sessionRestoreRoundTripsModeCommandAndPane() throws {
+        let request = ControlRequest(cmd: .sessionRestore, target: "9f3c",
+                                     args: ControlArgs(mode: "set", command: "cd api && npm run dev | tee log",
+                                                       pane: "right", paneID: "tok"))
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.cmd == .sessionRestore)
+        // the shell metacharacters survive the wire untouched — nothing quotes or escapes a pinned line.
+        #expect(decoded.args?.command == "cd api && npm run dev | tee log")
+        #expect(decoded.args?.pane == "right")
+        #expect(decoded.args?.paneID == "tok")
+    }
+
+    @Test func sessionRestoreRoundTripsNoneAndClearWithoutACommand() throws {
+        for mode in ["none", "clear"] {
+            let request = ControlRequest(cmd: .sessionRestore, target: "9f3c", args: ControlArgs(mode: mode))
+            let decoded = try roundTrip(request)
+            #expect(decoded == request)
+            #expect(decoded.args?.mode == mode)
+            #expect(decoded.args?.command == nil)
+        }
+    }
+
+    @Test func treeSessionNodeRoundTripsBothRestoreCommandsIncludingPinnedToNothing() throws {
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: true,
+                                         restoreCommand: "npm run dev", splitRestoreCommand: "")
+        let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(
+            workspaces: [ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [session])])))
+        let decoded = try roundTrip(response)
+        #expect(decoded == response)
+        let node = decoded.result?.tree?.workspaces.first?.sessions.first
+        #expect(node?.restoreCommand == "npm run dev")
+        // "" is the pinned-to-nothing state and must survive as "" — distinct from the omitted key below.
+        #expect(node?.splitRestoreCommand == "")
+    }
+
+    @Test func treeSessionNodeOmitsRestoreCommandsWhenUnpinned() throws {
+        // the third state: NO pin omits both keys entirely, so a script can tell "no override" from
+        // "pinned to nothing" without a second call.
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false)
+        let json = String(decoding: try JSONEncoder().encode(session), as: UTF8.self)
+        #expect(!json.contains("restoreCommand"), "an unpinned pane must omit both keys; got \(json)")
+        let decoded = try JSONDecoder().decode(ControlSessionNode.self, from: Data(json.utf8))
+        #expect(decoded.restoreCommand == nil)
+        #expect(decoded.splitRestoreCommand == nil)
+    }
 }

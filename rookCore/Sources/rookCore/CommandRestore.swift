@@ -58,8 +58,8 @@ public enum CommandRestore {
         }
     }
 
-    /// Decide a pane's seed on create/restore. Pure so the gate + precedence is unit-tested off the C
-    /// boundary; the app target owns only the libghostty seeding.
+    /// The inputs `restorePlan` decides from — everything about a pane that bears on what it seeds with.
+    /// A struct rather than loose parameters so the override could be added without a 6-argument function.
     /// - `wasRestored`: the session came from a restore (a FRESH command session always runs its command; a
     ///   RESTORED one only when the opt-in is on).
     /// - `restoreEnabled`: the `restoreRunningCommand` opt-in.
@@ -68,11 +68,59 @@ public enum CommandRestore {
     ///   shell rather than the stale creation command — so gate on capture, not on whether the input survived.
     /// - `foregroundInput`: the rendered foreground command line to type, or nil (none / suppressed).
     /// - `initialCommand`: the session's persisted `--command`.
-    public static func restorePlan(wasRestored: Bool, restoreEnabled: Bool, hadForeground: Bool,
-                                   foregroundInput: String?, initialCommand: String?) -> RestorePlan {
-        let mayRunInitial = !wasRestored || restoreEnabled
-        let command = (!hadForeground && mayRunInitial) ? initialCommand : nil
-        return RestorePlan(command: command, initialInput: command == nil ? foregroundInput : nil)
+    /// - `restoreOverride`: the pane's pinned restore command (`session.restore`), tri-state — nil = no
+    ///   override, `""` = pinned to nothing, `"cmd"` = run this shell line.
+    public struct RestoreInputs: Equatable, Sendable {
+        public let wasRestored: Bool
+        public let restoreEnabled: Bool
+        public let hadForeground: Bool
+        public let foregroundInput: String?
+        public let initialCommand: String?
+        public let restoreOverride: String?
+        // no default on `restoreOverride`: the two surface factories must state whether they consumed the
+        // pending slot, so a new call site can't silently come up as "no pin".
+        public init(wasRestored: Bool, restoreEnabled: Bool, hadForeground: Bool,
+                    foregroundInput: String?, initialCommand: String?, restoreOverride: String?) {
+            self.wasRestored = wasRestored
+            self.restoreEnabled = restoreEnabled
+            self.hadForeground = hadForeground
+            self.foregroundInput = foregroundInput
+            self.initialCommand = initialCommand
+            self.restoreOverride = restoreOverride
+        }
+    }
+
+    /// The `initial_input` for a pane: a pinned override (empty → nil, a plain shell) when one exists, else
+    /// the captured foreground input. The override is gated on `restoreEnabled` — the toggle stays the single
+    /// master switch, matching `initialCommand`, the other explicit user-set seed. It is typed VERBATIM
+    /// (never run through `shellQuotedLine`), which is what makes a compound line or a pipeline restorable at
+    /// all; the captured input arrives already gated + denylist-filtered + agent-resume-rewritten from the app
+    /// side, so the denylist and `AgentResume` apply to a BLIND capture only and never to a deliberate pin.
+    /// Also the split pane's whole decision — a split carries no `initialCommand`, so it needs no `restorePlan`.
+    public static func restoreInput(restoreEnabled: Bool, restoreOverride: String?,
+                                    capturedInput: String?) -> String? {
+        guard let restoreOverride else { return capturedInput }
+        guard restoreEnabled, !restoreOverride.isEmpty else { return nil }
+        return restoreOverride + "\n"
+    }
+
+    /// Decide a pane's seed on create/restore. Pure so the gate + precedence is unit-tested off the C
+    /// boundary; the app target owns only the libghostty seeding.
+    ///
+    /// A present `restoreOverride` short-circuits everything: it wins over both the captured foreground and
+    /// `initialCommand`, `command` is always nil (an override never takes the exec path), and the input comes
+    /// from `restoreInput` — so it obeys the `restoreEnabled` toggle while bypassing the denylist structurally
+    /// (that heuristic guards BLIND capture; an override names its command deliberately). With no override
+    /// this reproduces the capture/`initialCommand` precedence unchanged.
+    public static func restorePlan(_ inputs: RestoreInputs) -> RestorePlan {
+        if inputs.restoreOverride != nil {
+            let input = restoreInput(restoreEnabled: inputs.restoreEnabled, restoreOverride: inputs.restoreOverride,
+                                     capturedInput: inputs.foregroundInput)
+            return RestorePlan(command: nil, initialInput: input)
+        }
+        let mayRunInitial = !inputs.wasRestored || inputs.restoreEnabled
+        let command = (!inputs.hadForeground && mayRunInitial) ? inputs.initialCommand : nil
+        return RestorePlan(command: command, initialInput: command == nil ? inputs.foregroundInput : nil)
     }
 
     /// Parse `restore-denylist.conf` into a set of program basenames NOT to re-run on restore: one entry

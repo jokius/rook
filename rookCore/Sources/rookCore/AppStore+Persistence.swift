@@ -32,7 +32,12 @@ extension AppStore {
     /// so re-persisting it would be a pointless write (and the only mutator that
     /// skips `save()` for that reason). If the persisted `selectedSessionID` points
     /// at a session that no longer exists, it is cleared to keep selection valid.
-    public func restore(from snapshot: Snapshot) {
+    ///
+    /// `launchRestore` marks an APP-BOOTSTRAP restore and is the ONLY thing that arms a persisted
+    /// `session.restore` override for this launch (`Session.armPendingRestoreOverrides()`). It defaults to
+    /// false because this method has RUNTIME callers too: reopening a closed window mid-process reloads its
+    /// store through here, and that must not execute anything.
+    public func restore(from snapshot: Snapshot, launchRestore: Bool = false) {
         // fold workspaces sharing an id into the first occurrence, and keep only the first snapshot of any
         // repeated session id, wherever it sits: a file written by a build that could duplicate either
         // stays unreachable past the first match otherwise, and re-saves the corruption.
@@ -41,6 +46,7 @@ extension AppStore {
             let sessions = workspaceSnapshot.sessions
                 .filter { seenSessionIDs.insert($0.id).inserted }
                 .map(session(from:))
+            if launchRestore { for session in sessions { session.armPendingRestoreOverrides() } }
             if let existing = restored.firstIndex(where: { $0.id == workspaceSnapshot.id }) {
                 restored[existing].sessions.append(contentsOf: sessions)
                 return
@@ -81,12 +87,59 @@ extension AppStore {
     /// fire afterward. A write failure is logged and swallowed — a transient disk error
     /// must not bring down the model.
     public func save() {
+        saveChecked()
+    }
+
+    /// `save()` that REPORTS whether the write landed instead of swallowing the failure, for a caller whose
+    /// acknowledgement must not outrun the disk. `setRestoreCommand` is the one today: its payload is an
+    /// arbitrary shell line re-typed on every launch, so a "cleared" ack that never reached disk would leave
+    /// the old command armed forever. `save()` is this with the result discarded, so the two can't drift.
+    @discardableResult
+    func saveChecked() -> Bool {
         saveDebouncer.cancel()
         do {
             try persistence.save(snapshot())
+            return true
         } catch {
             log("save failed: \(error)")
+            return false
         }
+    }
+
+    // MARK: - Per-session restore-command override
+
+    /// Sets a pane's PERSISTED restore-command override, the single mutation point for the control
+    /// channel's `session.restore`. Tri-state `value`: nil = no override (auto-capture), `""` = pinned to
+    /// nothing (a plain shell), `"cmd"` = run that shell line on the next launch. Persists IMMEDIATELY —
+    /// the override must survive a SIGKILL, or a hook's write is lost before the next launch reads it.
+    /// Idempotent: an unchanged value writes nothing. No-op for an unknown id.
+    ///
+    /// It deliberately does NOT touch the pending slots: a write during this run must not execute during
+    /// this run. Only an app-bootstrap restore arms them (`restore(from:launchRestore: true)`), and only the
+    /// surface factories consume them. `.scratch` is rejected at the command layer (the scratch terminal is
+    /// never restored), so it is a `false` here rather than a silent write to a nonexistent slot.
+    ///
+    /// Returns whether the requested value is now on disk, so the caller can refuse to acknowledge a write
+    /// that never landed — unlike the rest of the store, which mutates and lets `save()` swallow its error.
+    /// A failed save is ROLLED BACK in memory, both so the value keeps matching disk and so the
+    /// unchanged-value guard can't swallow the retry.
+    @discardableResult
+    public func setRestoreCommand(_ value: String?, pane: StatusPane, forSession id: UUID) -> Bool {
+        guard let session = session(withID: id) else { return false }
+        let field: ReferenceWritableKeyPath<Session, String?>
+        switch pane {
+        case .left: field = \.restoreCommand
+        case .right: field = \.splitRestoreCommand
+        case .scratch: return false
+        }
+        let previous = session[keyPath: field]
+        guard previous != value else { return true }
+        session[keyPath: field] = value
+        guard saveChecked() else {
+            session[keyPath: field] = previous
+            return false
+        }
+        return true
     }
 
     /// Debounces a `save()` ~0.3 s out, coalescing the rapid selection/font writes. Used by

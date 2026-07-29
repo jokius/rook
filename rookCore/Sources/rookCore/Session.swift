@@ -183,6 +183,31 @@ public final class Session: Identifiable {
     /// The split (right) pane's foreground command (full argv), the split analogue of `foregroundCommand`.
     @ObservationIgnored public var splitForegroundCommand: [String]?
 
+    /// The main pane's PERSISTED restore-command override, set over the control channel
+    /// (`session.restore`). Tri-state: nil = no override (the auto-capture behavior), `""` = pinned to
+    /// nothing (a plain shell, suppressing both the capture and `initialCommand`), `"cmd"` = run that shell
+    /// line VERBATIM. STICKY, unlike the capture: never cleared on read, so it fires again after every
+    /// restart until something changes or clears it. It needs its OWN slot rather than sharing
+    /// `foregroundCommand` because the quit-time capture would otherwise clobber it with the live process's
+    /// argv, and because it is a shell LINE (a pipeline, a compound `&&`), not an argv to re-quote.
+    /// `@ObservationIgnored`; persisted via `SessionSnapshot.restoreCommand`.
+    @ObservationIgnored public var restoreCommand: String?
+    /// The split (right) pane's persisted restore-command override, the split analogue of `restoreCommand`.
+    @ObservationIgnored public var splitRestoreCommand: String?
+
+    /// The main pane's TRANSIENT override payload for THIS launch, copied from the persisted
+    /// `restoreCommand` by `armPendingRestoreOverrides()` — which only an app-bootstrap restore calls — and
+    /// consumed by `takePendingRestoreOverride(pane:)`. NEVER persisted (absent from `sessionSnapshot`). A
+    /// session that was not bootstrap-restored — freshly created, reopened from Recent Closed, duplicated,
+    /// or rebuilt when a closed window was reloaded mid-process — starts nil, so nothing fires. This is the
+    /// ONLY restore-override state a surface factory may read: it freezes what was eligible when the process
+    /// started, so a command written over the socket during this run can never execute during this run.
+    @ObservationIgnored public var pendingRestoreCommand: String?
+    /// The split (right) pane's transient override payload, the split analogue of `pendingRestoreCommand`.
+    /// Armed only when the restored snapshot's split was SHOWN (`isSplit`): a hidden split builds no right
+    /// surface at bootstrap, so a payload left pending would fire on a later manual ⌘D instead.
+    @ObservationIgnored public var pendingSplitRestoreCommand: String?
+
     /// The agent conversation the main pane is running, reported by that agent's `SessionStart` hook over
     /// `session.agent`. Persisted via `SessionSnapshot.agentSession`; read on restore (with
     /// `resumeAgentSessions` on) so the pane comes back on the SAME conversation rather than a blank one.
@@ -393,6 +418,49 @@ public final class Session: Identifiable {
         if splitSurface?.paneToken == token { return .right }
         if scratchSurface?.paneToken == token { return .scratch }
         return nil
+    }
+
+    /// Copies the PERSISTED restore-command overrides into the transient pending slots, arming them for
+    /// THIS launch. The single gate on a pin ever executing: only `AppStore.restore(from:launchRestore: true)`
+    /// — an app-bootstrap load — calls it, so a mid-process window reload, Reopen Closed Item, or a write
+    /// that lands over the socket during this run arms nothing. The split's payload is armed only when the
+    /// split was SHOWN, since a hidden split builds no right surface at bootstrap and the payload would
+    /// otherwise fire on a later manual ⌘D.
+    public func armPendingRestoreOverrides() {
+        pendingRestoreCommand = restoreCommand
+        // a split that was hidden at the last quit builds no right surface, so its pin names a pane that no
+        // longer exists: DROP it rather than leave it waiting to fire on some later manual split — the same
+        // rule `closeSplit` applies when the pane goes away.
+        if !isSplit { splitRestoreCommand = nil }
+        pendingSplitRestoreCommand = splitRestoreCommand
+    }
+
+    /// Takes the pane's PENDING restore-command override, clearing it so a second surface for the same pane
+    /// this launch gets a plain shell — the split factory runs again when a split shell exits and the user
+    /// opens a fresh ⌘D split, and a payload left in place would fire a second time mid-session. The
+    /// PERSISTED `restoreCommand`/`splitRestoreCommand` are neither read nor written here: the override is
+    /// sticky and must fire again after the next restart. `.scratch` always returns nil — the scratch
+    /// terminal is never restored.
+    public func takePendingRestoreOverride(pane: StatusPane) -> String? {
+        switch pane {
+        case .left:
+            defer { pendingRestoreCommand = nil }
+            return pendingRestoreCommand
+        case .right:
+            defer { pendingSplitRestoreCommand = nil }
+            return pendingSplitRestoreCommand
+        case .scratch:
+            return nil
+        }
+    }
+
+    /// Drops both unconsumed override payloads, leaving the persisted fields alone. Called where a live
+    /// `Session` object leaves the tree but may come back as the SAME object (the soft-close grace window):
+    /// a payload armed at bootstrap and never consumed would otherwise survive the round trip and fire when
+    /// the reinserted session's surface is finally built.
+    public func clearPendingRestoreOverrides() {
+        pendingRestoreCommand = nil
+        pendingSplitRestoreCommand = nil
     }
 
     /// The surface currently on top and owning keyboard focus: an active overlay (full OR floating), else

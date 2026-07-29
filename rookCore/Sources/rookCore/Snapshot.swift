@@ -219,6 +219,15 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
     /// of failing the load and wiping the saved tree, like the fields above. A `.text` watermark
     /// re-renders its PNG on restore.
     public var backgroundWatermark: BackgroundWatermark?
+    /// The main pane's restore-command override (`session.restore`), which wins over `foregroundCommand`
+    /// and `initialCommand` on the next launch. Tri-state: nil/MISSING KEY = no override (every snapshot
+    /// written before this field existed, so old state restores exactly as it did), `""` = pinned to
+    /// nothing (a plain shell), a command = run that shell line verbatim. Sticky — unlike
+    /// `foregroundCommand` it is not consumed on restore, so it fires again after every restart. Optional
+    /// for forward-compat like the fields above; the snapshot version is deliberately NOT bumped.
+    public var restoreCommand: String?
+    /// The split (right) pane's restore-command override, the split analogue of `restoreCommand`.
+    public var splitRestoreCommand: String?
 
     public init(id: UUID, customName: String?, cwd: String, isSplit: Bool? = nil, fontSize: Double? = nil,
                 splitCwd: String? = nil, splitRatio: Double? = nil, flagged: Bool? = nil,
@@ -226,7 +235,8 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
                 agentSession: AgentSessionRef? = nil, splitAgentSession: AgentSessionRef? = nil,
                 initialCommand: String? = nil, commandWait: Bool? = nil,
                 backgroundWatermark: BackgroundWatermark? = nil,
-                fileTreeVisible: Bool? = nil, markdownPath: String? = nil) {
+                fileTreeVisible: Bool? = nil, markdownPath: String? = nil,
+                restoreCommand: String? = nil, splitRestoreCommand: String? = nil) {
         self.id = id
         self.customName = customName
         self.cwd = cwd
@@ -244,13 +254,15 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         self.backgroundWatermark = backgroundWatermark
         self.fileTreeVisible = fileTreeVisible
         self.markdownPath = markdownPath
+        self.restoreCommand = restoreCommand
+        self.splitRestoreCommand = splitRestoreCommand
     }
 
     enum CodingKeys: String, CodingKey {
         case id, customName, cwd, isSplit, fontSize, splitCwd, splitRatio, flagged
         case foregroundCommand, splitForegroundCommand, agentSession, splitAgentSession
         case initialCommand, commandWait, backgroundWatermark, fileTreeVisible
-        case markdownPath
+        case markdownPath, restoreCommand, splitRestoreCommand
     }
 
     /// Custom decode so `backgroundWatermark` and the two `agentSession` refs are LOSSY: a
@@ -280,5 +292,7 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         backgroundWatermark = (try? c.decodeIfPresent(BackgroundWatermark.self, forKey: .backgroundWatermark)) ?? nil
         fileTreeVisible = try c.decodeIfPresent(Bool.self, forKey: .fileTreeVisible)
         markdownPath = try c.decodeIfPresent(String.self, forKey: .markdownPath)
+        restoreCommand = try c.decodeIfPresent(String.self, forKey: .restoreCommand)
+        splitRestoreCommand = try c.decodeIfPresent(String.self, forKey: .splitRestoreCommand)
     }
 }

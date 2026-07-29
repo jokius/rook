@@ -380,7 +380,7 @@ final class ControlServer {
                 .workspaceExpand,
                 .sessionSplit, .sessionScratch, .sessionFileTree, .sessionMarkdown, .sessionFocus, .sessionResize,
                 .surfaceZoom,
-                .sessionStatus, .sessionAgent, .sessionFlag, .sessionSeen, .notify,
+                .sessionStatus, .sessionAgent, .sessionFlag, .sessionSeen, .sessionRestore, .notify,
                 .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .configReload, .themeSet, .themeList,
                 .sidebar, .sidebarMode, .sidebarExpand, .sidebarCollapse, .sessionType, .sessionCopy,
                 .sessionPaste, .sessionSelectAll,

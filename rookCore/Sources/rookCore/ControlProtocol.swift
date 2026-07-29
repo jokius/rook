@@ -31,6 +31,7 @@ public enum Command: String, Codable, Sendable {
     case sessionAgent = "session.agent"
     case sessionFlag = "session.flag"
     case sessionSeen = "session.seen"
+    case sessionRestore = "session.restore"
     case sessionBackground = "session.background"
     case sessionSplit = "session.split"
     case sessionScratch = "session.scratch"
@@ -133,7 +134,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// `workspace.focus` (`on|off|toggle`), `workspace.filter` (`on|off|toggle`),
     /// `session.markdown` (`open|close|toggle`),
     /// `window.minimize` (`on|off|toggle`),
-    /// and `session.background` (`image|text|color|clear`).
+    /// `session.background` (`image|text|color|clear`),
+    /// and `session.restore` (`set|none|clear` — pin `command`, pin nothing, or drop the pin).
     public var mode: String?
     /// The image file path for `session.background` mode `image` (PNG or JPEG); also the target directory
     /// for `session.filetree` mode `reroot` (re-roots the panel at an arbitrary path instead of the cwd);
@@ -170,14 +172,17 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// Which split pane to focus for `session.focus` (`left`|`right`|`other`; `other` toggles); also
     /// which pane to read for `session.text` (`left`|`right`; omitted = the focused pane, no `other`),
     /// which pane `session.type` injects into (`left`|`right`; omitted = the left/main pane, the
-    /// pre-pane behavior), and which pane set `session.status` (`left`|`right`|`scratch`; omitted =
-    /// `left`/main, parsed to `StatusPane`).
+    /// pre-pane behavior), which pane set `session.status` (`left`|`right`|`scratch`; omitted =
+    /// `left`/main, parsed to `StatusPane`), and which pane `session.restore` pins (same `StatusPane`
+    /// spelling; omitted = `left`/main, `scratch` rejected app-side).
     public var pane: String?
-    /// A surface's STABLE spawn token for `session.status --pane-id` (the shell's baked `ROOK_PANE_ID`,
-    /// forwarded by the agent-status hook). When it resolves against the session's live surfaces it
-    /// OVERRIDES the stale role `pane`, so a status set from a promoted-then-re-split pane lands on the
-    /// pane's CURRENT slot; an empty/unknown token falls back to `pane`. Opaque — validated only by whether
-    /// it resolves. See `Session.paneRole(forToken:)`.
+    /// A surface's STABLE spawn token for `session.status --pane-id` and `session.restore --pane-id` (the
+    /// shell's baked `ROOK_PANE_ID`, forwarded by the agent-status hook). When it resolves against the
+    /// session's live surfaces it OVERRIDES the stale role `pane`, so a status set from a
+    /// promoted-then-re-split pane lands on the pane's CURRENT slot; an empty/unknown token falls back to
+    /// `pane`. Opaque — validated only by whether it resolves. `session.restore` diverges on the fallback:
+    /// an UNRESOLVABLE (non-empty) token with no explicit `pane` is an error there rather than a silent
+    /// `left`, since pinning the wrong pane's restore command persists. See `Session.paneRole(forToken:)`.
     public var paneID: String?
     /// Absolute left-pane split fraction (0...1) for `session.resize`, clamped server-side to
     /// `AppStore.splitRatioMin...splitRatioMax`. Mutually exclusive with `ratioDelta`.
@@ -212,7 +217,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var title: String?
     /// The desktop-notification body for `notify` (required).
     public var body: String?
-    /// The program the overlay terminal runs for `session.overlay.open` (e.g. `revdiff`).
+    /// The program the overlay terminal runs for `session.overlay.open` (e.g. `revdiff`); also the shell
+    /// line `session.restore` pins for the next launch (mode `set` only, typed verbatim — never re-quoted,
+    /// which is what lets a pipeline or a compound `&&` line restore at all).
     public var command: String?
     /// Whether a command surface keeps its "press any key to close" prompt after the command exits instead
     /// of closing immediately: `session.overlay.open --wait` (the overlay) and `session.new --command …
@@ -381,6 +388,43 @@ public struct ControlRequest: Codable, Sendable, Equatable {
     }
 }
 
+/// The three forms of the `session.restore` per-pane restore-command override, parsed from the wire tokens
+/// `set` / `none` / `clear`. An explicit enum rather than the stored `String?` tri-state, so the wire says
+/// which of the three the caller meant instead of leaning on an empty string. `pinNone` is deliberately NOT
+/// spelled `none`: a bare `case none` makes the compiler warn "assuming you mean `Optional<T>.none`"
+/// wherever the enum appears in an Optional context, which the dispatcher's parse step does.
+public enum ControlRestoreOverride: Equatable, Sendable {
+    /// wire `set` — pin this shell line, run verbatim on the next launch.
+    case pin(String)
+    /// wire `none` — pin the pane to nothing, so it restores a plain shell (stored as `""`).
+    case pinNone
+    /// wire `clear` — drop the pin (stored as nil), back to the captured-foreground auto-restore.
+    case unpin
+
+    /// The storage bound on a pinned command, in UTF-8 BYTES (not graphemes) — the value persists in
+    /// `windows/<id>.json`, so the cap guards the snapshot, not the display width.
+    public static let maxCommandBytes = 1024
+}
+
+/// Parsed `session.restore` payload. The pane resolution stays host-side: `paneID` is carried through
+/// opaquely and resolved app-side against the session's LIVE surfaces (`Session.paneRole(forToken:)`),
+/// falling back to the baked role `pane` — and, unlike `session.status`, an unresolvable token with no
+/// explicit `pane` is an error rather than a silent main-pane default.
+public struct ControlSessionRestoreUpdate: Equatable, Sendable {
+    public let pin: ControlRestoreOverride
+    /// Which pane to pin (`left`=main, `right`=split; `scratch` is rejected app-side — the scratch terminal
+    /// is never restored), or nil for the main pane.
+    public let pane: StatusPane?
+    /// The surface's STABLE spawn token (the shell's baked `ROOK_PANE_ID`), forwarded as `--pane-id`.
+    public let paneID: String?
+
+    public init(pin: ControlRestoreOverride, pane: StatusPane? = nil, paneID: String? = nil) {
+        self.pin = pin
+        self.pane = pane
+        self.paneID = paneID
+    }
+}
+
 /// A terminal surface as projected into the `tree` response. `id` is the stable control address to pass
 /// to `surface.zoom`; `kind` is the user-facing surface name (`left`, `right`, `scratch`, `overlay`).
 /// `active`/`visible` are derived from the session's own flags (overlay/scratch/splitFocused), NOT from
@@ -453,6 +497,15 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public let foreground: [String]?
     /// The split (right) pane's live foreground command (full argv), the split analogue of `foreground`.
     public let splitForeground: [String]?
+    /// The main pane's PERSISTED restore-command override, the read side of `session.restore`. Tri-state:
+    /// OMITTED = no override (the auto-capture behavior), `""` = pinned to nothing (a plain shell), a
+    /// command = that shell line runs on the next launch. Reported from the persisted state, so a read
+    /// after the override already fired still reports what stays pinned — record-then-restore works at any
+    /// point in the launch. Unrelated to `foreground`, which is the LIVE process the capture would take.
+    public let restoreCommand: String?
+    /// The split (right) pane's persisted restore-command override, the split analogue of `restoreCommand`
+    /// (the read side of `session.restore --pane right`).
+    public let splitRestoreCommand: String?
     /// The coding agent running in the session's FOCUSED pane (`claude`/`codex`, the `AgentKind` raw value),
     /// or nil when the pane runs anything else (omitted from the JSON). OBSERVED from the pane's foreground
     /// process — the classified form of `foreground`/`splitForeground` (which stay the raw argv for anything
@@ -516,7 +569,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 overlay: Bool = false, overlaySizePercent: Int? = nil, scratch: Bool = false, flagged: Bool = false,
                 commandWait: Bool? = nil,
                 fileTreeVisible: Bool? = nil, fileTreeRoot: String? = nil, markdownPath: String? = nil,
-                foreground: [String]? = nil, splitForeground: [String]? = nil, agent: String? = nil,
+                foreground: [String]? = nil, splitForeground: [String]? = nil,
+                restoreCommand: String? = nil, splitRestoreCommand: String? = nil, agent: String? = nil,
                 agentSession: AgentSessionRef? = nil, splitAgentSession: AgentSessionRef? = nil,
                 status: String? = nil,
                 statusPane: String? = nil, statusBlink: Bool? = nil, statusColor: String? = nil,
@@ -542,6 +596,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.markdownPath = markdownPath
         self.foreground = foreground
         self.splitForeground = splitForeground
+        self.restoreCommand = restoreCommand
+        self.splitRestoreCommand = splitRestoreCommand
         self.agent = agent
         self.agentSession = agentSession
         self.splitAgentSession = splitAgentSession

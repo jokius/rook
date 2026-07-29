@@ -21,7 +21,7 @@ struct Session: ParsableCommand {
         subcommands: [New.self, Duplicate.self, Close.self, Select.self, Go.self, Rename.self, Reveal.self, Move.self, TypeText.self,
                       Split.self, Scratch.self, FileTree.self, Markdown.self, Focus.self, Resize.self,
                       Copy.self, Paste.self,
-                      SelectAll.self, Text.self, Status.self, Agent.self, FlagCommand.self,
+                      SelectAll.self, Text.self, Status.self, Restore.self, Agent.self, FlagCommand.self,
                       Seen.self, Search.self, Background.self, Overlay.self]
     )
 
@@ -439,6 +439,64 @@ struct Session: ParsableCommand {
                                                                  blink: blink ? true : nil,
                                                                  autoReset: autoReset ? true : nil, sound: sound,
                                                                  color: color, shape: shape)))
+        }
+    }
+
+    /// The per-session, per-pane restore-command override. Nested under `Session`, so it is a different
+    /// verb from the top-level `restore clear` in `MiscCommands.swift` — that one is app-global and
+    /// capture-scoped, this one is per-session and override-scoped.
+    struct Restore: RequestCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Pin the command a session's pane re-runs on the next launch.",
+            discussion: """
+            session restore "cd api && npm run dev"   pin a shell line for the next launch
+            session restore --none                    pin to nothing (the pane restores a plain shell)
+            session restore --clear                   drop the override, back to auto-capture
+
+            The override is written now and consumed on the NEXT launch — it never touches the running \
+            session. It wins over the pane's captured foreground command and over the session's own \
+            --command, is typed VERBATIM (so a pipeline or a compound line restores, which the argv \
+            capture cannot do), skips restore-denylist.conf (you named this command deliberately), and \
+            reads back on `tree` as restoreCommand (main pane) or splitRestoreCommand (split pane). It is \
+            STICKY: it fires again on every launch until cleared.
+
+            It still obeys Settings > General > "Restore running commands on restart" — with that off \
+            nothing is restored, pin included.
+
+            COMMAND is shell code, stored verbatim in the window's state file and readable via `tree`, so \
+            it must not carry secrets.
+
+            Not to be confused with `rookctl restore clear`, which is app-global and clears every \
+            session's CAPTURED foreground command; this one is per-session and clears only the override.
+            """)
+        @Argument(help: "Shell line to run on the next launch (omit with --none or --clear).") var command: String?
+        @Flag(name: .long, help: "Pin the pane to nothing: it restores a plain shell, suppressing the captured command.") var none = false
+        @Flag(name: .long, help: "Drop the override so the pane goes back to restoring its captured foreground command.") var clear = false
+        @Option(name: .long, help: "Which pane to pin: left (main) or right (split); scratch is rejected — the scratch terminal is never restored. Defaults to the left pane.") var pane: String?
+        @Option(name: .customLong("pane-id"), help: """
+            A surface's stable token (the shell's $ROOK_PANE_ID) — resolves to the pane's CURRENT slot, so \
+            a hook in a promoted-then-re-split pane still pins the right one. Unlike `session status`, a \
+            token that does not resolve is an error unless --pane is also given as the fallback.
+            """)
+        var paneID: String?
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        // exactly one of the three forms; reject neither/multiple at parse time so it's a clean usage
+        // error, unit-testable without a socket (the dispatcher enforces the same modes server-side).
+        func validate() throws {
+            guard [command != nil, none, clear].filter({ $0 }).count == 1 else {
+                throw ValidationError("provide exactly one of a COMMAND, --none, or --clear")
+            }
+            try validatePaneArgument(pane)
+        }
+
+        func makeRequest() throws -> ControlRequest {
+            // validate() guarantees the forms are exclusive, so `command` is nil for none/clear.
+            let mode = none ? "none" : clear ? "clear" : "set"
+            return ControlRequest(cmd: .sessionRestore, target: target.target,
+                                  args: options.withWindow(ControlArgs(mode: mode, command: command,
+                                                                       pane: pane, paneID: paneID)))
         }
     }
 

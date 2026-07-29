@@ -1440,4 +1440,29 @@ struct CommandsTests {
         // per-surface overlay. Caught CLI-side (matching the server boundary) before any round-trip.
         #expect(validationMessage(["session", "background", "image", "x.png\nclipboard-read = allow\ny.png"]) != nil)
     }
+
+    @Test func sessionRestorePinsACommandVerbatim() throws {
+        // a positional shell line, passed through as-is (the CLI never quotes it) with the pane selectors.
+        let expected = ControlRequest(cmd: .sessionRestore, target: "9f3c",
+                                      args: ControlArgs(mode: "set", command: "cd api && npm run dev",
+                                                        pane: "right", paneID: "tok"))
+        #expect(try request(["session", "restore", "cd api && npm run dev", "--target", "9f3c",
+                             "--pane", "right", "--pane-id", "tok"]) == expected)
+    }
+
+    @Test func sessionRestoreNoneAndClearAreTheOtherTwoForms() throws {
+        // target defaults to `active` like every other session subcommand, so it rides along here too.
+        #expect(try request(["session", "restore", "--none"])
+            == ControlRequest(cmd: .sessionRestore, target: "active", args: ControlArgs(mode: "none")))
+        #expect(try request(["session", "restore", "--clear"])
+            == ControlRequest(cmd: .sessionRestore, target: "active", args: ControlArgs(mode: "clear")))
+    }
+
+    @Test func sessionRestoreRequiresExactlyOneForm() {
+        // neither, or two at once — both are usage errors, so a script can't half-express what it wants.
+        #expect(validationMessage(["session", "restore"]) != nil)
+        #expect(validationMessage(["session", "restore", "--none", "--clear"]) != nil)
+        #expect(validationMessage(["session", "restore", "htop", "--clear"]) != nil)
+        #expect(validationMessage(["session", "restore", "htop", "--pane", "middle"]) != nil)
+    }
 }

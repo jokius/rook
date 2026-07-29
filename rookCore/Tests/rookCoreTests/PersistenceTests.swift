@@ -634,4 +634,126 @@ final class PersistenceTests {
         try nestedStore.save(snapshot)
         #expect(nestedStore.load() == snapshot)
     }
+
+    // MARK: - the pinned restore-command override (session.restore)
+
+    /// A one-session snapshot carrying the given pins, for the arming tests below.
+    private func pinnedSnapshot(id: UUID = UUID(), isSplit: Bool = false,
+                                pin: String?, splitPin: String? = nil) -> Snapshot {
+        Snapshot(workspaces: [WorkspaceSnapshot(id: UUID(), name: "work", sessions: [
+            SessionSnapshot(id: id, customName: nil, cwd: "/tmp", isSplit: isSplit,
+                            restoreCommand: pin, splitRestoreCommand: splitPin),
+        ])])
+    }
+
+    @Test func snapshotWrittenBeforeTheOverrideExistedStillDecodesWithNoPin() throws {
+        // the format guard: the two keys are OPTIONAL and the snapshot version is unchanged, so a file from
+        // a build that never heard of them loads with the tree intact and no pin (= the old behavior).
+        let legacy = """
+        {"id":"\(UUID().uuidString)","customName":null,"cwd":"/tmp"}
+        """
+        let decoded = try JSONDecoder().decode(SessionSnapshot.self, from: Data(legacy.utf8))
+        #expect(decoded.restoreCommand == nil)
+        #expect(decoded.splitRestoreCommand == nil)
+        #expect(decoded.cwd == "/tmp")
+    }
+
+    @Test func pinsRoundTripThroughDiskIncludingThePinnedToNothingState() throws {
+        let pinned = SessionSnapshot(id: UUID(), customName: nil, cwd: "/tmp", isSplit: true,
+                                     restoreCommand: "cd api && npm run dev", splitRestoreCommand: "")
+        let original = Snapshot(workspaces: [WorkspaceSnapshot(id: UUID(), name: "work", sessions: [pinned])])
+        try store.save(original)
+        let decoded = store.load()
+        #expect(decoded == original)
+        // "" survives as "" (pinned to nothing), distinct from a missing key (no pin)
+        #expect(decoded.workspaces[0].sessions[0].splitRestoreCommand == "")
+        // and an unpinned session omits the key entirely rather than writing null
+        let bare = try JSONEncoder().encode(SessionSnapshot(id: UUID(), customName: nil, cwd: "/tmp"))
+        #expect(!String(decoding: bare, as: UTF8.self).contains("restoreCommand"))
+    }
+
+    @Test func onlyALaunchRestoreArmsThePin() {
+        // the key safety property: a mid-process reload (the default) must arm nothing, or a pin would fire
+        // as "run this again" without being asked.
+        let id = UUID()
+        let runtime = AppStore(persistence: store)
+        runtime.restore(from: pinnedSnapshot(id: id, pin: "npm run dev"))
+        let reloaded = try! #require(runtime.session(withID: id))
+        #expect(reloaded.restoreCommand == "npm run dev") // persisted state carried…
+        #expect(reloaded.pendingRestoreCommand == nil)    // …but nothing armed
+
+        let bootstrap = AppStore(persistence: store)
+        bootstrap.restore(from: pinnedSnapshot(id: id, pin: "npm run dev"), launchRestore: true)
+        let armed = try! #require(bootstrap.session(withID: id))
+        #expect(armed.pendingRestoreCommand == "npm run dev")
+    }
+
+    @Test func aHiddenSplitDropsItsPinAndArmsNothing() {
+        // a split hidden at the last quit builds no right surface, so its pin describes a pane that no
+        // longer exists — it must not survive to fire on a later manual split.
+        let id = UUID()
+        let app = AppStore(persistence: store)
+        app.restore(from: pinnedSnapshot(id: id, isSplit: false, pin: nil, splitPin: "htop"), launchRestore: true)
+        let session = try! #require(app.session(withID: id))
+        #expect(session.splitRestoreCommand == nil)
+        #expect(session.pendingSplitRestoreCommand == nil)
+    }
+
+    @Test func aShownSplitArmsItsOwnPinSeparately() {
+        let id = UUID()
+        let app = AppStore(persistence: store)
+        app.restore(from: pinnedSnapshot(id: id, isSplit: true, pin: "", splitPin: "htop"), launchRestore: true)
+        let session = try! #require(app.session(withID: id))
+        #expect(session.pendingRestoreCommand == "")       // main pinned to nothing
+        #expect(session.pendingSplitRestoreCommand == "htop")
+    }
+
+    @Test func takingAPendingOverrideConsumesItOnce() {
+        let session = Session(initialCwd: "/tmp")
+        session.restoreCommand = "npm run dev"
+        session.isSplit = true
+        session.splitRestoreCommand = "htop"
+        session.armPendingRestoreOverrides()
+
+        #expect(session.takePendingRestoreOverride(pane: .left) == "npm run dev")
+        #expect(session.takePendingRestoreOverride(pane: .left) == nil) // a second surface = a plain shell
+        #expect(session.takePendingRestoreOverride(pane: .right) == "htop")
+        #expect(session.takePendingRestoreOverride(pane: .right) == nil)
+        #expect(session.takePendingRestoreOverride(pane: .scratch) == nil) // never restored
+        // the persisted pins are untouched, so the next launch fires them again
+        #expect(session.restoreCommand == "npm run dev")
+        #expect(session.splitRestoreCommand == "htop")
+    }
+
+    @Test func clearingPendingOverridesLeavesThePersistedPinsAlone() {
+        let session = Session(initialCwd: "/tmp")
+        session.restoreCommand = "npm run dev"
+        session.armPendingRestoreOverrides()
+        session.clearPendingRestoreOverrides()
+        #expect(session.pendingRestoreCommand == nil)
+        #expect(session.restoreCommand == "npm run dev")
+    }
+
+    @Test func setRestoreCommandPersistsImmediatelyAndIsTriState() {
+        let app = AppStore(persistence: store)
+        let work = app.addWorkspace(name: "work")
+        let session = try! #require(app.addSession(toWorkspace: work.id, cwd: "/tmp"))
+        session.hasSplit = true
+
+        #expect(app.setRestoreCommand("cd api && npm run dev", pane: .left, forSession: session.id))
+        // persisted IMMEDIATELY (no debounce): the pin has to survive a SIGKILL before the next launch.
+        #expect(store.load().workspaces[0].sessions[0].restoreCommand == "cd api && npm run dev")
+
+        #expect(app.setRestoreCommand("", pane: .right, forSession: session.id))
+        #expect(store.load().workspaces[0].sessions[0].splitRestoreCommand == "")
+
+        #expect(app.setRestoreCommand(nil, pane: .left, forSession: session.id))
+        #expect(store.load().workspaces[0].sessions[0].restoreCommand == nil)
+
+        // arming is NOT a side effect of the write: a pin set during this run must not execute during it.
+        #expect(session.pendingRestoreCommand == nil)
+        // nothing to write for an unknown session or the scratch pane
+        #expect(!app.setRestoreCommand("x", pane: .left, forSession: UUID()))
+        #expect(!app.setRestoreCommand("x", pane: .scratch, forSession: session.id))
+    }
 }
