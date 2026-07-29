@@ -104,7 +104,8 @@ final class AppActions {
             forName: .rookAutoFollowed, object: nil, queue: .main
         ) { [weak self] note in
             let sessionID = note.userInfo?[AppStore.autoFollowSessionIDKey] as? UUID
-            MainActor.assumeIsolated { self?.autoFollowed(sessionID) }
+            let captured = note.userInfo?[AppStore.autoFollowIndicatorKey] as? AgentIndicator
+            MainActor.assumeIsolated { self?.autoFollowed(sessionID, captured: captured) }
         }
     }
 
@@ -238,29 +239,33 @@ final class AppActions {
     /// then moves first responder into the moved-to session's focused pane. Each also notes the manual
     /// navigation as user activity so it buys the full idle grace before auto-follow can pull the
     /// selection back (the control `session.go` drives `navigateSession` directly, so it stays silent).
+    /// The reveal routes on the indicator `navigateSession` returns — the moved-to session's status as it
+    /// stood BEFORE the visit cleared an `--auto-reset` one. When the step finds no target (an empty
+    /// filtered list) nothing was selected, so the action falls back to the current session's live
+    /// indicator and the selection no-op behaves exactly as before.
     func selectNextSession() {
         guard uiActionsEnabled else { return }
         store?.noteUserActivity()
-        store?.navigateSession(.next)
-        revealActiveBlockedPane()
+        let indicator = store?.navigateSession(.next) ?? store?.activeSession?.agentIndicator
+        revealActiveBlockedPane(captured: indicator)
     }
     func selectPreviousSession() {
         guard uiActionsEnabled else { return }
         store?.noteUserActivity()
-        store?.navigateSession(.previous)
-        revealActiveBlockedPane()
+        let indicator = store?.navigateSession(.previous) ?? store?.activeSession?.agentIndicator
+        revealActiveBlockedPane(captured: indicator)
     }
     func selectFirstSession() {
         guard uiActionsEnabled else { return }
         store?.noteUserActivity()
-        store?.navigateSession(.first)
-        revealActiveBlockedPane()
+        let indicator = store?.navigateSession(.first) ?? store?.activeSession?.agentIndicator
+        revealActiveBlockedPane(captured: indicator)
     }
     func selectLastSession() {
         guard uiActionsEnabled else { return }
         store?.noteUserActivity()
-        store?.navigateSession(.last)
-        revealActiveBlockedPane()
+        let indicator = store?.navigateSession(.last) ?? store?.activeSession?.agentIndicator
+        revealActiveBlockedPane(captured: indicator)
     }
 
     /// Step to the next/previous session needing attention (status `blocked` or `completed`), wrapping
@@ -268,18 +273,21 @@ final class AppActions {
     /// `session.go next-attention|prev-attention` control command. Notes user activity like the plain
     /// session nav (a manual step to an attention session buys the idle grace too), then reveals and focuses
     /// the moved-to session's blocked pane (`revealActiveBlockedPane`) so nav lands on the split/scratch pane
-    /// that set the status, not just the session's plain focused pane.
+    /// that set the status, not just the session's plain focused pane. Same captured-indicator routing and
+    /// same live-indicator fallback as the plain nav above — and the fallback matters MORE here, since
+    /// `attentionTarget` excludes the current session, so the sole attention session being the selected one
+    /// is a routine no-target step whose pane must still be revealed.
     func selectNextAttentionSession() {
         guard uiActionsEnabled else { return }
         store?.noteUserActivity()
-        store?.navigateSession(.nextAttention)
-        revealActiveBlockedPane()
+        let indicator = store?.navigateSession(.nextAttention) ?? store?.activeSession?.agentIndicator
+        revealActiveBlockedPane(captured: indicator)
     }
     func selectPreviousAttentionSession() {
         guard uiActionsEnabled else { return }
         store?.noteUserActivity()
-        store?.navigateSession(.previousAttention)
-        revealActiveBlockedPane()
+        let indicator = store?.navigateSession(.previousAttention) ?? store?.activeSession?.agentIndicator
+        revealActiveBlockedPane(captured: indicator)
     }
 
     /// Delete a workspace and all of its sessions. Confirms first when the workspace still has
@@ -723,14 +731,17 @@ final class AppActions {
     /// `revealActiveBlockedPane` targets the frontmost (= key) store — the firing window here since we gate
     /// on its being key — and reveals the pane that set the status (split/scratch), so the initial jump lands
     /// on the waiting pane, not just the session's plain focused pane.
-    private func autoFollowed(_ sessionID: UUID?) {
+    private func autoFollowed(_ sessionID: UUID?, captured: AgentIndicator?) {
         guard let sessionID, let windowID = library.windowID(forSession: sessionID),
               WindowRegistry.shared.isKeyWindow(windowID) else { return }
         // never reveal behind the zoom layer: the reveal mutates scratch visibility / splitFocused,
         // exactly the hidden-state writes zoom forbids. The auto-follow SELECTION stands (the user
         // lands on the blocked session when they exit zoom); only the pane reveal is skipped.
         guard TerminalZoomRegistry.shared.controller(for: windowID)?.target == nil else { return }
-        revealActiveBlockedPane()
+        // the selection for THIS path happens inside rookCore (`AppStore.autoFollowFire`), so the pre-visit
+        // indicator rides the notification's `userInfo` the way the session id already does. The live read
+        // is the fallback for an older post that carries no indicator.
+        revealActiveBlockedPane(captured: captured ?? store?.activeSession?.agentIndicator)
     }
 
     /// Reveal and focus the active session's blocked pane, reading its agent-status pane tag so navigation
@@ -762,14 +773,23 @@ final class AppActions {
     /// both resolve to the covering scratch (`topmostSurface`) and nav never reaches the blocked pane. Only
     /// the scratch cover is dismissed; an active overlay is left alone (closing a running overlay would kill
     /// its program).
-    func revealActiveBlockedPane() {
+    ///
+    /// The routing status is the CAPTURED one every selection caller gets back from `AppStore.selectSession`
+    /// / `navigateSession`, NOT a re-read of the live session. `selectSession` clears an `--auto-reset`
+    /// indicator on the way in ("visit: you've seen it") and runs BEFORE this step, so a live re-read saw
+    /// `.idle` for exactly the `completed --auto-reset` case the flag is meant for and dropped the user on
+    /// the main pane instead of the split/scratch pane that finished. Passing nil means "nothing was
+    /// selected" and degrades to plain `focusActiveSession()`; a caller that navigates without moving keeps
+    /// today's behavior by falling back to the active session's live indicator.
+    func revealActiveBlockedPane(captured indicator: AgentIndicator?) {
+        guard let indicator else { focusActiveSession(); return }
         guard let session = store?.activeSession else { focusActiveSession(); return }
         // reveal is a no-op for an IDLE session: with no status there is nothing to reveal, and the
         // scratch-hide / split-focus side effects below must never fire on plain navigation to a session
         // that merely has its (keep-alive) scratch shown. a non-idle block with no `--pane` tag is treated
         // as `left` and still reveals the main pane (hiding a covering scratch).
-        guard session.agentIndicator.status != .idle else { focusActiveSession(); return }
-        let pane = session.agentIndicator.statusPane
+        guard indicator.status != .idle else { focusActiveSession(); return }
+        let pane = indicator.statusPane
         // a shown scratch covers the panes and masks a non-scratch block; hide it first so the requested
         // pane is revealed. overlays are deliberately not touched — closing a running overlay is destructive.
         if pane != .scratch, session.scratchActive { store?.toggleScratch(session.id) }

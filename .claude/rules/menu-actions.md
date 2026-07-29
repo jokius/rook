@@ -271,8 +271,15 @@ paths:
   the action palette, and `session.go next-attention|prev-attention`; the two `BuiltinAction`s
   (`previous_attention_session`/`next_attention_session`) carry ⌃⌥↑/⌃⌥↓ as their shipped `defaultChord`.
   EVERY user-initiated GUI selection now REVEALS the blocked PANE, not just the session: the shared
-  `AppActions.revealActiveBlockedPane()` (formerly private, now called on all selection paths) reads the
-  landed session's `agentIndicator.statusPane` and focuses that pane — for `right`, the split surface via
+  `AppActions.revealActiveBlockedPane(captured:)` (formerly private, now called on all selection paths)
+  routes on the indicator the caller CAPTURED before selecting — never on a re-read of the landed session.
+  That is load-bearing, not stylistic: `AppStore.selectSession` clears an `--auto-reset` indicator on the
+  way in ("visit: you've seen it") and RETURNS the pre-clear value, so a re-read would see `.idle` and
+  every `--auto-reset` jump would quietly land on the main pane instead of the pane that finished.
+  `selectSession` is `@discardableResult`, so the paths that select WITHOUT revealing are unaffected; the
+  auto-follow leg selects inside rookCore, so its captured indicator rides `.rookAutoFollowed`'s `userInfo`
+  under `AppStore.autoFollowIndicatorKey` next to the session id.
+  The pane it focuses — for `right`, the split surface via
   `focusSplitPane(_:wantSplit: true)` (a FIXED target, gated on `splitSurface != nil`; a promoted survivor
   has NO split surface and its `.right` tag was re-tagged to `.left` at promotion, so it falls through to
   `focusActiveSession` as the sole main pane);

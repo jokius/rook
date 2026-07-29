@@ -175,8 +175,10 @@ extension WindowContentView {
     /// set the status), then close the popover — the mouse twin of the ⌃⇧I palette's select-and-reveal.
     private func selectAttention(_ id: UUID) {
         store.noteUserActivity()
-        store.selectSession(id)
-        actions.revealActiveBlockedPane()
+        // the reveal routes on the indicator the select returns, not a re-read: the select clears an
+        // `--auto-reset` status on its way in, and this popover's rows are mostly completed flashes.
+        let indicator = store.selectSession(id)
+        actions.revealActiveBlockedPane(captured: indicator)
         attentionPopoverShown = false
     }
 }

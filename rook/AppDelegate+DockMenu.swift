@@ -174,15 +174,15 @@ extension AppDelegate {
 
     /// Jump to a session captured when the menu was built: select it in its (now frontmost) window and
     /// reveal the pane that raised its status. The body is the title-bar attention popover's
-    /// `selectAttention` verbatim, INCLUDING its defect: `selectSession` clears an `--auto-reset`
-    /// indicator on the way in ("visit: you've seen it"), so for a `completed --auto-reset` row the
-    /// following reveal already reads `.idle` and falls back to focusing the main pane instead of the one
-    /// that finished. That is not specific to the Dock — every select-then-reveal path in the app has it —
-    /// so it is fixed once, for all of them, rather than papered over here.
+    /// `selectAttention` verbatim, including its routing: `selectSession` clears an `--auto-reset`
+    /// indicator on the way in ("visit: you've seen it"), so the reveal reads the indicator that select
+    /// RETURNS rather than the live session — otherwise a `completed --auto-reset` row would read back
+    /// `.idle` and drop the user on the main pane instead of the split/scratch pane that finished. That
+    /// was never Dock-specific; every select-then-reveal path shares the one captured-indicator seam.
     private func selectDockSession(_ sessionID: UUID, in store: AppStore) {
         guard store.session(withID: sessionID) != nil, activate(store) else { return }
         store.noteUserActivity()
-        store.selectSession(sessionID)
-        actions?.revealActiveBlockedPane()
+        let indicator = store.selectSession(sessionID)
+        actions?.revealActiveBlockedPane(captured: indicator)
     }
 }

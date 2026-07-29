@@ -30,6 +30,11 @@ extension AppStore {
     /// queue) and the poster below both reach it without actor hops.
     public nonisolated static let autoFollowSessionIDKey = "sessionID"
 
+    /// The `userInfo` key carrying the target's `AgentIndicator` as it was BEFORE the select cleared an
+    /// `--auto-reset` flash — what the app-side reveal routes on, so a `blocked --auto-reset` jump still
+    /// opens the pane that blocked. Absent when the target had no indicator to capture.
+    public nonisolated static let autoFollowIndicatorKey = "indicator"
+
     /// Records user interaction with this window (a keystroke or a manual selection). Stamps
     /// `lastActivityAt` UNCONDITIONALLY so the idle metric is independent of the feature being enabled,
     /// then — only when a timeout is configured — arms the debouncer to fire `autoFollowFire` after the
@@ -152,12 +157,17 @@ extension AppStore {
         let blocked = attentionSessions.filter { $0.agentIndicator.status == .blocked }
         guard let target = autoFollowTarget(current: activeSession, blocked: blocked,
                                             stayOnActive: autoFollowStayOnActive) else { return }
-        selectSession(target)
+        // capture the indicator BEFORE the select: `selectSession` clears an `--auto-reset` one on the way
+        // in ("visit: you've seen it"), so the app-side reveal would otherwise read `.idle` and land on the
+        // main pane instead of the pane that blocked. Every other select-then-reveal path captures the same
+        // way; this one has to ride the notification because the select happens down here in rookCore.
+        let captured = selectSession(target)
         // mute this block: a later idle fire won't yank the user back here after they leave, until the
         // session re-enters blocked (setAgentIndicator resets the flag on that transition).
         session(withID: target)?.autoFollowConsumed = true
-        NotificationCenter.default.post(name: .rookAutoFollowed, object: nil,
-                                        userInfo: [Self.autoFollowSessionIDKey: target])
+        var info: [String: Any] = [Self.autoFollowSessionIDKey: target]
+        if let captured { info[Self.autoFollowIndicatorKey] = captured }
+        NotificationCenter.default.post(name: .rookAutoFollowed, object: nil, userInfo: info)
     }
 
     /// Milliseconds since the last user activity (`lastActivityAt`), or nil before any activity. Clamped to

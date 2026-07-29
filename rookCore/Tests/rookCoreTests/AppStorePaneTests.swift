@@ -905,4 +905,60 @@ struct AppStorePaneTests {
         #expect(store.closeScratch(session.id) == true)
         #expect(session.agentIndicator.status == .blocked)
     }
+
+    // MARK: - captured pane tag survives the select's auto-reset clear
+
+    // The host-free half of "select a session, then reveal the pane its agent stopped in". The app-target
+    // `AppActions.revealActiveBlockedPane(captured:)` cannot re-read the session, because `selectSession`
+    // clears an `--auto-reset` indicator ON THE WAY IN ("visit: you've seen it") and runs first — the reveal
+    // would see `.idle` and drop the user on the main pane. These pin the seam that makes the reveal
+    // possible: the pane tag comes back from the select/nav call itself.
+
+    @Test func selectSessionReturnsThePaneTagTheAutoResetClearErases() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        store.toggleSplit(session.id) // hasSplit, so the `.right` tag is not normalized away
+        let flash = AgentIndicator(status: .completed, autoReset: true, statusPane: .right)
+        store.setAgentIndicator(flash, forSession: session.id)
+
+        let captured = store.selectSession(session.id)
+
+        #expect(captured == flash)                             // the reveal still knows to go right
+        #expect(session.agentIndicator == AgentIndicator())    // and the visit still extinguished the flash
+    }
+
+    @Test func selectSessionReturnsTheLiveIndicatorWithoutAutoReset() {
+        // the no-auto-reset path must not move: captured and live agree, exactly as a re-read used to.
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let blocked = AgentIndicator(status: .blocked, statusPane: .scratch)
+        store.setAgentIndicator(blocked, forSession: session.id)
+
+        #expect(store.selectSession(session.id) == blocked)
+        #expect(session.agentIndicator == blocked)
+        #expect(store.selectSession(nil) == nil)               // a deselect routes nothing
+        #expect(store.selectSession(UUID()) == nil)            // and an unknown id is still ignored
+    }
+
+    @Test func navigateSessionForwardsTheMovedToPaneTag() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let here = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let finished = store.addSession(toWorkspace: ws.id, cwd: "/b")!
+        // park on `here` FIRST, then stamp the flash: selecting away from `finished` would clear it.
+        store.selectSession(here.id)
+        let flash = AgentIndicator(status: .completed, autoReset: true, statusPane: .scratch)
+        store.setAgentIndicator(flash, forSession: finished.id)
+
+        // attention nav (⌃⌥↑/↓, the palettes, the bell popover) is the route a completed flash is reached by.
+        #expect(store.navigateSession(.nextAttention) == flash)
+        #expect(store.selectedSessionID == finished.id)
+        #expect(finished.agentIndicator == AgentIndicator())
+
+        // and a step with no target returns nil rather than a stale tag — the GUI actions read that as
+        // "nothing was selected" and fall back to the current session's live indicator.
+        #expect(store.navigateSession(.nextAttention) == nil)
+    }
 }

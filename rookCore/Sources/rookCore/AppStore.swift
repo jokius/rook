@@ -363,8 +363,15 @@ public final class AppStore {
     /// BOTH the session moved to (you've seen it) and the one moved from (it must not
     /// persist once you leave it); a non-`autoReset` indicator (active/blocked) is left
     /// untouched (keep-state).
-    public func selectSession(_ sessionID: UUID?, sidebarSelection selectionIDs: [UUID]? = nil) {
-        if let sessionID, session(withID: sessionID) == nil { return }
+    ///
+    /// Returns the DESTINATION's indicator as it stood BEFORE that visit-clear (nil for a nil/unknown id).
+    /// Select-then-reveal callers must route on this captured value, not on a re-read of the live session:
+    /// the `autoReset` clear above lands between the two steps, so a `completed --auto-reset` block in a
+    /// split/scratch pane would otherwise read back `.idle` and drop the user on the main pane instead.
+    @discardableResult
+    public func selectSession(_ sessionID: UUID?, sidebarSelection selectionIDs: [UUID]? = nil) -> AgentIndicator? {
+        if let sessionID, session(withID: sessionID) == nil { return nil }
+        let captured = sessionID.flatMap { session(withID: $0)?.agentIndicator }
         let previous = selectedSessionID
         selectedSessionID = sessionID
         if let selectionIDs {
@@ -378,6 +385,7 @@ public final class AppStore {
         clearAutoResetIndicator(previous)  // leave: a one-time status must not linger on the row you left
         recordRecency()
         scheduleSave() // selection fires on every click/keystroke — coalesce the writes
+        return captured
     }
 
     /// Reset a session's agent indicator to idle when it is marked `autoReset` (the one-time `completed`
@@ -640,11 +648,13 @@ public final class AppStore {
     /// session. No-op when the filtered list is empty. Routes through `selectSession`, inheriting recency,
     /// badge clearing, persistence, and workspace derivation. Because the targets are always in-set, nav
     /// never triggers `autoUnfocusIfOutsideFocus` — that stays the safety net for an explicit cross-set
-    /// select.
-    public func navigateSession(_ direction: SessionNavigation) {
+    /// select. Forwards `selectSession`'s pre-visit indicator for the moved-to session, so nav's reveal step
+    /// routes on the status the step landed on; nil when the step found no target (nothing was selected).
+    @discardableResult
+    public func navigateSession(_ direction: SessionNavigation) -> AgentIndicator? {
         let sessions = navigableSessions
         let ids = sessions.map(\.id)
-        guard let first = ids.first, let last = ids.last else { return }
+        guard let first = ids.first, let last = ids.last else { return nil }
         let target: UUID
         switch direction {
         case .first: target = first
@@ -657,10 +667,10 @@ public final class AppStore {
                 target = first // no/invalid selection -> first
             }
         case .nextAttention, .previousAttention:
-            guard let found = attentionTarget(in: sessions, forward: direction == .nextAttention) else { return }
+            guard let found = attentionTarget(in: sessions, forward: direction == .nextAttention) else { return nil }
             target = found
         }
-        selectSession(target)
+        return selectSession(target)
     }
 
     /// The next/previous session needing attention (status `blocked` or `completed`) in the flattened

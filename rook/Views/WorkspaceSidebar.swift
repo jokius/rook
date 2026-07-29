@@ -756,10 +756,13 @@ struct WorkspaceSidebar: NSViewRepresentable {
             // auto-follow's own jump never reaches here) counts as activity: it buys the full idle grace
             // before auto-follow can pull the selection back.
             store.noteUserActivity()
-            store.selectSession(activeID, sidebarSelection: selectedIDs)
+            let indicator = store.selectSession(activeID, sidebarSelection: selectedIDs)
             // land on the selected session's blocked pane when it carries a pane-tagged block (a no-op
             // otherwise), async so it runs after the selection + the sidebar's own focus-restore settle.
-            DispatchQueue.main.async { [weak self] in self?.actions.revealActiveBlockedPane() }
+            // the routing status is captured from the select above, BEFORE its `--auto-reset` clear.
+            DispatchQueue.main.async { [weak self] in
+                self?.actions.revealActiveBlockedPane(captured: indicator)
+            }
         }
 
         /// Returns keyboard focus to the active session's terminal after a sidebar

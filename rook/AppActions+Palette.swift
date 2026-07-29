@@ -182,10 +182,12 @@ extension AppActions {
             // picking a session from the ⌃P / attention palette is a user-initiated selection: note activity
             // so it buys the full idle grace before auto-follow can pull the selection back.
             store.noteUserActivity()
-            store.selectSession(id)
+            let indicator = store.selectSession(id)
             // reveal the picked session's blocked pane (a no-op unless it carries a pane-tagged block),
             // async so it runs AFTER the palette closes and its focus-restore, winning the focus race.
-            DispatchQueue.main.async { self?.revealActiveBlockedPane() }
+            // the indicator is captured here, BEFORE the select's `--auto-reset` clear — re-reading it in
+            // the async block would see `.idle` for a completed flash and land on the main pane.
+            DispatchQueue.main.async { self?.revealActiveBlockedPane(captured: indicator) }
         }
     }
 
