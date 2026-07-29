@@ -20,7 +20,8 @@ extension AppStore {
         return Snapshot(selectedSessionID: selectedSessionID, workspaces: workspaceSnapshots,
                         sidebarWidth: sidebarWidth, fileTreeWidth: fileTreeWidth, markdownWidth: markdownWidth,
                         sidebarVisible: sidebarVisible, sidebarMode: sidebarMode,
-                        focusedWorkspaceID: focusedWorkspaceID, sessionRecency: sessionRecency.items)
+                        focusedWorkspaceID: focusedWorkspaceID, markedWorkspaceID: markedWorkspaceID,
+                        sessionRecency: sessionRecency.items)
     }
 
     /// Rebuilds the tree from a snapshot: fresh `Session`s (surfaces and shells
@@ -57,9 +58,9 @@ extension AppStore {
         markdownWidth = min(AppStore.markdownWidthMax, max(AppStore.markdownWidthMin, snapshot.markdownWidth ?? AppStore.markdownWidthDefault))
         sidebarVisible = snapshot.sidebarVisible ?? true
         sidebarMode = snapshot.sidebarMode ?? .tree
-        // a stale focus id (its workspace not in the restored tree) is harmless — `visibleWorkspaces`
-        // falls back to the full tree — so restore it verbatim; nil stays unfocused.
-        focusedWorkspaceID = snapshot.focusedWorkspaceID
+        // both focus bits, so a filter an involuntary jump switched off can still be re-applied after the
+        // relaunch; a stale mark stays verbatim and harmless (see `restoreFocus(from:)`).
+        restoreFocus(from: snapshot)
         if let id = snapshot.selectedSessionID, session(withID: id) == nil {
             selectedSessionID = nil
         } else {

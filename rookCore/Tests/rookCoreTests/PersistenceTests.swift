@@ -242,15 +242,80 @@ final class PersistenceTests {
         #expect(store.load().focusedWorkspaceID == nil) // default unfocused
         app.setFocusedWorkspace(work.id)
         #expect(store.load().focusedWorkspaceID == work.id)
+        #expect(store.load().markedWorkspaceID == work.id) // both bits land; the legacy key stays effective
 
         let restored = AppStore(persistence: store)
         restored.restore(from: store.load())
         #expect(restored.focusedWorkspaceID == work.id)
+        #expect(restored.markedWorkspaceID == work.id)
+        #expect(restored.focusFilterEnabled)
 
-        app.setFocusedWorkspace(nil)
+        app.setFocusedWorkspace(nil) // an EXPLICIT unfocus forgets the mark, on disk too
+        #expect(store.load().markedWorkspaceID == nil)
         let restoredCleared = AppStore(persistence: store)
         restoredCleared.restore(from: store.load())
         #expect(restoredCleared.focusedWorkspaceID == nil)
+        #expect(restoredCleared.markedWorkspaceID == nil)
+    }
+
+    @Test func markSurvivesAnInvoluntaryJumpAcrossARelaunch() {
+        let app = AppStore(persistence: store)
+        let work = app.addWorkspace(name: "work")
+        let personal = app.addWorkspace(name: "personal")
+        _ = app.addSession(toWorkspace: work.id, cwd: "/a")
+        let outside = try! #require(app.addSession(toWorkspace: personal.id, cwd: "/b"))
+        app.setFocusedWorkspace(work.id)
+        app.selectSession(outside.id) // idle auto-follow / a notification reveal: the filter drops, the mark stays
+        app.save() // selection saves are debounced; flush so the write lands before reading back
+
+        // the file keeps BOTH bits: the legacy key stays EFFECTIVE (nil — what an older build would read),
+        // and the mark rides alongside it instead of being lost with the filter.
+        let onDisk = store.load()
+        #expect(onDisk.focusedWorkspaceID == nil)
+        #expect(onDisk.markedWorkspaceID == work.id)
+
+        let restored = AppStore(persistence: store)
+        restored.restore(from: onDisk)
+        #expect(restored.focusedWorkspaceID == nil) // comes back unfiltered, exactly as it was left
+        #expect(restored.visibleWorkspaces.map(\.id) == [work.id, personal.id])
+        restored.setFocusFilterEnabled(true) // `workspace.filter on` after the relaunch...
+        #expect(restored.focusedWorkspaceID == work.id) // ...returns to the SAME workspace
+        #expect(restored.visibleWorkspaces.map(\.id) == [work.id])
+    }
+
+    @Test func legacySnapshotWithoutMarkedWorkspaceRestoresAFilteringFocus() throws {
+        // a workspaces.json written before `markedWorkspaceID` existed carries only the effective id; it
+        // must decode (not throw and wipe the tree) as marked AND filtering — bit-for-bit what the old
+        // build restored, so the migration is invisible to the user.
+        let ws = UUID()
+        let json = #"{ "version": 1, "focusedWorkspaceID": "\#(ws.uuidString)", "workspaces": "# +
+            #"[ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [] } ] }"#
+        try Data(json.utf8).write(to: fileURL)
+        let loaded = store.load()
+        #expect(loaded.workspaces.map(\.id) == [ws])
+        #expect(loaded.markedWorkspaceID == nil)
+
+        let app = AppStore(persistence: store)
+        app.restore(from: loaded)
+        #expect(app.focusedWorkspaceID == ws)
+        #expect(app.markedWorkspaceID == ws)
+        #expect(app.focusFilterEnabled)
+        #expect(app.visibleWorkspaces.map(\.id) == [ws])
+    }
+
+    @Test func restoredMarkOfARemovedWorkspaceShowsTheWholeTree() {
+        let ws = UUID()
+        let gone = UUID()
+        let app = AppStore(persistence: store)
+        app.restore(from: Snapshot(workspaces: [WorkspaceSnapshot(id: ws, name: "work", sessions: [])],
+                                   markedWorkspaceID: gone))
+        // a mark whose workspace was removed between the save and the load is kept verbatim (an undone
+        // removal can bring it back) and the EXISTING gates make it inert — nothing to add on restore.
+        #expect(app.markedWorkspaceID == gone)
+        #expect(app.focusedWorkspace == nil)
+        #expect(app.visibleWorkspaces.map(\.id) == [ws])
+        app.setFocusFilterEnabled(true)
+        #expect(!app.focusFilterEnabled) // re-enabling refuses a mark that resolves to nothing
     }
 
     @Test func legacySnapshotWithoutFocusedWorkspaceDecodesUnfocused() throws {

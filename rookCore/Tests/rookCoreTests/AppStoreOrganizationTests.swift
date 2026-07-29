@@ -463,8 +463,11 @@ struct AppStoreOrganizationTests {
         // ...but WHICH workspace it was survives, so the user has somewhere to come back to.
         #expect(store.markedWorkspaceID == work.id)
         #expect(!store.focusFilterEnabled)
-        // only the effective focus is persisted: a mark kept alive by an auto-unfocus is session-scoped.
+        // the snapshot carries BOTH bits, so the mark outlives the relaunch too (the round-trip and the
+        // re-apply after it are in `PersistenceTests`); the legacy key stays the EFFECTIVE focus, which is
+        // what an older build reads back.
         #expect(store.snapshot().focusedWorkspaceID == nil)
+        #expect(store.snapshot().markedWorkspaceID == work.id)
         store.setFocusFilterEnabled(true)
         #expect(store.focusedWorkspaceID == work.id)
         #expect(store.visibleWorkspaces.map(\.id) == [work.id])

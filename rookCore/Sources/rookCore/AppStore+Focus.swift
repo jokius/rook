@@ -89,6 +89,26 @@ extension AppStore {
         if workspace(forSession: sessionID)?.id != markedWorkspaceID { focusFilterEnabled = false }
     }
 
+    /// Restores BOTH bits from a snapshot — the read leg of `Snapshot.focusedWorkspaceID` (the effective
+    /// focus) + `Snapshot.markedWorkspaceID` (the mark behind it). Assigning the halves directly instead of
+    /// the public `focusedWorkspaceID` is the whole point: a mark whose filter is OFF has no effective focus
+    /// to assign, and it is exactly that state — what an involuntary jump leaves behind — that has to
+    /// survive a relaunch, or `workspace.filter on` has nothing to come back to.
+    ///
+    /// A LEGACY snapshot carries no mark key: there the effective id WAS the whole state, so it restores as
+    /// marked AND filtering — bit-for-bit what the pre-split build did. The invariant "filtering implies a
+    /// mark" needs no guard here: a non-nil effective id IS the fallback for the mark, so the filter can
+    /// only come back on with something marked.
+    ///
+    /// A mark naming a workspace that is no longer in the tree is kept VERBATIM, like the pre-split restore
+    /// kept a stale focus id: `focusedWorkspace` resolves it to nil and `visibleWorkspaces` falls back to
+    /// the whole tree, `setFocusFilterEnabled(true)` refuses it, and an undone removal inside the grace
+    /// window brings the same id back live. No extra guard here would add anything.
+    func restoreFocus(from snapshot: Snapshot) {
+        markedWorkspaceID = snapshot.markedWorkspaceID ?? snapshot.focusedWorkspaceID
+        focusFilterEnabled = snapshot.focusedWorkspaceID != nil
+    }
+
     /// The focused workspace, resolved from `focusedWorkspaceID` — nil when unfocused OR when the id is
     /// stale (its workspace no longer exists). The single id→workspace lookup the tree filter and the
     /// bottom-bar focus pill both read, so they can't drift.

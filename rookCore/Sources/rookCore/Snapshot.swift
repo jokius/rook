@@ -29,10 +29,22 @@ public struct Snapshot: Codable, Equatable, Sendable {
     /// Optional so a snapshot already on disk before this field was added still decodes instead of
     /// failing the load and wiping the saved tree, like the fields above.
     public var sidebarMode: SidebarMode?
-    /// The workspace the sidebar tree is focused on, or nil for the full tree. Naturally Optional, so a
+    /// The workspace the sidebar tree is focused on, or nil for the full tree — the EFFECTIVE focus
+    /// (`AppStore.focusedWorkspaceID`), i.e. the mark only while the filter is on. Naturally Optional, so a
     /// snapshot already on disk before this field was added decodes (as nil → unfocused) instead of
     /// failing the load and wiping the saved tree.
+    ///
+    /// Deliberately still EFFECTIVE rather than promoted to the mark: a build older than `markedWorkspaceID`
+    /// reads only this key, so a DOWNGRADE restores exactly the focus it always did instead of losing it.
+    /// It also carries the filter BIT — `markedWorkspaceID` is WHICH workspace, this is WHETHER it filters
+    /// — which is why the pair needs no third field. Don't stop writing it without adding one.
     public var focusedWorkspaceID: UUID?
+    /// WHICH workspace the focus filter is pinned to (`AppStore.markedWorkspaceID`), remembered even while
+    /// the filter is OFF — the state an involuntary jump (idle auto-follow, attention nav, a notification
+    /// reveal) leaves behind, so `workspace.filter on` comes back to the same workspace across a relaunch.
+    /// Optional so a snapshot already on disk before this field was added still decodes (missing → the
+    /// legacy `focusedWorkspaceID` IS the mark, and it was filtering), like the fields above.
+    public var markedWorkspaceID: UUID?
     /// Most-recently-selected session ids, front = current, so the Ctrl-Tab switcher's order survives
     /// a relaunch. Restore drops ids no longer in the tree. Optional so a snapshot already on disk
     /// before this field was added still decodes (as nil → selection only), like the fields above.
@@ -42,7 +54,8 @@ public struct Snapshot: Codable, Equatable, Sendable {
                 workspaces: [WorkspaceSnapshot] = [], sidebarWidth: Double? = nil, fileTreeWidth: Double? = nil,
                 markdownWidth: Double? = nil,
                 sidebarVisible: Bool? = nil,
-                sidebarMode: SidebarMode? = nil, focusedWorkspaceID: UUID? = nil, sessionRecency: [UUID]? = nil) {
+                sidebarMode: SidebarMode? = nil, focusedWorkspaceID: UUID? = nil, markedWorkspaceID: UUID? = nil,
+                sessionRecency: [UUID]? = nil) {
         self.version = version
         self.selectedSessionID = selectedSessionID
         self.workspaces = workspaces
@@ -52,12 +65,13 @@ public struct Snapshot: Codable, Equatable, Sendable {
         self.sidebarVisible = sidebarVisible
         self.sidebarMode = sidebarMode
         self.focusedWorkspaceID = focusedWorkspaceID
+        self.markedWorkspaceID = markedWorkspaceID
         self.sessionRecency = sessionRecency
     }
 
     enum CodingKeys: String, CodingKey {
         case version, selectedSessionID, workspaces, sidebarWidth, fileTreeWidth, markdownWidth, sidebarVisible, sidebarMode
-        case focusedWorkspaceID, sessionRecency
+        case focusedWorkspaceID, markedWorkspaceID, sessionRecency
     }
 
     /// Custom decode so `sessionRecency` is LOSSY: a present-but-invalid list (a malformed UUID
@@ -77,6 +91,7 @@ public struct Snapshot: Codable, Equatable, Sendable {
         sidebarVisible = try c.decodeIfPresent(Bool.self, forKey: .sidebarVisible)
         sidebarMode = try c.decodeIfPresent(SidebarMode.self, forKey: .sidebarMode)
         focusedWorkspaceID = try c.decodeIfPresent(UUID.self, forKey: .focusedWorkspaceID)
+        markedWorkspaceID = try c.decodeIfPresent(UUID.self, forKey: .markedWorkspaceID)
         sessionRecency = (try? c.decodeIfPresent([UUID].self, forKey: .sessionRecency)) ?? nil
     }
 }
