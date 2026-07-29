@@ -28,6 +28,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// new`-style graft lands in the last-active window.
     private var pendingOpenDirectories: [String] = []
 
+    /// The retained targets of the CURRENT Dock menu's items (see `AppDelegate+DockMenu`). AppKit does not
+    /// retain an `NSMenuItem.target` and the Dock invokes items with a nil sender, so each item's identity
+    /// and action live in a target object that has to be held here; `applicationDockMenu` invalidates and
+    /// replaces the batch on every rebuild.
+    var dockMenuActionTargets: [DockMenuActionTarget] = []
+
     private var restoreObserver: NSObjectProtocol?
     private var scheduledReconciliationReasons: Set<String> = []
 
