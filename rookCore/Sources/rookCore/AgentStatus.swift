@@ -63,17 +63,21 @@ public enum AgentStatus: String, Codable, Sendable, CaseIterable {
         }
     }
 
-    /// The SF Symbol for this status' glyph with an optional `StatusShape` applied — the ONE resolver both
+    /// The SF Symbol for this status' glyph with the two shape axes resolved — the ONE resolver both
     /// render sites (the AppKit sidebar `StatusIconView` and the SwiftUI `StatusGlyph`) go through, so they
     /// cannot drift. A shape swaps the glyph for that plain silhouette, making the state readable when the
     /// TINT is not (color blindness, a monochrome theme, a small size).
     ///
-    /// nil keeps the SEMANTIC default (`symbolName` above) byte-for-byte, which is the whole point: the
-    /// shape is a SECOND axis on top of the meaningful glyph, not a flattening of it. `idle` is empty in
-    /// every combination — it renders no glyph, so a shape on it has nothing to draw.
-    public func symbolName(shape: StatusShape?) -> String {
+    /// Precedence: `override` > `configured` > the SEMANTIC default (`symbolName` above). `override` is the
+    /// per-call `session.status --shape` — a deliberate signal about THIS report from an agent hook, which
+    /// knows something the standing preference does not — so it must win over the Settings-configured
+    /// per-status shape, exactly the way the per-call `--color` override wins over the configured status
+    /// color. Both nil keeps the semantic default byte-for-byte: the shapes are a SECOND axis on top of the
+    /// meaningful glyph, not a flattening of it. `idle` is empty in EVERY combination — it renders no glyph,
+    /// so a shape on it has nothing to draw.
+    public func symbolName(override: StatusShape?, configured: StatusShape?) -> String {
         guard self != .idle else { return "" }
-        return shape?.symbolName ?? symbolName
+        return override?.symbolName ?? configured?.symbolName ?? symbolName
     }
 
     /// Tooltip for a visible status glyph: the three states differ only by shape and tint, so nothing on
@@ -97,8 +101,9 @@ public enum StatusPane: String, Codable, Sendable, CaseIterable {
 /// cannot carry it (color blindness, a monochrome theme, a small glyph), so two sessions in different
 /// states differ by outline as well as hue.
 ///
-/// Set per call via `session.status --shape`. The raw value is the SF Symbol base name and serializes to
-/// JSON as `"circle"|"square"|…`.
+/// Set per call via `session.status --shape` (the ephemeral override), or per status in Settings ▸ Agent
+/// Status (`AppSettings.effectiveStatusShape(for:)`, the standing default). The raw value is the SF Symbol
+/// base name and serializes to JSON as `"circle"|"square"|…`.
 public enum StatusShape: String, Codable, Sendable, CaseIterable {
     case circle, square, triangle, diamond, capsule, star
 

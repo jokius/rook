@@ -667,10 +667,12 @@ paths:
   `Command` case for the flags — the catalog bump to 66 is `session.duplicate` below).
   `ControlArgs.noSelect` + `ControlSessionCreateOptions.noSelect` create the session in the BACKGROUND:
   `AppStore.addSession` gained a defaulted `select: Bool = true` gating `selectedSessionID` /
-  `autoUnfocusIfOutsideFocus` / `recordRecency`, `makeSessionResponse` passes `select: !noSelect` and skips
-  the focus call, and the `--create-workspace` path threads `clearFocus: !noSelect` so a background create
-  can't drop a focused workspace; read-back is the existing `tree` `active` flag (a background session is
-  not `active`) — state-mutating-read-back EXEMPT, no new field.
+  `disableFocusIfSelectionOutsideSet` / `recordRecency`, `makeSessionResponse` passes `select: !noSelect`
+  and skips the focus call, and the `--create-workspace` path threads `revealNewWorkspace: !noSelect` so a
+  background create can't widen the marked workspace set; read-back is the existing `tree` `active` flag (a
+  background session is not `active`) — state-mutating-read-back EXEMPT, no new field.
+  Both names changed with the focus SET (the parameter also inverted its mechanism — it no longer CLEARS a
+  focus, it declines to JOIN the set); see the `workspace.focus`/`workspace.filter` section.
   `ControlArgs.wait` + `ControlSessionCreateOptions.wait` HOLD a `--command` session open on libghostty's
   press-any-key prompt after the command exits: `rookApp.makeSurface` threads `session.commandWait` into
   the existing `GhosttySurfaceView` `waitAfterCommand` param (the same one the overlay factory uses via
@@ -1164,27 +1166,42 @@ paths:
   `StatusShape.validNamesPhrase`).
   It rides the ephemeral `AgentIndicator.shape` exactly like `--color`, so the next `session.status`
   WITHOUT a shape discards it — there is no explicit clear.
+  **`--shape` is an OVERRIDE, and the precedence is per-call > configured > semantic.**
+  The per-call value beats the Settings-configured per-status shape
+  (`AppSettings.effectiveStatusShape(for:)`, see the Settings rule), which in turn beats the status' own
+  semantic symbol — the same three-tier shape the `--color` override already has over the configured status
+  color.
+  The reason the per-call leg wins is that it is a deliberate statement about THIS report from a hook that
+  knows something the standing preference does not.
+  The resolver is the single host-free
+  `AgentStatus.symbolName(override:configured:)` = `override?.symbolName ?? configured?.symbolName ?? symbolName`;
+  with both nil every glyph on screen and every field on the wire is byte-for-byte what it was (pinned by an
+  `AgentStatusTests` case over all states).
   **Our built-in defaults stay SEMANTIC and are deliberately NOT upstream's.**
   Upstream's series (agterm `21d17537`+`03e0e83b`+`939e3d1b`) also flipped the built-in glyphs so all three
   states draw a bare `circle.fill` and differ only by tint, and added a Settings shape picker to compensate
   for that regression; we took the CONTROL leg only.
   `active`=`ellipsis.circle.fill`, `blocked`=`exclamationmark.circle.fill`,
-  `completed`=`checkmark.circle.fill`, `idle`=no glyph are unchanged, so the resolver is
-  `AgentStatus.symbolName(shape:)` = `shape?.symbolName ?? symbolName` — with no `--shape` passed, every
-  glyph on screen and every field on the wire is byte-for-byte what it was (pinned by an `AgentStatusTests`
-  case over all states).
-  There is NO Settings shape picker and no per-status configured default: that is upstream's phase 2, worth
-  taking only if our defaults ever stop being semantic.
+  `completed`=`checkmark.circle.fill`, `idle`=no glyph are unchanged.
+  We DID later take upstream's Settings picker (the per-status configured shape), but on our own terms:
+  because our defaults are semantic, nil is NOT Circle here, so the picker needs an explicit **Default**
+  entry that upstream's option list does not have — see the Settings rule for that menu.
   Both render sites go through that ONE host-free resolver — the AppKit sidebar `StatusIconView` and the
-  SwiftUI twin `StatusGlyph` — and the shape is threaded through all THREE carriers that feed the twin
-  (`PaletteItem.statusShape`, `SessionSwitcherRow.statusShape`, the recent-sessions popover row);
+  SwiftUI twin `StatusGlyph` — and the PER-CALL half is threaded through all THREE carriers that feed the
+  twin (`PaletteItem.statusShape`, `SessionSwitcherRow.statusShape`, the recent-sessions popover row);
   without that last leg the parameter would exist but nothing would pass it, and a shaped session would
   draw the shape in the sidebar and the semantic default in the palette / Ctrl-Tab switcher / popover.
-  Read back as `ControlSessionNode.statusShape` (the `StatusShape` raw value, omitted when idle or drawing
-  the semantic default), next to `statusColor`/`statusBlink` — the PER-CALL override only, so
-  record-then-restore treats tint and silhouette alike.
+  The CONFIGURED half needs no carrier at all: both render sites read it straight off
+  `GhosttyApp.statusShape(for:)` (the shape twin of `statusColor(for:override:)`), so a new carrier never
+  has to be threaded for it and the two sites cannot drift.
+  Read back as `ControlSessionNode.statusShape` (the `StatusShape` raw value, omitted when idle or when no
+  per-call shape is set), next to `statusColor`/`statusBlink` — the PER-CALL override ONLY.
+  `AppStore.controlTree()` builds it from `session.agentIndicator.shape`, so a session drawing the user's
+  CONFIGURED shape reports no `statusShape` at all — exactly like `statusColor`, which likewise omits the
+  configured tint, so record-then-restore treats the two alike and restores the override without freezing
+  the standing preference into it.
   Four-point keep-in-sync audit for `session.status --shape`: (1) the `StatusShape` enum +
-  `AgentStatus.symbolName(shape:)` + `AgentIndicator.shape` + `ControlArgs.shape` +
+  `AgentStatus.symbolName(override:configured:)` + `AgentIndicator.shape` + `ControlArgs.shape` +
   `ControlSessionStatusUpdate.shape` + `ControlSessionNode.statusShape` in `rookCore`, plus the dispatcher
   parse/validation in `dispatchSessionStatus`, (2) the `.sessionStatus` arm threading `update.shape` into
   the indicator + the two render sites + the three carriers, (3) the `session status --shape` option
@@ -1192,8 +1209,10 @@ paths:
   dispatcher validation in `ControlDispatcherTests` + `AgentStatusTests` (the resolver over every state ×
   shape, including the no-shape identity over `AgentStatus.allCases`) + the tree read-back in
   `AppStoreOrganizationTests` + CLI mapping in `CommandsTests`.
-  Control-native like `--color`/`--sound`: no GUI sets it, and the silhouette is no more
-  accessibility-observable than the tint (the `agent-status` element's value stays the state name).
+  Control-native like `--color`/`--sound`: no GUI sets the PER-CALL override (the Settings picker sets the
+  standing default, a different value on a different lifetime — GUI-only and keep-in-sync EXEMPT, same class
+  as the status colors), and the silhouette is no more accessibility-observable than the tint (the
+  `agent-status` element's value stays the state name).
   `args.pane` (`left`|`right`|`scratch`, REUSING the shared `--pane` addressing vocabulary — parsed to the
   host-free `StatusPane` and validated by the dispatcher, an `--pane must be left, right, or scratch` error
   that leaves the status UNCHANGED) records WHICH pane set the status onto the ephemeral `AgentIndicator.statusPane`

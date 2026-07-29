@@ -67,8 +67,9 @@ as `status`, so it is never reported without a `status`), `statusBlink` (`true` 
 set to blink — the `--blink` value; omitted when idle or not blinking), `statusColor` (the `#rrggbb`
 glyph-tint override — the `--color` value; omitted when idle or using the default color) and
 `statusShape` (the glyph-silhouette override — the `--shape` value, one of
-`circle`|`square`|`triangle`|`diamond`|`capsule`|`star`; omitted when idle or drawing the status' own
-semantic glyph. Per-call like `statusColor`, so record-then-restore treats the two alike),
+`circle`|`square`|`triangle`|`diamond`|`capsule`|`star`; omitted when idle or when no `--shape` was passed.
+Per-call ONLY, like `statusColor`: a session drawing the user's Settings-configured shape reports no
+`statusShape`, so record-then-restore restores the override without freezing their preference into it),
 `foreground`/`splitForeground` (the live argv of each pane's foreground
 process — what it is running — omitted when the pane sits at its shell prompt),
 `restoreCommand`/`splitRestoreCommand` (the PIN each pane will re-run on the next launch, set via
@@ -509,7 +510,7 @@ bare event object (NDJSON — pipe it straight into `jq`).
   (`Basso`, `Blow`, `Bottle`, `Frog`, `Funk`, `Glass`, `Hero`, `Morse`, `Ping`, `Pop`, `Purr`,
   `Sosumi`, `Submarine`, `Tink`; also any custom sound in `~/Library/Sounds`) — an unknown name errors.
   Without `--sound`, a `blocked` status plays the user's Settings "Blocked sound" if they configured one
-  (Appearance ▸ Agent Status; off by default); an explicit `--sound` always overrides it.
+  (Settings ▸ Agent Status; off by default); an explicit `--sound` always overrides it.
   `--color` (`#rrggbb`) overrides the glyph tint for THIS call only — it rides the status, so the next
   `session status` without `--color` reverts to the Settings-configured color (a malformed hex errors).
   `blocked` and `completed` ALSO wash the whole sidebar row in the status color (background + name), so a
@@ -519,13 +520,16 @@ bare event object (NDJSON — pipe it straight into `jq`).
   `--shape` (`circle`|`square`|`triangle`|`diamond`|`capsule`|`star`) is the SECOND visual axis: it swaps
   the glyph for that plain filled silhouette, so two states differ by outline as well as hue — the one that
   still reads when the tint does not (color blindness, a monochrome theme, a small glyph). Per-call exactly
-  like `--color`: it rides the status, so the next `session status` WITHOUT `--shape` drops back to the
-  default. Omitting it changes nothing — the defaults stay SEMANTIC and say what is happening on their own
-  (`active` an ellipsis, `blocked` an exclamation mark, `completed` a check mark; `idle` draws no glyph at
-  all, so a shape on it has nothing to draw). There is no Settings picker and no per-status default: the
-  shape is an agent-set override, nothing else. An unknown name errors
+  like `--color`: it rides the status, so the next `session status` WITHOUT `--shape` drops it.
+  PRECEDENCE — `--shape` beats the shape the USER configured for that status (Settings ▸ Agent Status), which
+  beats the SEMANTIC default (`active` an ellipsis, `blocked` an exclamation mark, `completed` a check mark;
+  `idle` draws no glyph at all, so a shape on it has nothing to draw). So `--shape` is an OVERRIDE of a
+  standing user preference for one call, and dropping it hands the glyph back to that preference, NOT to the
+  semantic default. Prefer to omit it: with no `--shape` the user's own choice stands, and the semantic
+  defaults already say what is happening on their own. An unknown name errors
   (`invalid shape: <name> (circle|square|triangle|diamond|capsule|star)`) BEFORE anything is applied, so a
-  typo cannot leave the status half-changed. Read it back on `tree` as the session node's `statusShape`.
+  typo cannot leave the status half-changed. Read it back on `tree` as the session node's `statusShape` —
+  the PER-CALL override only, so a session drawing the user's configured shape reports no `statusShape`.
   `--pane` (`left`|`right`|`scratch`, `left`=main, `right`=split; defaults to `left` when omitted) records
   which pane set the status. It has two effects: (1) keystroke-clear becomes pane-scoped — a status set
   from a background pane survives typing in a DIFFERENT pane (so a `right`- or `scratch`-tagged block is

@@ -108,6 +108,14 @@ final class GhosttyApp {
     private(set) var activeStatusColor: NSColor = GhosttyApp.defaultActiveStatusColor
     private(set) var blockedStatusColor: NSColor = .systemOrange
     private(set) var completedStatusColor: NSColor = .systemGreen
+    /// The agent-status glyph SHAPES (active/blocked/completed) — the silhouette axis beside the colors
+    /// above. NOT ghostty-resolved: `StatusIconView` and the SwiftUI `StatusGlyph` read them when building
+    /// the glyph, `SettingsModel` writes them (resolved from the user's raw setting). nil for a status keeps
+    /// its own SEMANTIC default glyph (`ellipsis`/`exclamationmark`/`checkmark`), which is the default here.
+    /// The sidebar re-render rides the `.rookAppearanceChanged` notification, like the colors.
+    private(set) var activeStatusShape: StatusShape?
+    private(set) var blockedStatusShape: StatusShape?
+    private(set) var completedStatusShape: StatusShape?
     /// Whether a `blocked`/`completed` session row is washed in its status color. NOT ghostty-resolved:
     /// the sidebar Coordinator reads it through `statusRowHighlight(for:)`, `SettingsModel` writes it. The
     /// re-render rides the `.rookAppearanceChanged` notification, like `notificationBadgeEnabled`.
@@ -243,6 +251,27 @@ final class GhosttyApp {
         activeStatusColor = NSColor(rookHex: activeHex) ?? GhosttyApp.defaultActiveStatusColor
         blockedStatusColor = NSColor(rookHex: blockedHex) ?? .systemOrange
         completedStatusColor = NSColor(rookHex: completedHex) ?? .systemGreen
+    }
+
+    /// Set the agent-status glyph shapes from the user's settings (nil for a status = it keeps its own
+    /// semantic default glyph). Called by `SettingsModel` at launch and on every change; the sidebar
+    /// re-renders the glyphs on the `.rookAppearanceChanged` notification, like the colors.
+    func setAgentStatusShapes(active: StatusShape?, blocked: StatusShape?, completed: StatusShape?) {
+        activeStatusShape = active
+        blockedStatusShape = blocked
+        completedStatusShape = completed
+    }
+
+    /// The configured silhouette for a status glyph, or nil for that status' own semantic default glyph —
+    /// the SHAPE counterpart of `statusColor(for:)`, read by the AppKit sidebar `StatusIconView` and the
+    /// SwiftUI `StatusGlyph` so the two can't drift. `idle` never renders a glyph, so it has no shape.
+    func statusShape(for status: AgentStatus) -> StatusShape? {
+        switch status {
+        case .active: return activeStatusShape
+        case .blocked: return blockedStatusShape
+        case .completed: return completedStatusShape
+        case .idle: return nil
+        }
     }
 
     /// The configured tint for a status glyph, shared by the AppKit sidebar `StatusIconView` and the

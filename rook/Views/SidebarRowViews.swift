@@ -234,11 +234,15 @@ final class StatusIconView: NSImageView {
 
     private static func icon(for status: AgentStatus, override colorHex: String?, shape: StatusShape?) -> NSImage? {
         guard status != .idle else { return nil } // unreachable: `apply` returns early on `.idle` before drawing
-        // symbol + color come from the shared resolvers (AgentStatus.symbolName(shape:) + GhosttyApp.statusColor)
-        // so this glyph and the SwiftUI StatusGlyph stay identical, per-call `--shape`/`--color` included.
+        // symbol + color come from the shared resolvers (AgentStatus.symbolName(override:configured:) +
+        // GhosttyApp.statusColor) so this glyph and the SwiftUI StatusGlyph stay identical. Both the per-call
+        // `--shape`/`--color` overrides and the Settings-configured shape/color are read the same way: the
+        // configured half comes straight off GhosttyApp, so a new carrier never has to be threaded to a
+        // render site to keep them in step.
         let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
             .applying(NSImage.SymbolConfiguration(paletteColors: [GhosttyApp.shared.statusColor(for: status, override: colorHex)]))
-        return NSImage(systemSymbolName: status.symbolName(shape: shape), accessibilityDescription: status.rawValue)?
+        let symbol = status.symbolName(override: shape, configured: GhosttyApp.shared.statusShape(for: status))
+        return NSImage(systemSymbolName: symbol, accessibilityDescription: status.rawValue)?
             .withSymbolConfiguration(config)
     }
 }

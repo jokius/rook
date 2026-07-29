@@ -145,6 +145,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var activeStatusColorHex: String?
     public var blockedStatusColorHex: String?
     public var completedStatusColorHex: String?
+    /// `StatusShape` RAW VALUES (`circle`/`square`/…) for the agent-status glyph's three states — the
+    /// SILHOUETTE axis beside the colors above; nil for each means that status keeps its own SEMANTIC
+    /// default glyph (`AgentStatus.symbolName`), which is a real choice here and not just "unset": rook's
+    /// defaults say what happened (working / waiting on you / finished), so the picker offers them as an
+    /// explicit entry. Stored raw (like `toolbarMode`/`dockBounce`, and mirroring how the colors store hex
+    /// strings) so an unknown or hand-edited value decodes tolerantly via `effectiveStatusShape(for:)`
+    /// instead of failing the whole decode. The per-call `session.status --shape` override still wins over
+    /// these. Applied at the AppKit level when the glyph is drawn, NOT ghostty keys, so they never appear in
+    /// `ghosttyConfigLines()`.
+    public var activeStatusShape: String?
+    public var blockedStatusShape: String?
+    public var completedStatusShape: String?
     /// Directory holding the user-editable keymap config (`keymap.conf`), or nil for the default
     /// (`~/.config/rook`). Resolved by `ConfigPaths.configDirectory(setting:stateDir:home:)`; an
     /// app-level path, never a ghostty key.
@@ -283,7 +295,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 backgroundOpacity: Double? = nil, backgroundBlur: Int? = nil, notificationsEnabled: Bool? = nil,
                 toolbarMode: String? = nil, compactToolbar: Bool? = nil, notificationBadgeEnabled: Bool? = nil,
                 activeStatusColorHex: String? = nil, blockedStatusColorHex: String? = nil,
-                completedStatusColorHex: String? = nil, configDirectory: String? = nil,
+                completedStatusColorHex: String? = nil,
+                activeStatusShape: String? = nil, blockedStatusShape: String? = nil,
+                completedStatusShape: String? = nil, configDirectory: String? = nil,
                 mouseScrollMultiplier: Double? = nil, inactivePaneMuteStrength: Int? = nil,
                 sidebarBackgroundShift: Int? = nil, restoreRunningCommand: Bool? = nil,
                 resumeAgentSessions: Bool? = nil,
@@ -312,6 +326,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.activeStatusColorHex = activeStatusColorHex
         self.blockedStatusColorHex = blockedStatusColorHex
         self.completedStatusColorHex = completedStatusColorHex
+        self.activeStatusShape = activeStatusShape
+        self.blockedStatusShape = blockedStatusShape
+        self.completedStatusShape = completedStatusShape
         self.configDirectory = configDirectory
         self.mouseScrollMultiplier = mouseScrollMultiplier
         self.inactivePaneMuteStrength = inactivePaneMuteStrength
@@ -365,6 +382,20 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// the read. The single read point the app target uses, so callers never touch the raw string.
     public var effectiveDockBounce: DockBounce {
         dockBounce.flatMap(DockBounce.init(rawValue:)) ?? .off
+    }
+
+    /// The configured silhouette for a status glyph, or nil to keep that status' own semantic default
+    /// glyph. nil for `.idle` (it renders no glyph at all, so a shape has nothing to draw), for an unset
+    /// value, and for an UNPARSEABLE one — a hand-edited `settings.json` must degrade to the semantic
+    /// default rather than crash or wipe the file (the AppSettings forward-compat rule). The single read
+    /// point the app target uses, so callers never touch the raw strings.
+    public func effectiveStatusShape(for status: AgentStatus) -> StatusShape? {
+        switch status {
+        case .active: return activeStatusShape.flatMap(StatusShape.init(rawValue:))
+        case .blocked: return blockedStatusShape.flatMap(StatusShape.init(rawValue:))
+        case .completed: return completedStatusShape.flatMap(StatusShape.init(rawValue:))
+        case .idle: return nil
+        }
     }
 
     /// The undo grace window in seconds a soft close keeps before final teardown; `closeGraceSeconds`

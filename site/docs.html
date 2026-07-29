@@ -1110,8 +1110,9 @@
                 <span
                   style="position: absolute; left: 0; top: 1px; color: #7ece8f; font-family: &quot;JetBrains Mono&quot;, monospace"
                   >›</span
-                ><strong style="color: #e6e1d7">Agent Status</strong> — the status-glyph colors, the blocked-session sound, and an
-                idle timeout to auto-follow blocked sessions.
+                ><strong style="color: #e6e1d7">Agent Status</strong> — each status glyph's color and its shape (Default keeps the
+                built-in semantic symbol; the alternatives are a plain circle, square, triangle, diamond, capsule, or star), the
+                blocked-session sound, and an idle timeout to auto-follow blocked sessions.
               </div>
               <div style="font-size: 15px; line-height: 1.6; color: #cbc6bc; padding-left: 22px; position: relative">
                 <span
@@ -1931,7 +1932,10 @@
               which of many concurrent agents needs you. The glyph shows just left of the notification badge on every non-idle
               session; a one-time
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">completed</span> flash auto-clears
-              once you visit the session.
+              once you visit the session. Both halves of the glyph are yours to change:
+              <strong style="color: #e8e3d9">Settings ▸ Agent Status</strong> sets each status's color and its shape — leave the
+              shape on <em>Default</em> to keep the built-in symbol, or pick a plain circle, square, triangle, diamond, capsule, or
+              star so the state reads by outline as well as by hue.
             </p>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 22px">
               A session that needs you —
@@ -2096,16 +2100,23 @@
               >) draws the glyph as that solid silhouette, so two sessions in different states differ by outline as well as hue —
               for color blindness, a monochrome theme, or simply a small glyph. Like
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--color</span> it is per call and rides
-              the status, so the next status set without it drops back to the default. It reads back on
+              the status, so the next status set without it drops back to the standing shape. It is an
+              <em>override</em>: it beats the shape you configured for that status in
+              <strong style="color: #e6e1d7">Settings ▸ Agent Status</strong>, which in turn beats the built-in semantic glyph. It
+              reads back on
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tree</span> as
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">statusShape</span>, next to
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">statusColor</span>.
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">statusColor</span> — the per-call
+              override only, so a session drawing your configured shape reports no
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">statusShape</span> at all, and a script
+              can record and restore the override without freezing your standing preference into it.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
-              This is an opt-in second axis, not a new default: without
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--shape</span> every glyph is exactly what
-              it was — the ellipsis, exclamation mark and check mark above, which name the state without a legend. Nothing about the
-              built-in look changed, and there is no shape picker in Settings.
+              This is an opt-in second axis, not a new default: with neither a
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--shape</span> nor a configured one,
+              every glyph is exactly what it was — the ellipsis, exclamation mark and check mark above, which name the state without a
+              legend. That is why the Settings picker keeps an explicit <em>Default</em> entry, drawn as the status's own semantic
+              symbol, alongside the six shapes: here <em>Default</em> is a real choice, not a synonym for Circle.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               When the sidebar is hidden the glyphs go with it, so an optional

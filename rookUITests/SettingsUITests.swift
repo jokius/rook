@@ -114,6 +114,34 @@ final class SettingsUITests: XCTestCase {
                       "choosing current-session should persist newSessionDirectory=currentSession to settings.json")
     }
 
+    func testAgentStatusShapePickerPersistsAndResetClearsIt() throws {
+        let picker = settingsControl(tab: "Agent Status", control: "settings-status-shape-blocked")
+
+        // the silhouette axis mirrors the colors: one picker per rendering status (idle draws no glyph).
+        for status in ["active", "blocked", "completed"] {
+            let field = app.descendants(matching: .any).matching(identifier: "settings-status-shape-\(status)").firstMatch
+            XCTAssertTrue(field.waitForExistence(timeout: 5), "Agent Status should have a \(status) shape picker")
+        }
+
+        // the menu is symbol-only (a text label would widen a row and unalign the trailing column), so the
+        // options are matched by their accessibility labels: Default — which draws the status' OWN semantic
+        // glyph and is a real, distinct choice in rook — plus the six shapes.
+        picker.click()
+        for option in ["Default", "Circle", "Square", "Triangle", "Diamond", "Capsule", "Star"] {
+            XCTAssertTrue(app.menuItems[option].waitForExistence(timeout: 5), "the shape menu should offer \(option)")
+        }
+        app.menuItems["Square"].click()
+
+        XCTAssertTrue(poll { self.settingsValue("blockedStatusShape") == "square" },
+                      "picking Square should persist blockedStatusShape=square to settings.json")
+
+        // Reset to defaults clears the shape back to Default, which REMOVES the key (nil = the semantic
+        // glyph), keeping settings.json minimal the way the toolbar-mode default does.
+        settingsControl(tab: "Agent Status", control: "settings-status-reset").click()
+        XCTAssertTrue(poll { self.settingsValue("blockedStatusShape") == nil },
+                      "Reset to defaults should clear blockedStatusShape back to the semantic default")
+    }
+
     func testScrollSpeedSliderPersists() throws {
         let slider = settingsControl(tab: "General", control: "settings-scroll-speed")
         slider.adjust(toNormalizedSliderPosition: 1.0) // drag to max (10), away from the default 3

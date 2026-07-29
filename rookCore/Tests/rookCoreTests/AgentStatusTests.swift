@@ -161,24 +161,60 @@ struct AgentStatusTests {
         #expect(AgentStatus.idle.symbolName == "")
     }
 
-    // the whole point of the shape axis: with NO shape the glyph is byte-for-byte what it always was, so
-    // adding --shape changes nothing for anyone who does not pass it.
-    @Test func symbolNameWithoutAShapeKeepsTheSemanticDefault() {
+    // the whole point of BOTH shape axes: with neither set the glyph is byte-for-byte what it always was,
+    // so a user who configures nothing and an agent that passes no --shape see exactly the old app. The
+    // literals are spelled out rather than compared only to `symbolName`, because this is the test that
+    // fails if rook's SEMANTIC defaults are ever flattened into bare silhouettes (upstream's choice, which
+    // this fork deliberately did not take).
+    @Test func symbolNameWithNeitherAxisKeepsTheSemanticDefault() {
+        #expect(AgentStatus.active.symbolName(override: nil, configured: nil) == "ellipsis.circle.fill")
+        #expect(AgentStatus.blocked.symbolName(override: nil, configured: nil) == "exclamationmark.circle.fill")
+        #expect(AgentStatus.completed.symbolName(override: nil, configured: nil) == "checkmark.circle.fill")
         for status in AgentStatus.allCases {
-            #expect(status.symbolName(shape: nil) == status.symbolName)
+            #expect(status.symbolName(override: nil, configured: nil) == status.symbolName)
         }
-        #expect(AgentStatus.active.symbolName(shape: nil) == "ellipsis.circle.fill")
-        #expect(AgentStatus.blocked.symbolName(shape: nil) == "exclamationmark.circle.fill")
-        #expect(AgentStatus.completed.symbolName(shape: nil) == "checkmark.circle.fill")
     }
 
-    @Test func symbolNameWithAShapeDrawsThatSilhouette() {
-        #expect(AgentStatus.active.symbolName(shape: .square) == "square.fill")
-        #expect(AgentStatus.blocked.symbolName(shape: .triangle) == "triangle.fill")
-        #expect(AgentStatus.completed.symbolName(shape: .star) == "star.fill")
-        // idle renders no glyph at all, so a shape on it has nothing to draw
-        #expect(AgentStatus.idle.symbolName(shape: .circle) == "")
+    @Test func configuredShapeReplacesTheSemanticDefaultWhenThereIsNoOverride() {
+        // the Settings-configured silhouette is the STANDING default: it applies to every ordinary
+        // `session.status` call, which is the whole point of adding it beside the per-call override.
+        for status in Self.visibleStatuses {
+            for shape in StatusShape.allCases {
+                #expect(status.symbolName(override: nil, configured: shape) == shape.symbolName)
+                #expect(status.symbolName(override: nil, configured: shape) != status.symbolName)
+            }
+        }
+        #expect(AgentStatus.active.symbolName(override: nil, configured: .square) == "square.fill")
+        #expect(AgentStatus.blocked.symbolName(override: nil, configured: .triangle) == "triangle.fill")
+        #expect(AgentStatus.completed.symbolName(override: nil, configured: .star) == "star.fill")
     }
+
+    @Test func perCallOverrideBeatsBothTheConfiguredShapeAndTheDefault() {
+        // `session.status --shape` knows something the standing preference does not, so it wins over every
+        // configured value AND over the semantic default — mirroring how --color beats the configured tint.
+        for status in Self.visibleStatuses {
+            for configured in Self.shapeOptions {
+                #expect(status.symbolName(override: .diamond, configured: configured) == "diamond.fill")
+            }
+        }
+        #expect(AgentStatus.blocked.symbolName(override: .capsule, configured: .star) == "capsule.fill")
+    }
+
+    @Test func idleRendersEmptyInEveryShapeCombination() {
+        // idle draws no glyph at all, so neither axis has anything to draw — every one of the 7x7 pairs
+        // must stay empty, not fall through to a silhouette.
+        for override in Self.shapeOptions {
+            for configured in Self.shapeOptions {
+                #expect(AgentStatus.idle.symbolName(override: override, configured: configured) == "")
+            }
+        }
+    }
+
+    /// The statuses that actually render a glyph (everything but `idle`).
+    private static let visibleStatuses: [AgentStatus] = [.active, .blocked, .completed]
+
+    /// Every value a shape axis can hold: unset plus each shape.
+    private static let shapeOptions: [StatusShape?] = [nil] + StatusShape.allCases.map { shape -> StatusShape? in shape }
 
     @Test func statusShapeParsesItsNamesAndRejectsUnknownOnes() {
         #expect(StatusShape.allCases == [.circle, .square, .triangle, .diamond, .capsule, .star])

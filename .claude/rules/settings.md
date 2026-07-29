@@ -19,6 +19,7 @@ paths:
   Fields: `fontFamily`/`fontSize`/`theme`/`darkTheme`/`followSystemAppearance` + `backgroundOpacity` (0...1) / `backgroundBlur` (CGS radius)
   + `notificationsEnabled` / `toolbarMode` / `notificationBadgeEnabled` / `attentionButtonEnabled` / `notificationSoundName` / `dockBounce` / `hiddenInterfaceElements`
   + the agent-status glyph colors `activeStatusColorHex`/`blockedStatusColorHex`/`completedStatusColorHex`
+  + the agent-status glyph shapes `activeStatusShape`/`blockedStatusShape`/`completedStatusShape`
   (nil defaults: `notificationsEnabled`/`notificationBadgeEnabled` = on,
   `toolbarMode` = the three-state titlebar chrome `ToolbarMode { normal, compact, hidden }`,
   stored raw as `String?` (like `newSessionDirectory`/`autoFollowAttention`) for tolerant forward-compat
@@ -53,14 +54,44 @@ paths:
   `StatusIconView` reads it when drawing, and a change rides `.rookAppearanceChanged` → the Coordinator's
   `reapplyStatusRows()` sweep (the colors are global, not per-row, so `reconcile`'s diff can't see
   them).
+  The three `*StatusShape` are the SILHOUETTE axis of the same glyph, and they mirror the color axis leg for
+  leg: `StatusShape` RAW VALUES stored as `String?` (tolerant forward-compat decode, like `toolbarMode`),
+  read through the single host-free `AppSettings.effectiveStatusShape(for:)` (nil for `.idle`, for unset,
+  and for an UNPARSEABLE value — a hand-edited `settings.json` degrades to the default instead of failing
+  the decode), pushed by `SettingsModel.applyAgentStatusShapes` into `GhosttyApp.setAgentStatusShapes`,
+  read back at draw time through `GhosttyApp.statusShape(for:)` (the twin of `statusColor(for:override:)`),
+  and re-rendered by the SAME `.rookAppearanceChanged` → `reapplyStatusRows()` sweep.
+  NOT ghostty keys, so they never appear in `ghosttyConfigLines()`.
+  Precedence is per-call `--shape` > this configured shape > the status' SEMANTIC symbol, resolved once in
+  `AgentStatus.symbolName(override:configured:)` (see the Control API rule).
+  **The picker's option list carries an explicit Default entry, and that is a rook-specific requirement.**
+  Upstream's picker maps Circle → nil with no Default entry, which is only sound because upstream ALSO
+  flipped its built-in glyphs so every status draws a bare `circle.fill` — there, nil and Circle render
+  identically and a separate entry would be a distinction without a difference.
+  We deliberately did NOT take that flip, so for us nil renders `ellipsis`/`exclamationmark`/`checkmark`:
+  copying upstream's mapping would make the semantic default UNREACHABLE the moment a user picked anything.
+  The Default entry therefore draws that status' OWN semantic glyph
+  (`status.symbolName(override: nil, configured: nil)`), which is also what keeps the menu purely SYMBOLIC —
+  a text label on one entry would widen that row alone.
+  Options are symbol-only for the same reason (the silhouette is the thing being picked), so each carries
+  its name as an `accessibilityLabel` only: "Default", else `StatusShape.rawValue.capitalized`.
+  Each option is tinted from the ROW's own color binding, so re-picking a color rebuilds the options and the
+  menu always previews the glyph as it will actually draw; `image.isTemplate = false` is LOAD-BEARING there —
+  a menu recolors a TEMPLATE symbol to its own text color, washing out the very tint being previewed.
+  **The shape column is fixed-width (`shapeColumnWidth`, `alignment: .trailing`) on purpose — do not
+  "simplify" it away.**
+  A menu `Picker` sizes itself to the glyph it currently shows, so an unreserved column makes the three
+  color wells JOG horizontally as different silhouettes are picked; the reserved width clears the widest
+  option and the trailing alignment ends the cluster flush with the Sound/Auto-follow pickers below.
+  (Upstream hit the same thing — its follow-up commit exists only to fix this alignment.)
   `statusRowHighlightEnabled` (nil = ON) rides that SAME sweep: it gates whether a `blocked`/`completed`
   session also WASHES its whole sidebar row in the status color (background + name text; `active` never
   washes), mirrored into the non-observable `GhosttyApp.statusRowHighlightEnabled` by `applyStatusRowHighlight`
   — the `notificationBadgeEnabled` pattern — and read through the single `GhosttyApp.statusRowHighlight(for:)`
   gate (see the Sidebar rule for the cell/row-view split that draws it).
   NOT a ghostty key.
-  Settings → Agent Status drives them with a Reset-to-defaults button (clears the three colors,
-  the row-highlight toggle, and the sound back to their defaults), a **Highlight blocked and completed rows**
+  Settings → Agent Status drives them with a Reset-to-defaults button (clears the three colors, the three
+  shapes, the row-highlight toggle, and the sound back to their defaults), a **Highlight blocked and completed rows**
   toggle (default-ON binding: get `?? true` / set `$0 ? nil : false`, like the badge toggle),
   plus a **Blocked sound** picker bound to `AppSettings.blockedStatusSoundName` (nil/"None"
   = no sound, the default; else a system sound name).
@@ -204,10 +235,14 @@ paths:
   a host-free `DockBounce` off/once/untilFocused enum, off default — fires `NSApp.requestUserAttention` after
   the badge bump in both the OSC-notify and control-send paths, no-op while frontmost);
   both are GUI-only and control-API EXEMPT, the same class as the Agent-Status Blocked sound).
-  **Agent Status** (a **Colors** section with the three glyph color pickers, a **Sound** section with
-  the blocked-sound picker, an **Auto-follow** section with the idle-timeout Picker
-  (Disabled/5s/10s/30s/60s/5m) + the "Don't auto-follow away from a running session" Toggle, and a trailing
-  **Reset** that clears the colors and sound back to defaults — not the auto-follow settings).
+  **Agent Status** (a **Glyphs** section with one row per status — the state name, its `ColorPicker`
+  (`settings-status-<state>`) and its shape `Picker` (`settings-status-shape-<state>`), both `labelsHidden()`
+  so the state name is the row's only text and the two-control cluster fits one Form row; every binding and
+  both identifiers derive from the `AgentStatus`, so a row cannot label one state while driving another's
+  setting — a **Sound** section with the blocked-sound picker, an **Auto-follow** section with the
+  idle-timeout Picker (Disabled/5s/10s/30s/60s/5m) + the "Don't auto-follow away from a running session"
+  Toggle, and a trailing **Reset** that clears the colors, the shapes and the sound back to defaults — not
+  the auto-follow settings).
   **Key Mapping** (the config directory holding `keymap.conf` + a read-only diagnostics list + a Reload
   button — see the Keymap section).
   Captions under controls are dropped for self-explanatory controls, which is nearly all of them.

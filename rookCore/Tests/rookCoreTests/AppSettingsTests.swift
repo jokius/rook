@@ -172,6 +172,65 @@ struct AppSettingsTests {
         #expect(decoded.ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
     }
 
+    @Test func statusShapeFieldsRoundTripAndAreNotGhosttyKeys() throws {
+        let original = AppSettings(activeStatusShape: "square", blockedStatusShape: "triangle",
+                                   completedStatusShape: "star")
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(original))
+        #expect(decoded == original)
+        // each status reads its OWN field — a crossed pair here would silently draw the wrong silhouette.
+        #expect(decoded.effectiveStatusShape(for: .active) == .square)
+        #expect(decoded.effectiveStatusShape(for: .blocked) == .triangle)
+        #expect(decoded.effectiveStatusShape(for: .completed) == .star)
+        // the glyph shapes are applied at the AppKit level, never as ghostty config keys — like the colors.
+        #expect(decoded.ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
+    }
+
+    @Test func statusShapesDefaultNilAndOmitFromJSON() throws {
+        // unset = every status keeps its own semantic default glyph, and nothing is written, so
+        // settings.json stays minimal (the same nil-mapping the picker's Default entry writes).
+        #expect(AppSettings().activeStatusShape == nil)
+        #expect(AppSettings().blockedStatusShape == nil)
+        #expect(AppSettings().completedStatusShape == nil)
+        for status in AgentStatus.allCases {
+            #expect(AppSettings().effectiveStatusShape(for: status) == nil)
+        }
+        let json = String(decoding: try JSONEncoder().encode(AppSettings()), as: UTF8.self)
+        #expect(!json.contains("activeStatusShape"))
+        #expect(!json.contains("blockedStatusShape"))
+        #expect(!json.contains("completedStatusShape"))
+    }
+
+    @Test func statusShapesAbsentFromALegacyFileStillDecode() throws {
+        // a settings.json written before the shapes existed must still load — the whole point of the
+        // all-optional AppSettings (there is no version field to fall back on).
+        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"theme":"Nord","fontSize":16}"#.utf8))
+        #expect(legacy.theme == "Nord")
+        #expect(legacy.fontSize == 16)
+        #expect(legacy.activeStatusShape == nil)
+        #expect(legacy.blockedStatusShape == nil)
+        #expect(legacy.completedStatusShape == nil)
+        #expect(legacy.effectiveStatusShape(for: .blocked) == nil)
+    }
+
+    @Test func unknownStatusShapeReadsAsTheDefaultAndPreservesOtherSettings() throws {
+        // a hand-edited or future-written shape must degrade to the semantic default (the forward-compat
+        // rule): it may NOT fail the whole decode and wipe every other setting. The raw value is kept, so
+        // re-saving does not silently rewrite the user's file either.
+        let json = #"{ "activeStatusShape": "hexagon", "blockedStatusShape": "", "fontSize": 16 }"#
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        #expect(decoded.fontSize == 16)
+        #expect(decoded.activeStatusShape == "hexagon")
+        #expect(decoded.effectiveStatusShape(for: .active) == nil)
+        #expect(decoded.effectiveStatusShape(for: .blocked) == nil)
+    }
+
+    @Test func effectiveStatusShapeIsAlwaysNilForIdle() {
+        // idle renders no glyph, so it has no shape to configure — not even when every field is set.
+        let settings = AppSettings(activeStatusShape: "square", blockedStatusShape: "triangle",
+                                   completedStatusShape: "star")
+        #expect(settings.effectiveStatusShape(for: .idle) == nil)
+    }
+
     @Test func statusRowHighlightRoundTripsDefaultsOnAndIsNotAConfigLine() throws {
         let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(AppSettings(statusRowHighlightEnabled: false)))
         #expect(decoded.statusRowHighlightEnabled == false)
