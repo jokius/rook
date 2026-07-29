@@ -6,7 +6,7 @@
     <title>Command reference — rook | rookctl control API</title>
     <meta
       name="description"
-      content="Complete rookctl reference: all 73 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, events, themes, and keymaps, with arguments and return values."
+      content="Complete rookctl reference: all 74 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, events, themes, and keymaps, with arguments and return values."
     />
     <meta
       name="keywords"
@@ -18,7 +18,7 @@
     <meta property="og:title" content="Command reference — rook" />
     <meta
       property="og:description"
-      content="All 73 rookctl control commands with arguments, return values, and errors."
+      content="All 74 rookctl control commands with arguments, return values, and errors."
     />
     <meta property="og:url" content="https://rook.app/commands" />
     <meta property="og:image" content="https://rook.app/assets/rook-og.png" />
@@ -30,7 +30,7 @@
     <meta name="twitter:title" content="Command reference — rook" />
     <meta
       name="twitter:description"
-      content="All 73 rookctl control commands with arguments, return values, and errors."
+      content="All 74 rookctl control commands with arguments, return values, and errors."
     />
     <meta name="twitter:image" content="https://rook.app/assets/rook-og.png" />
     <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
@@ -193,7 +193,7 @@
             Command reference
           </h1>
           <p style="font-size: 19px; line-height: 1.6; color: #bfbab0; margin: 0 0 8px">
-            All 73 commands of the rook control API, with arguments and return values. Every one is reachable from the
+            All 74 commands of the rook control API, with arguments and return values. Every one is reachable from the
             <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl</span> CLI and from the local
             control socket.
           </p>
@@ -426,16 +426,18 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">name</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">sessions</span>,
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">focused</span> (the read side of
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace focus</span>, distinct from
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span>; the tree is collapsed to this workspace
-                right now),
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked</span> (this is the workspace the focus filter is
-                pinned to, reported whether or not the filter currently applies — so
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">focused</span> (the <em>effective</em> focus, distinct
+                from <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span>: the tree is filtered down to a set
+                this workspace is in, right now. Its meaning is unchanged from before the set existed, so a script written against
+                it keeps working),
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked</span> (this workspace is <em>in</em> the focus
+                set, reported whether or not the filter currently applies — so
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked</span> without
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">focused</span> is exactly the state
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace filter on</span> re-applies;
-                omitted when it is not the pinned one),
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace filter on</span> applies —
+                a set an involuntary jump lifted, or one still being built with
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace focus add</span>; omitted
+                when the workspace is not in the set),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">collapsed</span> (the read side of
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace collapse</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">expand</span>
                 and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace new --collapsed</span>;
@@ -467,6 +469,20 @@
                 present, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span>-only, since an involuntary jump
                 across the tree flips it off with no command involved). These are read-only
                 projections of GUI state.
+              </p>
+              <p style="font-size: 14px; line-height: 1.65; color: #949ba4; margin: 8px 0 0">
+                <strong style="color: #bfbab0">Is a workspace row on screen?</strong> The full predicate is
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">sidebarVisible &amp;&amp; sidebarMode == "tree" &amp;&amp; (!workspaceFilter || marked)</span>,
+                and neither shorter form is safe.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">focused</span> on its own (i.e.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked &amp;&amp; workspaceFilter</span>) reports nothing
+                visible whenever the filter is off — the state where the <em>whole</em> tree is on screen — and a script correcting
+                for that tends to reach for
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace focus on</span>, which
+                replaces the set instead of restoring it. A bare
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">!workspaceFilter || marked</span> claims rows are visible
+                in <span style="font-family: &quot;JetBrains Mono&quot;, monospace">flagged</span> mode (a flat session list, no
+                workspace rows at all) and behind a hidden sidebar.
               </p>
             </div>
           </section>
@@ -551,34 +567,54 @@
 
             <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
-                rookctl workspace focus [on|off|toggle] [--target T] [--window W]
+                rookctl workspace focus [on|off|toggle|add] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.focus</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
-                Collapse the sidebar tree to a single workspace's subtree, hiding the others, or restore the full tree.
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">on</span> focuses the target,
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">off</span> unfocuses it only when it is the currently
-                focused one, and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">toggle</span> (the default) flips.
-                Per-window and persisted; orthogonal to
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">sidebar mode</span>. An unknown mode errors.
+                Mark or unmark <em>one</em> workspace in the sidebar's focus <strong style="color: #bfbab0">set</strong> — while the
+                filter applies, the tree renders only the marked workspaces.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">on</span> replaces the whole set with the target and
+                applies the filter (the zoom-to-one);
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">off</span> <em>removes</em> the target from the set, the
+                filter switching off as the set empties — it is the remove mode, which is why there is deliberately no separate
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">remove</span> token;
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">toggle</span> (the default) clears the focus when the
+                target is the only marked workspace <em>and</em> the filter applies, else replaces the set with it and applies; and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">add</span> marks the target alongside the existing
+                members, leaving the filter flag exactly as it was. Every mode is idempotent. Per-window and persisted; orthogonal
+                to <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">sidebar mode</span>. An
+                unknown mode errors.
                 <strong style="color: #bfbab0">Returns</strong>
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.id</span>.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
-                While a workspace is focused, <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session go</span>
-                navigation is scoped to its sessions. An explicit
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session select</span> of a session outside it
-                auto-unfocuses. Read back via the workspace node's
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">focused</span> field.
+                An <span style="font-family: &quot;JetBrains Mono&quot;, monospace">add</span> never applies the filter, which is the
+                point of it: a script marks member after member while the whole tree is still on screen and applies the set in one
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace filter on</span>. An
+                add that filtered would collapse the tree onto the first member and hide the rows the next add is aiming at. There
+                is no membership-<em>toggle</em> mode — read the node's
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked</span> and pick
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">add</span> or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">off</span>.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
-                An <em>involuntary</em> jump out of the focused workspace — idle auto-follow to a blocked session, attention
-                navigation, a click on a notification, the dashboard, the recent-sessions popover — only lifts the filter and
-                leaves the workspace <em>marked</em>, so
+                While the filter applies, <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session go</span>
+                navigation is scoped to the marked workspaces' sessions. An explicit
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session select</span> of a session
+                outside the set lifts the filter — keeping the set — so the target it just selected is on screen. Read back per
+                workspace node as <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked</span> (membership) and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">focused</span> (membership <em>and</em> the filter
+                applying), and top-level as
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">workspaceFilter</span>.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                An <em>involuntary</em> jump out of the marked set — idle auto-follow to a blocked session, attention navigation, a
+                click on a notification, the dashboard, the recent-sessions popover — only lifts the filter and leaves the set
+                <em>marked</em>, so
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace filter on</span> puts you
                 back on it. An explicit
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace focus off</span> forgets the
-                mark for good.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace focus off</span> forgets
+                that workspace for good.
               </p>
             </div>
 
@@ -588,10 +624,12 @@
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.filter</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
-                Apply or lift the sidebar's workspace focus filter <em>without</em> changing which workspace is marked — the
-                re-apply leg of <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace focus</span>,
-                and the only way to turn a lifted filter back on. So a script can peek at the whole tree and come back in one call,
-                and a filter an involuntary jump switched off can be restored at all.
+                Apply or lift the sidebar's workspace focus filter <em>without</em> changing which workspaces are marked — the
+                other half of <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace focus</span>,
+                and the only way to turn a lifted filter back on. It is what applies a set built with
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace focus add</span> (which
+                never filters on its own), it lets a script peek at the whole tree and come back in one call, and it is the only way
+                to restore a filter an involuntary jump switched off.
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">on</span> applies it,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">off</span> lifts it, and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">toggle</span> (the default) flips — all three are
@@ -604,21 +642,24 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--window</span> (the frontmost by default), and no open
                 window is an error (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">no open window</span>) rather than a
                 silent no-op.
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">on</span> with nothing marked is a clean no-op — there is
-                nothing to filter to — and so is
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">on</span> with a mark whose workspace has since been
-                deleted, which would otherwise switch filtering on while filtering nothing and read to a script as "focus restored".
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">on</span> with an empty set is a clean no-op — there is
+                nothing to filter to. That refusal is what makes
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">workspaceFilter: true</span> mean at least one workspace
+                is marked and therefore visible: deleting a workspace drops it from the set, and the last member leaving takes the
+                filter with it, so "filtering, but filtering nothing" is unreachable rather than merely guarded against.
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">off</span> is never gated — it must always be able to undo.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 Read back as the tree's top-level
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">workspaceFilter</span> (does the filter apply) paired with
-                each workspace node's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked</span> (where it would land);
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">focused</span> keeps its old meaning and is exactly
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked &amp;&amp; workspaceFilter</span>. So
+                each workspace node's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked</span> (which workspaces it
+                lands on); <span style="font-family: &quot;JetBrains Mono&quot;, monospace">focused</span> keeps its old meaning and is
+                exactly <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked &amp;&amp; workspaceFilter</span>. So
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">marked</span> with
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">workspaceFilter: false</span> is a focus waiting to be
-                re-applied, distinct from nothing being marked at all.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">workspaceFilter: false</span> is a set waiting to be
+                applied — either one an involuntary jump lifted, or one just built with
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace focus add</span> —
+                distinct from nothing being marked at all.
               </p>
             </div>
 
@@ -806,7 +847,9 @@
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.select</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
-                Select the target session. Selecting one outside a focused workspace auto-unfocuses to reveal it.
+                Select the target session. Selecting one outside the focus set lifts the filter — keeping the set, so
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace filter on</span> restores
+                it — so that the session just selected is visible.
               </p>
             </div>
 
@@ -856,7 +899,8 @@
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
                 Move the selection relative to the current one — there is no
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--target</span>. It operates over the visible,
-                filtered set: the flagged sessions in flagged mode, the focused workspace's sessions when one is focused, else all.
+                filtered set: the flagged sessions in flagged mode, the marked workspaces' sessions while the focus filter applies,
+                else all.
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">next</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">prev</span>
                 wrap at the ends; <span style="font-family: &quot;JetBrains Mono&quot;, monospace">next-attention</span> /
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">prev-attention</span> step only through sessions
@@ -1204,6 +1248,36 @@
                 the pane's conversation with its own throwaway one (that call returns ok and writes nothing). Read back as the
                 session node's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">agentSession</span> /
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">splitAgentSession</span>.
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl session restore [COMMAND] [--none] [--clear] [--pane left|right] [--pane-id ID]
+                [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.restore</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Pin the command a pane re-runs on the next launch. Exactly one of a
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">COMMAND</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--none</span> (restore a plain shell,
+                suppressing whatever was captured), or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--clear</span> (drop the override and go back
+                to auto-capture) is required. The override is written now and consumed on the NEXT launch — it never touches
+                the running session.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                It wins over the pane's captured foreground command and over the session's own
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--command</span>, is typed VERBATIM — so a
+                pipeline or a compound line restores, which the argv capture cannot do — and skips
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">restore-denylist.conf</span>, since you named
+                this command deliberately. It is STICKY: it fires again on every launch until cleared, and it still obeys
+                Settings ▸ General ▸ “Restore running commands on restart”. Read back as the session node's
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">restoreCommand</span> /
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">splitRestoreCommand</span>. The line is stored
+                verbatim in the window's state file and is readable over the socket, so it must not carry secrets. Not to be
+                confused with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">rookctl restore clear</span>,
+                which is app-global and clears every session's CAPTURED command.
               </p>
             </div>
 

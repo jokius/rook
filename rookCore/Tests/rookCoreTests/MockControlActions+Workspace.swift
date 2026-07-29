@@ -33,14 +33,31 @@ extension MockControlActions {
         return ControlResponse(ok: true)
     }
 
-    func focusWorkspace(_ target: String?, window: String?, mode: String?) -> ControlResponse {
+    func focusWorkspace(_ target: String?, window: String?, mode: ControlWorkspaceFocusMode) -> ControlResponse {
         calls.append(.workspaceFocus(target: target, window: window, mode))
-        return ControlResponse(ok: true)
+        guard let store else { return ControlResponse(ok: true) }
+        guard let id = resolveWorkspace(target, in: store) else {
+            return ControlResponse(ok: false, error: "no such workspace: \(target ?? "active")")
+        }
+        store.applyFocusMode(mode, to: id)
+        return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
     }
 
     func setWorkspaceFilter(window: String?, mode: ControlToggleMode) -> ControlResponse {
         calls.append(.workspaceFilter(window: window, mode: mode))
+        store?.applyWorkspaceFilter(mode)
         return ControlResponse(ok: true)
+    }
+
+    /// The app-side arm's target resolution, and nothing else — the same `ControlResolve.resolve` over the
+    /// store's workspace ids that `ControlServer.resolveWorkspace` runs, so the live-store seam addresses a
+    /// workspace exactly the way the real host does.
+    private func resolveWorkspace(_ target: String?, in store: AppStore) -> UUID? {
+        let resolution = ControlResolve.resolve(target ?? "active",
+                                                candidates: store.workspaces.map(\.id),
+                                                active: store.currentWorkspaceID)
+        guard case .resolved(let id) = resolution else { return nil }
+        return id
     }
 
     func setWorkspaceColor(_ target: String?, window: String?, hex: String?) -> ControlResponse {

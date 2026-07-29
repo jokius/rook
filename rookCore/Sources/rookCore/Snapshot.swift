@@ -29,22 +29,16 @@ public struct Snapshot: Codable, Equatable, Sendable {
     /// Optional so a snapshot already on disk before this field was added still decodes instead of
     /// failing the load and wiping the saved tree, like the fields above.
     public var sidebarMode: SidebarMode?
-    /// The workspace the sidebar tree is focused on, or nil for the full tree — the EFFECTIVE focus
-    /// (`AppStore.focusedWorkspaceID`), i.e. the mark only while the filter is on. Naturally Optional, so a
-    /// snapshot already on disk before this field was added decodes (as nil → unfocused) instead of
-    /// failing the load and wiping the saved tree.
-    ///
-    /// Deliberately still EFFECTIVE rather than promoted to the mark: a build older than `markedWorkspaceID`
-    /// reads only this key, so a DOWNGRADE restores exactly the focus it always did instead of losing it.
-    /// It also carries the filter BIT — `markedWorkspaceID` is WHICH workspace, this is WHETHER it filters
-    /// — which is why the pair needs no third field. Don't stop writing it without adding one.
-    public var focusedWorkspaceID: UUID?
-    /// WHICH workspace the focus filter is pinned to (`AppStore.markedWorkspaceID`), remembered even while
-    /// the filter is OFF — the state an involuntary jump (idle auto-follow, attention nav, a notification
-    /// reveal) leaves behind, so `workspace.filter on` comes back to the same workspace across a relaunch.
-    /// Optional so a snapshot already on disk before this field was added still decodes (missing → the
-    /// legacy `focusedWorkspaceID` IS the mark, and it was filtering), like the fields above.
-    public var markedWorkspaceID: UUID?
+    /// The workspaces MARKED for the sidebar focus filter, in TREE order, or nil for none. Optional so a
+    /// snapshot already on disk before this field was added still decodes (as nil → nothing marked) instead
+    /// of failing the load and wiping the saved tree, like the fields above. An ARRAY rather than a Set so
+    /// the on-disk list is deterministic instead of following the Set's hash order.
+    public var focusedWorkspaceIDs: [UUID]?
+    /// WHETHER the marked set filters the tree, or nil for the default (off). Persisted APART from the set
+    /// so an off filter keeps its members — the state an involuntary jump (idle auto-follow, attention nav,
+    /// a notification reveal) leaves behind, so `workspace.filter on` comes back to the same working set
+    /// across a relaunch. Optional for forward-compat like the fields above.
+    public var focusEnabled: Bool?
     /// Most-recently-selected session ids, front = current, so the Ctrl-Tab switcher's order survives
     /// a relaunch. Restore drops ids no longer in the tree. Optional so a snapshot already on disk
     /// before this field was added still decodes (as nil → selection only), like the fields above.
@@ -54,7 +48,7 @@ public struct Snapshot: Codable, Equatable, Sendable {
                 workspaces: [WorkspaceSnapshot] = [], sidebarWidth: Double? = nil, fileTreeWidth: Double? = nil,
                 markdownWidth: Double? = nil,
                 sidebarVisible: Bool? = nil,
-                sidebarMode: SidebarMode? = nil, focusedWorkspaceID: UUID? = nil, markedWorkspaceID: UUID? = nil,
+                sidebarMode: SidebarMode? = nil, focusedWorkspaceIDs: [UUID]? = nil, focusEnabled: Bool? = nil,
                 sessionRecency: [UUID]? = nil) {
         self.version = version
         self.selectedSessionID = selectedSessionID
@@ -64,14 +58,24 @@ public struct Snapshot: Codable, Equatable, Sendable {
         self.markdownWidth = markdownWidth
         self.sidebarVisible = sidebarVisible
         self.sidebarMode = sidebarMode
-        self.focusedWorkspaceID = focusedWorkspaceID
-        self.markedWorkspaceID = markedWorkspaceID
+        self.focusedWorkspaceIDs = focusedWorkspaceIDs
+        self.focusEnabled = focusEnabled
         self.sessionRecency = sessionRecency
     }
 
     enum CodingKeys: String, CodingKey {
         case version, selectedSessionID, workspaces, sidebarWidth, fileTreeWidth, markdownWidth, sidebarVisible, sidebarMode
-        case focusedWorkspaceID, markedWorkspaceID, sessionRecency
+        case focusedWorkspaceIDs, focusEnabled, sessionRecency
+    }
+
+    /// The two LEGACY single-workspace focus keys, written by every release before the focus SET existed:
+    /// `focusedWorkspaceID` = the EFFECTIVE focus (the mark only while the filter was on) and
+    /// `markedWorkspaceID` = the mark behind it. They live in their OWN key type, read only by
+    /// `init(from:)`: neither has a stored property, so re-encoding a migrated snapshot DROPS them instead
+    /// of writing the legacy keys back on every load-mutate-save, and an extra case in `CodingKeys` above
+    /// would block the synthesized `encode(to:)` outright.
+    private enum LegacyCodingKeys: String, CodingKey {
+        case focusedWorkspaceID, markedWorkspaceID
     }
 
     /// Custom decode so `sessionRecency` is LOSSY: a present-but-invalid list (a malformed UUID
@@ -80,6 +84,17 @@ public struct Snapshot: Codable, Equatable, Sendable {
     /// `Snapshot` and `PersistenceStore.load` would start fresh — wiping every workspace and
     /// session over a non-essential field. Mirrors `SessionSnapshot`'s `backgroundWatermark`
     /// handling below; every other field keeps its strict/`decodeIfPresent` behavior.
+    ///
+    /// It is ALSO where the two LEGACY focus keys migrate onto the set, and THREE generations have to land
+    /// on the right state. (a) Ancient — `focusedWorkspaceID` alone: the field meant "the tree is collapsed
+    /// to this workspace", so its presence implied the filter was on → a one-member ENABLED set. (b) The
+    /// split shipped before the set — `focusedWorkspaceID` + `markedWorkspaceID`, which is what real files
+    /// hold TODAY: there the MARK is the set and the effective id is only the FLAG, so the set is
+    /// `markedWorkspaceID ?? focusedWorkspaceID` and the flag is `focusedWorkspaceID != nil`. Reading the
+    /// effective id as the set (upstream's migration) would DROP the mark and restore an EMPTY set for the
+    /// exact state an involuntary jump leaves behind — the one the split exists to persist. (c) New keys
+    /// present: passed through verbatim, and they WIN over any legacy key still in the file.
+    /// The legacy values are LOCALS, not stored properties, so a migrated snapshot re-encodes without them.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         version = try c.decode(Int.self, forKey: .version)
@@ -90,8 +105,18 @@ public struct Snapshot: Codable, Equatable, Sendable {
         markdownWidth = try c.decodeIfPresent(Double.self, forKey: .markdownWidth)
         sidebarVisible = try c.decodeIfPresent(Bool.self, forKey: .sidebarVisible)
         sidebarMode = try c.decodeIfPresent(SidebarMode.self, forKey: .sidebarMode)
-        focusedWorkspaceID = try c.decodeIfPresent(UUID.self, forKey: .focusedWorkspaceID)
-        markedWorkspaceID = try c.decodeIfPresent(UUID.self, forKey: .markedWorkspaceID)
+        let ids = try c.decodeIfPresent([UUID].self, forKey: .focusedWorkspaceIDs)
+        let enabled = try c.decodeIfPresent(Bool.self, forKey: .focusEnabled)
+        if ids == nil, enabled == nil {
+            let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
+            let effective = try legacy.decodeIfPresent(UUID.self, forKey: .focusedWorkspaceID)
+            let marked = try legacy.decodeIfPresent(UUID.self, forKey: .markedWorkspaceID)
+            focusedWorkspaceIDs = (marked ?? effective).map { [$0] }
+            focusEnabled = effective.map { _ in true }
+        } else {
+            focusedWorkspaceIDs = ids
+            focusEnabled = enabled
+        }
         sessionRecency = (try? c.decodeIfPresent([UUID].self, forKey: .sessionRecency)) ?? nil
     }
 }

@@ -385,54 +385,112 @@ rookctl tree --json | jq '.result.tree.workspaces[].sessions[] | {id, unseen}'  
 rookctl session seen --target "$SID"                   # clear it, selection/focus unchanged
 ```
 
-## Focus a single workspace
+## Build a working set of workspaces, then apply it
 
-Collapse the sidebar tree to one workspace's sessions (hiding the others), with the full tree one
-command away. Per-window and persisted; orthogonal to `sidebar mode`. While focused, `session go`
-navigation is scoped to that workspace's sessions; unfocusing restores stepping over all sessions.
+The sidebar's focus filter narrows the tree to a SET of workspaces, and that is TWO separate pieces of
+state: WHICH workspaces are marked (`marked` on each workspace node) and WHETHER the set filters the tree
+(`workspaceFilter` at the tree's top level).
+A node's `focused` is exactly their conjunction — `focused == marked && workspaceFilter`.
+
+`workspace focus add` marks a workspace and NEVER touches the filter flag, which is what makes a set
+buildable: mark the members one at a time with the whole tree still on screen, then apply the lot with
+ONE `workspace filter on`.
 
 ```bash
-rookctl workspace focus on --target "$ROOK_WORKSPACE_ID"  # zoom to this workspace
-rookctl workspace focus toggle --target a1b2                # flip focus on another workspace
-rookctl workspace focus off                                 # restore the full tree
+rookctl workspace focus add --target "$ROOK_WORKSPACE_ID"   # mark; the tree does not change
+rookctl workspace focus add --target a1b2                   # mark another
+rookctl workspace focus add --target 7f3c                   # …and another
+rookctl workspace filter on                                 # NOW the tree narrows to the three
 ```
 
-## Peek at the whole tree, then go back to the focused workspace
-
-The focus is two bits: WHICH workspace is pinned (`marked` on the workspace node) and WHETHER the filter
-applies (`workspaceFilter` at the tree's top level). `workspace filter` flips only the second one, so the
-pin survives — that is how you look at everything and come straight back, in two commands and without
-re-naming the workspace.
+Marking three workspaces and seeing nothing happen is the designed behavior, not a bug — the `filter on`
+is the step that applies it.
+Reach for `workspace focus on` per workspace instead and you end up with the LAST one alone, because `on`
+REPLACES the set:
 
 ```bash
-rookctl workspace focus on --target "$ROOK_WORKSPACE_ID"   # pin + filter
-rookctl workspace filter off                               # whole tree, pin kept
+rookctl workspace focus on --target "$ROOK_WORKSPACE_ID"    # zoom to this one alone (replace + apply)
+rookctl workspace focus off --target a1b2                   # REMOVE a member (`off` is the remove mode;
+                                                            #   there is no `remove` token)
+rookctl workspace focus toggle --target a1b2                # replace-toggle: clears everything when a1b2
+                                                            #   is the sole member of an APPLIED filter
+```
+
+Removing the last member switches the filter off with it. There is no membership-toggle mode and no bulk
+clear over the socket (the GUI's Clear Focus has no control twin): read `marked` and send `add` or `off`
+yourself, looping `off` over the members when you want the set emptied.
+
+## Peek at the whole tree, then come back to the set
+
+`workspace filter` flips only the FLAG, so the set survives — that is how you look at everything and come
+straight back, without re-naming a single workspace.
+
+```bash
+rookctl workspace filter off                               # whole tree, set kept
 # …look around: select sessions in the other workspaces…
-rookctl workspace filter on                                # back to the pinned workspace
+rookctl workspace filter on                                # back to the marked set
 rookctl workspace filter toggle                            # or flip it (the default mode)
 ```
 
-It matters beyond convenience: an INVOLUNTARY jump out of the focused workspace — idle auto-follow to a
-blocked session, attention nav (⌃⌥↑/⌃⌥↓), a click on a notification banner, the dashboard, the
-recent-sessions popover — switches the filter off by itself and keeps the pin. `workspace filter on` is
-the only way to re-apply it; an explicit `workspace focus off` instead FORGETS the pin, and then there is
-nothing to come back to.
+It matters beyond convenience: an INVOLUNTARY jump out of the marked set — idle auto-follow to a blocked
+session, attention nav (⌃⌥↑/⌃⌥↓), a click on a notification banner, the dashboard, the recent-sessions
+popover — switches the filter off by itself and KEEPS the set.
+One `workspace filter on` brings the working set back; an explicit `workspace focus off` instead unmarks
+that workspace, and once every member is gone there is nothing left to come back to.
 
 ```bash
 # what state am I in? focused == marked && workspaceFilter
 rookctl tree --json | jq -r '.result.tree
   | (.workspaceFilter | tostring) as $f
-  | .workspaces[] | select(.marked) | "\(.name): pinned, filtering=\($f)"'
+  | .workspaces[] | select(.marked) | "\(.name): marked, filtering=\($f)"'
 
-# re-apply only when something is pinned but not filtering (idempotent either way)
+# which workspace ROWS are on screen right now?
+#   visible  ⟺  sidebarVisible && sidebarMode == "tree" && (!workspaceFilter || marked)
+rookctl tree --json | jq -r '.result.tree
+  | (.workspaceFilter == true) as $f
+  | if (.sidebarVisible == true and .sidebarMode == "tree")
+    then .workspaces[] | select($f == false or .marked == true) | .name
+    else empty end'
+
+# re-apply only when something is marked but not filtering (idempotent either way)
 rookctl tree --json \
   | jq -e '.result.tree | (.workspaceFilter | not) and ([.workspaces[] | select(.marked)] | length > 0)' \
   >/dev/null && rookctl workspace filter on
 ```
 
-`filter on` with nothing pinned is a plain no-op, and so is `filter on` when the pinned workspace has since
-been deleted — the command still answers `ok`, so read `workspaceFilter` back rather than trusting the exit
-status. It is window-scoped (no `--target`); add `--window W` to drive another window.
+Do not shorten that visibility predicate. `focused` alone reports nothing visible whenever the filter is
+off — exactly when the WHOLE tree is on screen — and a bare `!workspaceFilter || marked` claims rows are
+visible in `flagged` mode and behind a hidden sidebar, where no workspace row renders at all.
+
+`filter on` with an EMPTY set is a plain no-op — the command still answers `ok`, so read `workspaceFilter`
+back rather than trusting the exit status. It is window-scoped (no `--target`); add `--window W` to drive
+another window.
+
+## Borrow the user's workspace filter and give it back
+
+Record the set AND the flag, do the work that needs the whole tree, then replay it.
+Restore with N × `focus add` plus ONE `filter on|off`; `workspace focus on` is the WRONG tool for a
+restore, since it replaces the set with the single workspace you name and a three-workspace set comes
+back as a one-workspace zoom.
+
+```bash
+SNAP=$(rookctl tree --json)
+MARKED=$(jq -r '.result.tree.workspaces[] | select(.marked) | .id' <<<"$SNAP")
+FILTER=$(jq -r '.result.tree.workspaceFilter' <<<"$SNAP")
+
+rookctl workspace filter off                                  # full tree while you work
+# …do the work…
+
+for id in $MARKED; do rookctl workspace focus add --target "$id"; done
+if [ "$FILTER" = true ]; then rookctl workspace filter on; else rookctl workspace filter off; fi
+```
+
+Two things to know before restoring.
+A workspace DELETED while you worked drops out of the set on its own, and re-adding its id fails with a
+`notFound` error rather than marking a phantom — so that member is simply lost, and the loop above keeps
+going.
+And the adds are ADDITIVE: if the user marked something new meanwhile you get the union, so loop
+`workspace focus off` over the CURRENT members first when you need the recorded set exactly.
 
 ## Give the workspaces their own icons and colors
 

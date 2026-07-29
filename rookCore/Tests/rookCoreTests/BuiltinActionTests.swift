@@ -23,12 +23,13 @@ struct BuiltinActionTests {
         #expect(BuiltinAction.toggleFlaggedView.rawValue == "toggle_flagged_view")
         #expect(BuiltinAction.toggleFlag.rawValue == "toggle_flag")
         #expect(BuiltinAction.focusWorkspace.rawValue == "focus_workspace")
+        #expect(BuiltinAction.toggleWorkspaceFilter.rawValue == "toggle_workspace_filter")
         #expect(BuiltinAction.showAttention.rawValue == "show_attention")
         #expect(BuiltinAction.reopenRecent.rawValue == "reopen_recent")
         #expect(BuiltinAction.undoClose.rawValue == "undo_close")
         #expect(BuiltinAction.toggleFullscreen.rawValue == "toggle_fullscreen")
         #expect(BuiltinAction.toggleFileTree.rawValue == "toggle_file_tree")
-        #expect(BuiltinAction.allCases.count == 42)
+        #expect(BuiltinAction.allCases.count == 43)
     }
 
     @Test func rejectsUnknownName() {
@@ -100,6 +101,7 @@ struct BuiltinActionTests {
             .toggleFlaggedView: nil, // keyless — gains a key only when the user maps one
             .toggleFlag: Chord(mods: [.command, .shift], key: "f"),
             .focusWorkspace: nil,   // keyless — gains a key only when the user maps one
+            .toggleWorkspaceFilter: nil, // keyless — gains a key only when the user maps one
             .duplicateSession: nil, // keyless — gains a key only when the user maps one
             .focusLeftPane: Chord(mods: [.command, .option], key: "left"),
             .focusRightPane: Chord(mods: [.command, .option], key: "right"),
@@ -166,6 +168,7 @@ struct BuiltinActionTests {
         let keyless: Set<BuiltinAction> = [
             .renameWindow, .deleteWindow, .renameWorkspace, .deleteWorkspace, .renameSession, .duplicateSession, .clearStatus,
             .firstSession, .lastSession, .selectTheme, .toggleFlaggedView, .focusWorkspace,
+            .toggleWorkspaceFilter,
         ]
         for action in keyless {
             #expect(action.defaultChord == nil, "expected nil default for \(action.rawValue)")

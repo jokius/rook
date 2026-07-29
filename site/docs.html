@@ -589,7 +589,62 @@
                   >›</span
                 >Narrow a crowded sidebar two ways: <strong style="color: #e6e1d7">flag</strong> sessions across workspaces into a
                 flat working-set view (a flag is durable and survives a move), or <strong style="color: #e6e1d7">focus</strong> a
-                single workspace to collapse the tree to just its sessions. The two are independent.
+                <em>set</em> of workspaces — one to zoom in on a single project, a handful to watch several at once — and hide
+                every row outside it. The two are independent.
+              </li>
+              <li style="font-size: 15.5px; line-height: 1.65; color: #cbc6bc; padding-left: 22px; position: relative">
+                <span
+                  style="
+                    position: absolute;
+                    left: 0;
+                    top: 2px;
+                    color: #7ece8f;
+                    font-family: &quot;JetBrains Mono&quot;, monospace;
+                  "
+                  >›</span
+                >Marking and filtering are separate steps, because a set has to be built before it is worth applying.
+                <strong style="color: #e6e1d7">Focus</strong> on a workspace row replaces the whole set with that one workspace and
+                applies the filter at once; <strong style="color: #e6e1d7">Add to Focus</strong> marks a workspace alongside the
+                others and deliberately leaves the filter alone — an add that filtered would collapse the tree onto the first
+                member and hide the very rows the next add needs. So you mark a few rows with the whole tree still in front of you,
+                then apply them in one flip. A marked row draws its icon in a heavier weight (heavier, not filled: a filled icon
+                already means a flagged session).
+              </li>
+              <li style="font-size: 15.5px; line-height: 1.65; color: #cbc6bc; padding-left: 22px; position: relative">
+                <span
+                  style="
+                    position: absolute;
+                    left: 0;
+                    top: 2px;
+                    color: #7ece8f;
+                    font-family: &quot;JetBrains Mono&quot;, monospace;
+                  "
+                  >›</span
+                >The grid button in the sidebar footer is that flip: it applies or lifts the filter without touching the set, and
+                its glyph fills while the filter is on, so it is the indicator as much as the control. It is the only affordance
+                that still works while the filter is <em>off</em> — everything else acts on a workspace row, and with the filter
+                off there is no focused row to act on. View ▸ Toggle Workspace Filter is the same thing from the menu (keyless by
+                default, bindable as
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">toggle_workspace_filter</span>), and
+                Clear Focus drops the whole set rather than merely suspending it.
+              </li>
+              <li style="font-size: 15.5px; line-height: 1.65; color: #cbc6bc; padding-left: 22px; position: relative">
+                <span
+                  style="
+                    position: absolute;
+                    left: 0;
+                    top: 2px;
+                    color: #7ece8f;
+                    font-family: &quot;JetBrains Mono&quot;, monospace;
+                  "
+                  >›</span
+                >A focus survives an <em>involuntary</em> jump. Landing outside the set because something pulled you there —
+                auto-follow to a blocked session, attention navigation, a notification click, the dashboard, the recent-sessions
+                popover — lifts the filter so you can see where you are, but the set stays marked, and the footer button (or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl workspace filter on</span>)
+                puts it back. Only an explicit unmark — Remove from Focus, Clear Focus,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl workspace focus off</span> —
+                forgets a workspace, because that is you saying you are done with it.
               </li>
               <li style="font-size: 15.5px; line-height: 1.65; color: #cbc6bc; padding-left: 22px; position: relative">
                 <span
@@ -1039,9 +1094,9 @@
                   style="position: absolute; left: 0; top: 1px; color: #7ece8f; font-family: &quot;JetBrains Mono&quot;, monospace"
                   >›</span
                 ><strong style="color: #e6e1d7">Interface</strong> — hide or show individual title-bar and sidebar-footer chrome
-                elements (the sidebar toggle, the session and window name, the scratch/split/quick-terminal buttons, and the
-                sidebar footer's new-workspace, new-session, flagged-view, and workspace add-session controls), all shown by
-                default.
+                elements (the sidebar toggle, the session and window name, the scratch/split/quick-terminal buttons, the
+                recent-sessions clock, and the sidebar footer's new-workspace, new-session, workspace-filter, flagged-view, and
+                workspace add-session controls), all shown by default.
               </div>
               <div style="font-size: 15px; line-height: 1.6; color: #cbc6bc; padding-left: 22px; position: relative">
                 <span
@@ -1128,7 +1183,7 @@
               "
             >
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 0">
-                Looking for the full list? All 73 commands (the count excludes one UI-test-only command with no CLI
+                Looking for the full list? All 74 commands (the count excludes one UI-test-only command with no CLI
                 subcommand), with every argument, return value, and error, live on the
                 <a href="/commands" style="color: #7ece8f; font-weight: 500">Command reference →</a>
               </p>
@@ -1212,9 +1267,11 @@
               <span style="color: #6b727a">&nbsp;&nbsp;# one grace-period undo for the batch</span
               ><br />rookctl workspace move --to top
               <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# reorder a workspace</span><br />rookctl workspace focus on
-              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# collapse tree to active ws (on|off|toggle)</span
+              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# mark the active ws alone and apply the filter (on|off|toggle|add)</span
+              ><br />rookctl workspace focus add --target <span style="color: #f2b45c">"$ws"</span>
+              <span style="color: #6b727a">&nbsp;&nbsp;# add one more to the marked set, leaving the filter as it is</span
               ><br />rookctl workspace filter on
-              <span style="color: #6b727a">&nbsp;&nbsp;# re-apply that filter without changing which ws is marked</span
+              <span style="color: #6b727a">&nbsp;&nbsp;# apply the set you built — or restore a filter a jump lifted</span
               ><br />rookctl workspace color <span style="color: #f2b45c">"#ff8800"</span>
               <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# tint the workspace's sidebar icon (or clear)</span
               ><br />rookctl workspace icon hammer.fill
@@ -1588,7 +1645,7 @@
                 color: #cbc6bc;
               "
             >
-              new_window&nbsp;&nbsp;&nbsp;rename_window&nbsp;&nbsp;&nbsp;delete_window<br />new_workspace&nbsp;&nbsp;&nbsp;rename_workspace&nbsp;&nbsp;&nbsp;delete_workspace<br />new_session&nbsp;&nbsp;&nbsp;open_directory&nbsp;&nbsp;&nbsp;rename_session<br />close_session&nbsp;&nbsp;&nbsp;clear_status<br />increase_font_size&nbsp;&nbsp;&nbsp;decrease_font_size&nbsp;&nbsp;&nbsp;reset_font_size<br />toggle_split&nbsp;&nbsp;&nbsp;toggle_scratch&nbsp;&nbsp;&nbsp;toggle_search<br />toggle_sidebar&nbsp;&nbsp;&nbsp;toggle_flag&nbsp;&nbsp;&nbsp;toggle_flagged_view<br />focus_left_pane&nbsp;&nbsp;&nbsp;focus_right_pane&nbsp;&nbsp;&nbsp;focus_workspace<br />previous_session&nbsp;&nbsp;&nbsp;next_session&nbsp;&nbsp;&nbsp;first_session&nbsp;&nbsp;&nbsp;last_session<br />previous_attention_session&nbsp;&nbsp;&nbsp;next_attention_session<br />quick_terminal&nbsp;&nbsp;&nbsp;session_palette&nbsp;&nbsp;&nbsp;command_palette<br />custom_command_palette&nbsp;&nbsp;&nbsp;show_attention<br />select_theme&nbsp;&nbsp;&nbsp;toggle_fullscreen&nbsp;&nbsp;&nbsp;toggle_terminal_zoom
+              new_window&nbsp;&nbsp;&nbsp;rename_window&nbsp;&nbsp;&nbsp;delete_window<br />new_workspace&nbsp;&nbsp;&nbsp;rename_workspace&nbsp;&nbsp;&nbsp;delete_workspace<br />new_session&nbsp;&nbsp;&nbsp;open_directory&nbsp;&nbsp;&nbsp;rename_session&nbsp;&nbsp;&nbsp;duplicate_session<br />close_session&nbsp;&nbsp;&nbsp;reopen_recent&nbsp;&nbsp;&nbsp;undo_close&nbsp;&nbsp;&nbsp;clear_status<br />increase_font_size&nbsp;&nbsp;&nbsp;decrease_font_size&nbsp;&nbsp;&nbsp;reset_font_size<br />toggle_split&nbsp;&nbsp;&nbsp;toggle_scratch&nbsp;&nbsp;&nbsp;toggle_search<br />toggle_sidebar&nbsp;&nbsp;&nbsp;toggle_file_tree&nbsp;&nbsp;&nbsp;toggle_flag&nbsp;&nbsp;&nbsp;toggle_flagged_view<br />focus_workspace&nbsp;&nbsp;&nbsp;toggle_workspace_filter<br />focus_left_pane&nbsp;&nbsp;&nbsp;focus_right_pane<br />previous_session&nbsp;&nbsp;&nbsp;next_session&nbsp;&nbsp;&nbsp;first_session&nbsp;&nbsp;&nbsp;last_session<br />previous_attention_session&nbsp;&nbsp;&nbsp;next_attention_session<br />quick_terminal&nbsp;&nbsp;&nbsp;session_palette&nbsp;&nbsp;&nbsp;command_palette<br />custom_command_palette&nbsp;&nbsp;&nbsp;show_attention&nbsp;&nbsp;&nbsp;dashboard<br />select_theme&nbsp;&nbsp;&nbsp;toggle_fullscreen&nbsp;&nbsp;&nbsp;toggle_terminal_zoom
             </div>
 
             <h3

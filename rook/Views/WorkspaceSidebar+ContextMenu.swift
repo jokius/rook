@@ -136,13 +136,22 @@ extension WorkspaceSidebar.Coordinator {
             openSession.target = self
             openSession.representedObject = node
             menu.addItem(openSession)
-            // "Focus"/"Unfocus" collapses the tree to this workspace's subtree (or restores all when it
-            // is already the focused one); the label reflects the current state.
-            let focused = store.focusedWorkspaceID == node.id
-            let focus = NSMenuItem(title: focused ? "Unfocus" : "Focus", action: #selector(menuFocusWorkspace(_:)), keyEquivalent: "")
+            // two different gestures, grouped. "Focus"/"Unfocus" REPLACES the whole set with this
+            // workspace and applies the filter — the zoom-to-one — so it reads "Unfocus" only when this
+            // workspace is the SOLE member of an applied filter. "Add to Focus"/"Remove from Focus" edits
+            // MEMBERSHIP alongside whatever else is marked and never touches the filter flag, so a set is
+            // built row by row with the whole tree still on screen.
+            let focus = NSMenuItem(title: store.isSoleFocus(node.id) ? "Unfocus" : "Focus",
+                                   action: #selector(menuFocusWorkspace(_:)), keyEquivalent: "")
             focus.target = self
             focus.representedObject = node
             menu.addItem(focus)
+            let member = store.focusedWorkspaceIDs.contains(node.id)
+            let membership = NSMenuItem(title: member ? "Remove from Focus" : "Add to Focus",
+                                        action: #selector(menuToggleFocusMembership(_:)), keyEquivalent: "")
+            membership.target = self
+            membership.representedObject = node
+            menu.addItem(membership)
             menu.addItem(.separator())
             // appearance: the system color panel previews live (it's continuous), and Icon… picks an image
             // file (an SF Symbol or emoji is an `rookctl workspace icon` away — there is no public API to
@@ -267,6 +276,14 @@ extension WorkspaceSidebar.Coordinator {
     @objc private func menuFocusWorkspace(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode else { return }
         actions.focusWorkspace(node.id)
+    }
+
+    /// Adds/removes this workspace from the focus SET without touching the filter flag (the item above is
+    /// the replacing zoom-to-one). Membership is re-read at invoke time rather than captured when the
+    /// title was built — a menu can outlive the state it was built from.
+    @objc private func menuToggleFocusMembership(_ sender: NSMenuItem) {
+        guard let node = sender.representedObject as? SidebarNode else { return }
+        actions.setFocusMembership(node.id, member: !store.focusedWorkspaceIDs.contains(node.id))
     }
 
     /// "Color…": pick this workspace's sidebar icon color in the system color panel (live preview).

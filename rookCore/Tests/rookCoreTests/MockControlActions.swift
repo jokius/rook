@@ -28,7 +28,7 @@ final class MockControlActions: ControlActions {
         case sessionMove(target: String?, window: String?, ControlSessionMove)
         case sessionMoveBatch(targets: [String], window: String?, ControlSessionMove)
         case workspaceMove(target: String?, window: String?, ReorderDirection)
-        case workspaceFocus(target: String?, window: String?, String?)
+        case workspaceFocus(target: String?, window: String?, ControlWorkspaceFocusMode)
         case workspaceFilter(window: String?, mode: ControlToggleMode)
         case workspaceExpansion(target: String?, window: String?, expanded: Bool)
         case workspaceColor(target: String?, window: String?, hex: String?)
@@ -87,6 +87,16 @@ final class MockControlActions: ControlActions {
     }
 
     var calls: [Call] = []
+
+    /// An optional LIVE `AppStore` the workspace-focus/filter witnesses drive in addition to recording the
+    /// call, so a dispatcher test can exercise a mode END TO END — wire token → dispatcher parse → the
+    /// store mutator → the resulting `focusedWorkspaceIDs`/`focusEnabled`. Left nil by every routing test,
+    /// which only cares that the parsed mode reached the host. The witnesses do exactly what the app-side
+    /// `ControlServer` arm does — resolve the target, then call the production mutator — and deliberately
+    /// re-implement NONE of the mode semantics, so a test driving this seam cannot pass by agreeing with
+    /// the double.
+    var store: AppStore?
+
     var nextTreeResponse = ControlResponse(ok: false, error: "tree not stubbed")
     var nextEventsReadResponse = ControlResponse(ok: false, error: "events.read not stubbed")
     var nextSessionNewResponse = ControlResponse(ok: true)

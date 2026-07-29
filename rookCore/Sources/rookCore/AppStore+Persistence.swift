@@ -17,10 +17,15 @@ extension AppStore {
                                      collapsed: workspace.isExpanded ? nil : true, colorHex: workspace.colorHex,
                                      icon: workspace.icon, root: workspace.root)
         }
+        // the marked set in TREE order, so the on-disk list is deterministic rather than following the
+        // Set's hash order; an unmarked store omits both focus keys, keeping its file identical to one
+        // written before the set existed. Neither legacy focus key is ever written back.
+        let focusIDs = workspaces.map(\.id).filter(focusedWorkspaceIDs.contains)
         return Snapshot(selectedSessionID: selectedSessionID, workspaces: workspaceSnapshots,
                         sidebarWidth: sidebarWidth, fileTreeWidth: fileTreeWidth, markdownWidth: markdownWidth,
                         sidebarVisible: sidebarVisible, sidebarMode: sidebarMode,
-                        focusedWorkspaceID: focusedWorkspaceID, markedWorkspaceID: markedWorkspaceID,
+                        focusedWorkspaceIDs: focusIDs.isEmpty ? nil : focusIDs,
+                        focusEnabled: focusEnabled ? true : nil,
                         sessionRecency: sessionRecency.items)
     }
 
@@ -64,8 +69,8 @@ extension AppStore {
         markdownWidth = min(AppStore.markdownWidthMax, max(AppStore.markdownWidthMin, snapshot.markdownWidth ?? AppStore.markdownWidthDefault))
         sidebarVisible = snapshot.sidebarVisible ?? true
         sidebarMode = snapshot.sidebarMode ?? .tree
-        // both focus bits, so a filter an involuntary jump switched off can still be re-applied after the
-        // relaunch; a stale mark stays verbatim and harmless (see `restoreFocus(from:)`).
+        // both focus fields, so a filter an involuntary jump switched off can still be re-applied after the
+        // relaunch; members absent from the rebuilt tree are pruned there (see `restoreFocus(from:)`).
         restoreFocus(from: snapshot)
         if let id = snapshot.selectedSessionID, session(withID: id) == nil {
             selectedSessionID = nil

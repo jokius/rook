@@ -113,8 +113,10 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
         XCTAssertTrue((bad["error"] as? String ?? "").contains("invalid sidebar mode"), "should report invalid mode: \(bad)")
     }
 
-    // workspace.focus collapses the sidebar tree to a single workspace's subtree — the other workspaces'
-    // session rows leave the AX tree; unfocusing restores them. Orthogonal to the flagged view.
+    // workspace.focus `on` REPLACES the marked set with one workspace and applies the filter, so the tree
+    // collapses to that workspace's subtree — the other workspaces' session rows leave the AX tree. `add`
+    // then widens the set back out and `off` removes a single member, each leaving the filter FLAG alone.
+    // Orthogonal to the flagged view.
     func testWorkspaceFocusHidesOtherWorkspaces() throws {
         XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 10), "seeded session row")
 
@@ -149,15 +151,38 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
         XCTAssertTrue(sessionRowValueExists(containing: "stay"), "the focused workspace's session should remain")
         XCTAssertFalse(sessionRowValueExists(containing: "hidden"), "the other workspace's session should be hidden")
 
-        // workspace.focus off on a NON-focused workspace is a no-op — it unfocuses only the currently
-        // focused one, so the focus on the first workspace must survive (the other's rows stay hidden).
+        // workspace.focus off is the REMOVE mode — it drops THIS workspace from the marked set — so on a
+        // workspace that was never a member it is a no-op for that reason, not because "only the focused
+        // one can be unfocused" (the old single-mark model's reason, which this assertion used to carry).
         XCTAssertEqual(try sendCommand(#"{"cmd":"workspace.focus","target":"\#(secondWsID)","args":{"mode":"off"}}"#)["ok"] as? Bool,
-                       true, "workspace.focus off on a non-focused workspace should succeed (no-op)")
-        XCTAssertTrue(pollSessionRowCount(1, timeout: 10), "the focus on the first workspace should be unchanged")
-        XCTAssertTrue(sessionRowValueExists(containing: "stay"), "the focused workspace's session should still remain")
-        XCTAssertFalse(sessionRowValueExists(containing: "hidden"), "the other workspace's session should still be hidden")
+                       true, "workspace.focus off on a non-member workspace should succeed (no-op)")
+        XCTAssertTrue(pollSessionRowCount(1, timeout: 10), "removing a non-member must leave the applied set unchanged")
+        XCTAssertTrue(sessionRowValueExists(containing: "stay"), "the member workspace's session should still remain")
+        XCTAssertFalse(sessionRowValueExists(containing: "hidden"), "the non-member's session should still be hidden")
 
-        // unfocus restores the full tree.
+        // the case the single-mark model could not express: `add` widens the APPLIED set to two members —
+        // and, the other polarity of the marking rule, an add never touches the filter FLAG, so a filter
+        // that was ON stays on (with the filter OFF two adds leave it off — testWorkspaceFocusAddBuildsMultiWorkspaceSet).
+        XCTAssertEqual(try sendCommand(#"{"cmd":"workspace.focus","target":"\#(secondWsID)","args":{"mode":"add"}}"#)["ok"] as? Bool,
+                       true, "workspace.focus add should succeed")
+        XCTAssertTrue(pollSessionRowCount(2, timeout: 10), "adding the second workspace should reveal its rows")
+        XCTAssertTrue(sessionRowValueExists(containing: "hidden"), "the newly added member's session should appear")
+        XCTAssertEqual(try focusState(ofWorkspace: secondWsID).filter, true,
+                       "an add must not switch a filter that is already on back off")
+
+        // …and `off` on a MEMBER of a multi-member set removes just that one, leaving the rest marked AND
+        // filtering — the set shrinks by one instead of collapsing.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"workspace.focus","target":"\#(secondWsID)","args":{"mode":"off"}}"#)["ok"] as? Bool,
+                       true, "workspace.focus off on a member should succeed")
+        XCTAssertTrue(pollSessionRowCount(1, timeout: 10), "removing one of two members should hide only that workspace")
+        XCTAssertTrue(sessionRowValueExists(containing: "stay"), "the surviving member's session should remain")
+        XCTAssertFalse(sessionRowValueExists(containing: "hidden"), "the removed member's session should be hidden again")
+        let survivor = try focusState(ofWorkspace: firstWsID)
+        XCTAssertEqual(survivor.marked, true, "the surviving member should still be marked")
+        XCTAssertEqual(survivor.focused, true, "…and still effectively focused")
+        XCTAssertEqual(survivor.filter, true, "…because removing one of two members leaves the filter applied")
+
+        // removing the LAST member empties the set, which disables the filter and restores the full tree.
         XCTAssertEqual(try sendCommand(#"{"cmd":"workspace.focus","target":"\#(firstWsID)","args":{"mode":"off"}}"#)["ok"] as? Bool,
                        true, "workspace.focus off should succeed")
         XCTAssertTrue(pollSessionRowCount(2, timeout: 10), "unfocusing should restore the full tree")
@@ -324,10 +349,11 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
     }
 
     /// The three focus read-back fields of one workspace, from a SINGLE `tree` snapshot so they can never be
-    /// read across a mutation: the node's `focused` (the EFFECTIVE focus — the tree is collapsed to this
-    /// workspace) and `marked` (the pinned workspace, filter applied or not), plus the tree TOP-LEVEL
-    /// `workspaceFilter` (whether the filter applies at all). The documented invariant is
-    /// `focused == marked && workspaceFilter`, which only one snapshot can check.
+    /// read across a mutation: the node's `focused` (the EFFECTIVE focus — the tree is filtered and this
+    /// workspace is one of the workspaces it is filtered to) and `marked` (MEMBERSHIP in the marked set,
+    /// filter applied or not), plus the tree TOP-LEVEL `workspaceFilter` (whether the filter applies at
+    /// all). The documented invariant is `focused == marked && workspaceFilter`, which only one snapshot can
+    /// check — and it is checked per MEMBER, since the set can hold several.
     private func focusState(ofWorkspace id: String) throws -> (focused: Bool?, marked: Bool?, filter: Bool?) {
         let root = try treeRoot()
         let nodes = try XCTUnwrap(root["workspaces"] as? [[String: Any]], "tree should carry workspaces")
@@ -442,13 +468,14 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
         XCTAssertTrue(pollSessionRowCount(2, timeout: 10), "both rows should be present once expanded")
     }
 
-    // workspace.filter is the RE-APPLY leg of workspace.focus, and the reason the focus state is TWO bits.
-    // An INVOLUNTARY jump — here `session.select` of a session in ANOTHER workspace, the same store path idle
-    // auto-follow, attention nav and a notification reveal take — drops only the FILTER and KEEPS the mark, so
-    // `workspace.filter on` returns to the same workspace; before the split it nilled the focus outright and
-    // the focus was gone for good. Read back on all three fields from one snapshot: `focused` (the EFFECTIVE
-    // focus, whose meaning is deliberately unchanged), the node's `marked`, and the tree-level
-    // `workspaceFilter` — plus the visible tree, which is what those fields describe.
+    // workspace.filter is the RE-APPLY leg of workspace.focus, and the reason the focus state is a marked
+    // SET plus a separate flag. An INVOLUNTARY jump — here `session.select` of a session in ANOTHER
+    // workspace, the same store path idle auto-follow, attention nav and a notification reveal take — drops
+    // only the FILTER and KEEPS the set, so `workspace.filter on` returns to exactly the same workspaces;
+    // before the split it nilled the focus outright and the focus was gone for good. Read back on all three
+    // fields from one snapshot: `focused` (the EFFECTIVE focus, whose meaning is deliberately unchanged),
+    // the node's `marked`, and the tree-level `workspaceFilter` — plus the visible tree, which is what those
+    // fields describe. The closing block runs the same three-field read-back over a TWO-member set.
     func testWorkspaceFilterReappliesFocusAfterInvoluntaryJump() throws {
         XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 10), "seeded session row")
 
@@ -503,9 +530,10 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
         XCTAssertEqual(try sendCommand(#"{"cmd":"session.select","target":"\#(newSessID)"}"#)["ok"] as? Bool, true)
         XCTAssertEqual(try focusState(ofWorkspace: firstWsID).marked, true, "the mark should survive the second jump")
 
-        // an EXPLICIT unfocus forgets the mark even though the effective focus already reads nil — the delta
-        // guard used to compare only the effective focus and silently kept the mark, so `workspace.filter on`
-        // resurrected a focus the user had just dismissed.
+        // an EXPLICIT unfocus drops the workspace from the SET even though the effective focus already reads
+        // nil — un-marking is never gated on the filter being applied. It used to be gated on the effective
+        // focus and silently kept the mark, so `workspace.filter on` resurrected a focus the user had just
+        // dismissed. With the set now empty, the filter goes off with it.
         XCTAssertEqual(try sendCommand(#"{"cmd":"workspace.focus","target":"\#(firstWsID)","args":{"mode":"off"}}"#)["ok"] as? Bool,
                        true, "an explicit workspace.focus off should succeed")
         state = try focusState(ofWorkspace: firstWsID)
@@ -522,11 +550,133 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
         XCTAssertEqual(state.filter, false, "…so the tree-level filter stays off")
         XCTAssertTrue(pollSessionRowCount(2, timeout: 10), "the whole tree stays visible")
 
+        // the same three-field read-back over a TWO-member set — the state the single-mark model could not
+        // represent at all. Two adds mark BOTH workspaces and, since an add never touches the flag, leave the
+        // filter off, so each reads marked-but-not-focused from its own snapshot.
+        for id in [firstWsID, secondWsID] {
+            XCTAssertEqual(try sendCommand(#"{"cmd":"workspace.focus","target":"\#(id)","args":{"mode":"add"}}"#)["ok"] as? Bool,
+                           true, "workspace.focus add should succeed for \(id)")
+        }
+        for id in [firstWsID, secondWsID] {
+            let member = try focusState(ofWorkspace: id)
+            XCTAssertEqual(member.marked, true, "an add should mark \(id)")
+            XCTAssertNil(member.focused, "…without an effective focus, since an add never applies the filter")
+            XCTAssertEqual(member.filter, false, "…so the tree-level filter stays off")
+        }
+
+        // ONE workspace.filter on applies the WHOLE set: every member reports the effective focus, so the
+        // invariant `focused == marked && workspaceFilter` holds on each of them, not just on a single mark.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"workspace.filter","args":{"mode":"on"}}"#)["ok"] as? Bool, true,
+                       "workspace.filter on with two members should succeed")
+        for id in [firstWsID, secondWsID] {
+            let member = try focusState(ofWorkspace: id)
+            XCTAssertEqual(member.focused, true, "every member should report focused while the filter applies (\(id))")
+            XCTAssertEqual(member.marked, true, "…and stay marked")
+            XCTAssertEqual(member.filter, true, "…with the tree-level filter on")
+        }
+
         // an invalid mode errors rather than half-applying.
         let bad = try sendCommand(#"{"cmd":"workspace.filter","args":{"mode":"sideways"}}"#)
         XCTAssertEqual(bad["ok"] as? Bool, false, "an invalid filter mode should error: \(bad)")
         XCTAssertTrue((bad["error"] as? String ?? "").contains("invalid workspace filter mode"),
                       "should report the invalid mode: \(bad)")
+    }
+
+    // `workspace.focus add` is the MEMBERSHIP mode: it marks a workspace and — the load-bearing part —
+    // NEVER switches the filter on, so a working set is built row by row with the WHOLE tree still on
+    // screen. An add that applied would collapse the tree onto the first member and hide the very rows the
+    // next add needs. Both polarities of that rule are covered: with the filter OFF it stays off (here),
+    // with it ON it stays on (testWorkspaceFocusHidesOtherWorkspaces). Then ONE `workspace.filter on`
+    // applies the accumulated set and the NON-member workspace's rows disappear — which is also what makes
+    // the "still on screen" assertions non-vacuous: those rows were filterable all along, they simply were
+    // not being filtered.
+    func testWorkspaceFocusAddBuildsMultiWorkspaceSet() throws {
+        XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 10), "seeded session row")
+
+        let firstWs = try XCTUnwrap((try workspaceNodes()).first, "should have a workspace")
+        let firstWsID = try XCTUnwrap(firstWs["id"] as? String, "should have a seeded workspace id")
+        let seededID = try XCTUnwrap((firstWs["sessions"] as? [[String: Any]])?.first?["id"] as? String,
+                                     "should have a seeded session")
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.rename","target":"\#(seededID)","args":{"name":"alpha"}}"#)["ok"] as? Bool,
+                       true, "renaming the seeded session should succeed")
+        let secondWsID = try makeWorkspace(named: "second", withSession: "beta")
+        let thirdWsID = try makeWorkspace(named: "third", withSession: "gamma")
+        XCTAssertTrue(pollSessionRowCount(3, timeout: 10), "all three workspaces' rows should be present unfiltered")
+
+        // select a session inside the set about to be built, so nothing lifts the filter when it applies
+        // (session.new left `gamma` selected, and gamma's workspace is deliberately left OUT of the set).
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.select","target":"\#(seededID)"}"#)["ok"] as? Bool, true,
+                       "selecting the seeded session should succeed")
+
+        // the first add MARKS without applying: the tree is untouched and workspaceFilter still reads false.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"workspace.focus","target":"\#(firstWsID)","args":{"mode":"add"}}"#)["ok"] as? Bool,
+                       true, "the first workspace.focus add should succeed")
+        var state = try focusState(ofWorkspace: firstWsID)
+        XCTAssertEqual(state.marked, true, "an add should mark the workspace")
+        XCTAssertNil(state.focused, "…but must not focus it")
+        XCTAssertEqual(state.filter, false, "…and must not switch the filter on")
+        XCTAssertTrue(pollSessionRowCount(3, timeout: 10), "one add must leave the whole tree on screen")
+
+        // the second add widens the set, still without applying it — the row it targeted was only reachable
+        // because the first add left the tree whole.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"workspace.focus","target":"\#(secondWsID)","args":{"mode":"add"}}"#)["ok"] as? Bool,
+                       true, "the second workspace.focus add should succeed")
+        for (label, id) in [("first", firstWsID), ("second", secondWsID)] {
+            state = try focusState(ofWorkspace: id)
+            XCTAssertEqual(state.marked, true, "the \(label) workspace should be marked")
+            XCTAssertNil(state.focused, "…without an effective focus while the filter is off (\(label))")
+            XCTAssertEqual(state.filter, false, "…and the tree-level filter should still read off (\(label))")
+        }
+        XCTAssertNil(try focusState(ofWorkspace: thirdWsID).marked, "the workspace never added must not be marked")
+        XCTAssertTrue(pollSessionRowCount(3, timeout: 10), "two adds must leave the whole tree on screen")
+
+        // ONE filter on applies the accumulated set: the two members stay, the non-member's rows disappear.
+        let on = try sendCommand(#"{"cmd":"workspace.filter","args":{"mode":"on"}}"#)
+        XCTAssertEqual(on["ok"] as? Bool, true, "workspace.filter on should succeed: \(on)")
+        XCTAssertTrue(pollSessionRowCount(2, timeout: 10), "applying the set should hide the non-member's rows")
+        XCTAssertTrue(sessionRowValueExists(containing: "alpha"), "the first member's session should show")
+        XCTAssertTrue(sessionRowValueExists(containing: "beta"), "the second member's session should show")
+        XCTAssertFalse(sessionRowValueExists(containing: "gamma"), "the non-member's session should be hidden")
+
+        // the three-field read-back with TWO members: both report focused AND marked, while a non-member
+        // reports neither and still sees the tree-level flag (workspaceFilter is per-window, not per-workspace).
+        for (label, id) in [("first", firstWsID), ("second", secondWsID)] {
+            state = try focusState(ofWorkspace: id)
+            XCTAssertEqual(state.focused, true, "the \(label) member should report focused while the filter applies")
+            XCTAssertEqual(state.marked, true, "…and marked (\(label))")
+            XCTAssertEqual(state.filter, true, "…with the tree-level filter on (\(label))")
+        }
+        let outsider = try focusState(ofWorkspace: thirdWsID)
+        XCTAssertNil(outsider.focused, "a non-member must not report focused")
+        XCTAssertNil(outsider.marked, "…nor marked")
+        XCTAssertEqual(outsider.filter, true, "…while still reporting the tree-level filter it shares")
+
+        // switching the filter off leaves the SET alone: BOTH members keep `marked`, both lose `focused`,
+        // and the whole tree comes back — the state one `workspace.filter on` returns from.
+        let off = try sendCommand(#"{"cmd":"workspace.filter","args":{"mode":"off"}}"#)
+        XCTAssertEqual(off["ok"] as? Bool, true, "workspace.filter off should succeed: \(off)")
+        for (label, id) in [("first", firstWsID), ("second", secondWsID)] {
+            state = try focusState(ofWorkspace: id)
+            XCTAssertEqual(state.marked, true, "switching the filter off must not un-mark the \(label) member")
+            XCTAssertNil(state.focused, "…but the effective focus goes with the filter (\(label))")
+            XCTAssertEqual(state.filter, false, "…and the tree-level filter reads off (\(label))")
+        }
+        XCTAssertTrue(pollSessionRowCount(3, timeout: 10), "the whole tree should be back with the filter off")
+    }
+
+    /// Creates a workspace named `name` holding one session renamed `session`, returning the workspace id —
+    /// the three-command preamble the multi-workspace focus e2e needs twice over. Note `session.new` SELECTS
+    /// the new session, so a caller that cares about the active session re-selects afterwards.
+    private func makeWorkspace(named name: String, withSession session: String) throws -> String {
+        let created = try sendCommand(#"{"cmd":"workspace.new","args":{"name":"\#(name)"}}"#)
+        let wsID = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String,
+                                 "workspace.new should return an id")
+        let made = try sendCommand(#"{"cmd":"session.new","args":{"workspace":"\#(wsID)"}}"#)
+        let sessionID = try XCTUnwrap((made["result"] as? [String: Any])?["id"] as? String,
+                                      "session.new should return an id")
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.rename","target":"\#(sessionID)","args":{"name":"\#(session)"}}"#)["ok"] as? Bool,
+                       true, "renaming \(session) should succeed")
+        return wsID
     }
 
     // session.status sets a session's agent indicator: a valid state returns ok + the resolved id, an

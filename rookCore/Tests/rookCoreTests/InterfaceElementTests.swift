@@ -33,7 +33,7 @@ struct InterfaceElementTests {
         let sidebar = InterfaceElement.allCases.filter { $0.section == .sidebar }
         #expect(titleBar.count + sidebar.count == InterfaceElement.allCases.count)
         #expect(titleBar == [.sidebarToggle, .sessionName, .windowName, .scratch, .split, .quickTerminal, .recentSessions])
-        #expect(sidebar == [.newWorkspace, .newSession, .flaggedView, .workspaceAddSession])
+        #expect(sidebar == [.newWorkspace, .newSession, .flaggedView, .focusFilter, .workspaceAddSession])
     }
 
     @Test func recentSessionsIsATitleBarInterfaceElement() {

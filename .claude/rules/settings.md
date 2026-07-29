@@ -173,7 +173,13 @@ paths:
   **Interface** (a new tab, `SettingsView.Tab.interface`, BETWEEN Appearance and Notifications) hides/shows
   INDIVIDUAL title-bar + sidebar-footer chrome elements over the host-free `InterfaceElement` enum
   (title bar: `recentSessions`/`sidebarToggle`/`sessionName`/`windowName`/`scratch`/`split`/`quickTerminal`; sidebar footer:
-  `newWorkspace`/`newSession`/`flaggedView`/`workspaceAddSession`), all shown by default.
+  `newWorkspace`/`newSession`/`flaggedView`/`focusFilter`/`workspaceAddSession`), all shown by default.
+  **The tab is fully data-driven off `InterfaceElement.allCases`** — `SettingsView` builds each section by
+  filtering that on `.section` and renders one toggle per case from `displayName` — so adding an element
+  (`focusFilter`, "Workspace filter", the bottom-bar focus-filter toggle, taking the Sidebar section from 4
+  toggles to 5) is a `rookCore` enum case and NOTHING else; there was no `SettingsView` edit at all.
+  That is the point of the enum-driven tab: a new chrome control cannot ship a render-site gate and forget
+  its Settings toggle.
   Persisted as `AppSettings.hiddenInterfaceElements` (`[String]?`, tolerant raw-string decode so an unknown
   future name survives a toggle; nil = all shown), mirrored into `GhosttyApp.hiddenInterfaceElements` and
   re-gated live per window via `.rookAppearanceChanged` — the SAME chrome-mirror pattern as

@@ -70,7 +70,11 @@ glyph-tint override — the `--color` value; omitted when idle or using the defa
 `circle`|`square`|`triangle`|`diamond`|`capsule`|`star`; omitted when idle or drawing the status' own
 semantic glyph. Per-call like `statusColor`, so record-then-restore treats the two alike),
 `foreground`/`splitForeground` (the live argv of each pane's foreground
-process — what it is running — omitted when the pane sits at its shell prompt), `agent` (the coding agent
+process — what it is running — omitted when the pane sits at its shell prompt),
+`restoreCommand`/`splitRestoreCommand` (the PIN each pane will re-run on the next launch, set via
+`session restore`, omitted when no override is pinned — the read side of that write-only command. Distinct
+from `foreground`, which is what is running RIGHT NOW: the pin is consumed at the next launch and is empty
+string when the pane is pinned to `--none`), `agent` (the coding agent
 detected in the session's FOCUSED pane — `claude` | `codex`, omitted when it runs anything else; the
 classified form of `foreground`, observed from the process itself rather than reported by the agent, and
 what the sidebar row's agent logo renders. Distinct from `status`, which is the agent's self-reported turn
@@ -97,16 +101,31 @@ so a script can zoom them without changing split/scratch visibility first. Cavea
 derive from the session's own flags, not from zoom — and `visible` reads false for a pane behind a
 FLOATING overlay even though it is visually on screen; address by `id`/`kind`, and read the zoom state
 from the top-level `zoomedSurface`. Workspace nodes carry
-`id`, `name`, `active`, `sessions`, `focused` (whether the sidebar
-tree is collapsed to this workspace — the read side of `workspace focus`, distinct from `active` the
-SELECTED workspace; omitted unless this is the focused one, and absent entirely when nothing is focused.
+`id`, `name`, `active`, `sessions`, `focused` (whether the sidebar tree is currently FILTERED and this
+workspace is one of the workspaces it is filtered to — the read side of `workspace focus`, distinct from
+`active` the SELECTED workspace; omitted unless this is one of them, and absent from every node while the
+filter does not apply.
 EFFECTIVE focus, not membership: it goes away the moment the filter stops applying, even though the
-workspace stays pinned), `marked` (whether this workspace is the one the focus filter is PINNED to,
-reported independently of whether the filter currently applies; omitted unless this is the pinned one.
-Read it with the tree's top-level `workspaceFilter`: `marked` says WHERE the filter would land,
-`workspaceFilter` says WHETHER it lands, and `focused` is exactly their conjunction — so `marked` with no
-`focused` is the state `workspace filter on` re-applies, and an explicit `workspace focus … off` drops
-both),
+workspace stays MARKED.
+That meaning is frozen deliberately — it was NOT widened to mere membership when the single focused
+workspace became a SET, so a script that records and restores through `focused` still reads exactly what
+it always did), `marked` (whether this workspace is a MEMBER of the focus set — the workspaces the filter
+narrows the tree to — reported independently of whether the filter currently applies; omitted unless it
+is a member.
+Read it with the tree's top-level `workspaceFilter`: `marked` says WHERE the filter lands,
+`workspaceFilter` says WHETHER it lands, and `focused` is exactly their conjunction — the invariant is
+`focused == marked && workspaceFilter`.
+So `marked` with no `focused` is the state `workspace filter on` re-applies; `workspace focus add` marks
+WITHOUT applying, so each new member reads back here while the whole tree is still on screen; and an
+explicit `workspace focus … off` unmarks, dropping both.
+A workspace ROW is VISIBLE in the sidebar iff
+`sidebarVisible && sidebarMode == "tree" && (!workspaceFilter || marked)` — every term rides the same
+`tree` response, so evaluate it without a second call.
+Neither shorter form is safe: `focused` alone claims nothing is visible whenever the filter is off, which
+is exactly when the WHOLE tree is on screen — and a script correcting for that reaches for `workspace
+focus on`, which REPLACES the set with one workspace rather than re-applying the one it had; a bare
+`!workspaceFilter || marked` claims rows are visible in `flagged` mode and behind a hidden sidebar, where
+no workspace row renders at all),
 `collapsed` (whether this workspace's row is CLOSED in the sidebar tree — `true` when collapsed, omitted
 when expanded, since expanded is the default. The read side of `workspace collapse`/`workspace expand` and
 `workspace new --collapsed`, so a script can record a workspace's open/closed state and restore it, or
@@ -130,8 +149,11 @@ visible before), `sidebarMode` (`tree` or `flagged` — the sidebar view mode, t
 `sidebar mode`), `quickVisible` (whether the window's quick terminal is currently shown — the read
 side of the write-only `quick` command, so a script can make the toggle idempotent), `workspaceFilter`
 (whether the window's workspace focus filter currently APPLIES — the read side of the write-only
-`workspace filter` command, and the flag half of the focus state whose pinned-workspace half is each
-workspace node's `marked`), `zoomedSurface`
+`workspace filter` command, and the FLAG half of the focus state whose MEMBER half is each workspace
+node's `marked`.
+`true` here always means at least one workspace is marked: enabling an empty set is refused, so the
+filter can never apply to nothing.
+It is ONE TERM of the row-visibility predicate under `marked` above, not the whole of it), `zoomedSurface`
 (the control id of the surface terminal zoom currently fills the window with —
 `surface:<session-id>:<kind>` or `quick`; omitted when nothing is zoomed — the read side of the
 write-only `surface zoom` command, so a script can check "is it already zoomed" and
@@ -205,10 +227,11 @@ bare event object (NDJSON — pipe it straight into `jq`).
   `idle` IS a transition and is reported. Payload: `status` (`idle`|`active`|`completed`|`blocked`),
   plus `pane`/`blink`/`color` mirroring `session status --pane/--blink/--color`.
 - `notify` — a notification accepted for a session; payload `title` (the effective title — the session's
-  name when the caller sent none) and `body`. **RESERVED, not yet emitted**: the kind is accepted by
-  `--kind` and the shape is fixed, but nothing in the running app records notifications into the ring
-  today, so `--kind notify` currently returns nothing. Until an emitter is wired, notification CONTENT is
-  unreadable and the only signal is the `unseen` count on the `tree` session node.
+  name when the caller sent none) and `body`.
+  BOTH sources emit it: the terminal's own OSC 9/777 and the `notify` control command.
+  It is recorded BEFORE the banner gate, so a notification still reaches the ring when banner display is
+  off (the `unseen` count on the `tree` session node behaves the same way) — this is the only way to read
+  notification CONTENT, which no `tree` field carries.
 - `session.created` / `session.closed` — payload `name`. Sessions restored at LAUNCH deliberately emit
   nothing, so a consumer starting up is not buried by the whole restored tree.
 - `tree.changed` — the window's tree SHAPE changed (session added/removed/moved, workspace
@@ -247,33 +270,55 @@ bare event object (NDJSON — pipe it straight into `jq`).
   or invalid `--to` errors. Note: `--target active` resolves to the current workspace, which with no
   selected session falls back to the last workspace; address a specific workspace by id to step the
   same one.
-- `workspace focus [on|off|toggle] [--target] [--window W]` — collapse the sidebar tree to a single
-  workspace's subtree (hiding the others), or restore the full tree; returns the workspace id. `on`
-  focuses the target, `off` unfocuses it only when it is the currently focused one, `toggle` (default)
-  flips. Per-window and persisted; orthogonal to `sidebar mode` (the flagged flat list ignores focus).
-  While a workspace is focused, `session go` navigation is scoped to that workspace's sessions (and to
-  the flagged set in flagged mode); an explicit `session select` of a session outside the focused
-  workspace still auto-unfocuses to reveal it. An unknown mode errors (`invalid focus mode: <mode>`).
-  The focus is TWO bits behind one flag: which workspace is pinned (the node's `marked`) and whether the
-  filter applies (the tree's `workspaceFilter`), and `focused` is their conjunction. `on`/`toggle` set
-  both; `off` drops BOTH — an explicit unfocus is the user saying they are done with that workspace. (With
-  the filter already off there is no "currently focused" workspace, so an `off` on any target clears
-  whatever mark is left.) An INVOLUNTARY jump out of the focused workspace (idle auto-follow to a blocked
-  session, attention nav, a notification reveal, the dashboard, the recent-sessions popover) drops only
-  the FLAG and keeps the mark, which is what `workspace filter on` re-applies.
+- `workspace focus [on|off|toggle|add] [--target] [--window W]` — edit the sidebar's focus SET, the
+  workspaces the filter narrows the tree to; returns the workspace id.
+  The focus is TWO independent pieces of state: WHICH workspaces are marked (each node's `marked`) and
+  WHETHER that set filters the tree (the tree's `workspaceFilter`), and `focused` is their conjunction.
+  **Build a working set with N × `workspace focus add`, then apply it with ONE `workspace filter on`** —
+  that pairing is the whole point of `add`: the whole tree stays on screen while you pick.
+  Every mode is idempotent, and an unknown one errors (`invalid focus mode: <mode> (on|off|toggle|add)`)
+  before anything is touched.
+  Marking a workspace that does not exist is refused outright, so the `marked` read-back can never name a
+  row the tree cannot render.
+  Per-window and persisted (the set AND the flag survive a relaunch); orthogonal to `sidebar mode` (the
+  flagged flat list ignores the filter).
+  While the filter applies, `session go` navigation is scoped to the marked workspaces' sessions (and to
+  the flagged set in flagged mode); an explicit `session select` of a session outside the set still
+  reveals it — by dropping the FLAG, never the set (see `workspace filter`).
+  Every mode acts on ONE workspace, and each one's effect on the SET and on the FLAG is separate — miss
+  that distinction and you will build a set and wonder why the tree never narrowed:
+  - `on` — replace the set with just this workspace, AND apply the filter. The single-workspace zoom.
+  - `add` — mark this workspace ALONGSIDE the existing members, leaving the flag EXACTLY as it was.
+    Marking only: an `add` never applies the filter (an add that enabled would collapse the tree onto the
+    first member and hide the rows the next `add` needs).
+  - `off` — the REMOVE mode: unmark this workspace, leaving the other members alone. The flag switches
+    off only once the set EMPTIES. There is deliberately no separate `remove` token.
+  - `toggle` — the default, and a REPLACE-toggle: it clears the whole set when this workspace is the
+    only marked one AND the filter applies, else it behaves like `on`. There is deliberately NO
+    membership-toggle mode; compute the direction yourself from `marked` and send `add` or `off`.
 - `workspace filter [on|off|toggle] [--window W]` — apply, lift, or flip the sidebar's workspace focus
-  filter WITHOUT touching which workspace is pinned; prints `ok`. This is the way BACK after an
-  involuntary jump switched the filter off, and the cheap way to peek at the whole tree and return
-  (`filter off` … `filter on`) without re-naming the workspace.
+  filter WITHOUT touching the marked SET; prints `ok`.
+  This is the way BACK after an involuntary jump switched the filter off, the second half of the
+  build-a-set-then-apply pairing, and the cheap way to peek at the whole tree and return (`filter off` …
+  `filter on`) without re-naming a single workspace.
   Window-scoped, so it takes NO `--target` — it flips the window's filter rather than acting on one
   workspace, exactly like `sidebar expand`/`sidebar collapse`; `--window` picks the window (default the
   frontmost), and no open window at all errors (`no open window`).
-  All three modes are idempotent (`toggle` is the default when the mode is omitted). Two refusals are
-  deliberate no-ops rather than errors: `on` with NOTHING pinned does nothing (there is nowhere to filter
-  to), and so does `on` when the pinned workspace has since been DELETED — switching the filter on while
-  it filters nothing would read as "focus restored" to a script while the whole tree is on screen.
+  All three modes are idempotent (`toggle` is the default when the mode is omitted).
+  One refusal is a deliberate no-op rather than an error: `on` with an EMPTY set does nothing, since
+  there is nowhere to filter to — switching the filter on while it filters nothing would read as "focus
+  restored" to a script while the whole tree is on screen.
+  (A workspace that gets DELETED drops out of the set as it goes, and the filter switches off with the
+  last member, so a stale member can never keep the filter alive either.)
   Check `workspaceFilter` in the tree to see what actually happened. An unknown mode errors
   (`invalid workspace filter mode: <mode>`; the CLI rejects it locally too).
+  An INVOLUNTARY jump out of the marked set — idle auto-follow to a blocked session, attention nav, a
+  notification reveal, the dashboard, the recent-sessions popover — drops only the FLAG and KEEPS the set,
+  precisely so one `workspace filter on` brings the working set back.
+  RECORD-THEN-RESTORE a user's working set by saving the `marked` ids plus `workspaceFilter`, doing your
+  work, then replaying N × `workspace focus add` and ONE `workspace filter on|off`.
+  Do NOT restore with `workspace focus on`: it REPLACES the set with the one workspace you name, so a
+  multi-workspace set comes back as a single-workspace zoom (recipe in examples.md).
 - `workspace color <#rrggbb|clear> [--target] [--window W]` — tint the workspace's sidebar ICON (only
   the icon; the row text keeps the theme color); returns the workspace id. `clear` resets it to the
   theme default. A malformed color errors (`invalid color (expected #rrggbb)`) and leaves the workspace
@@ -356,8 +401,9 @@ bare event object (NDJSON — pipe it straight into `jq`).
   directory in Finder. Errors when that directory no longer exists.
 - `session go --to next|prev|first|last|next-attention|prev-attention [--window W]` — move the
   selection relative to the CURRENT one (no `--target`). Operates over the VISIBLE/FILTERED set: the
-  flagged sessions in flagged mode, the focused workspace's sessions when a workspace is focused, else
-  all sessions (clearing the flag/focus restores the full set). next/prev wrap around at the ends (last→first,
+  flagged sessions in flagged mode, the MARKED workspaces' sessions while the workspace filter applies,
+  else all sessions (clearing the flags / lifting the filter restores the full set).
+  next/prev wrap around at the ends (last→first,
   first→last); first/last jump to the ends of that set; next-attention/prev-attention step only through the filtered
   sessions needing attention (status blocked/completed), wrapping. Returns the newly selected id.
 - `session move <workspace> [--target] [--window W]` — relocate the session to another workspace
@@ -532,6 +578,26 @@ bare event object (NDJSON — pipe it straight into `jq`).
   panes in the same directory both land on the same one.
   Unknown agent errors. Like the whole restore feature it needs a clean quit, and an agent behind
   tmux/ssh is not restored.
+- `session restore "<shell line>" | --none | --clear [--pane left|right] [--pane-id TOKEN] [--target] [--window W]` —
+  PIN the command a pane re-runs on the NEXT launch. Exactly one of a COMMAND, `--none` (pin the pane to
+  nothing, so it restores a plain shell and the captured command is suppressed), or `--clear` (drop the
+  override and go back to auto-capture) is required.
+  The override is written NOW and consumed on the next launch — it never touches the running session, so
+  nothing visible happens when you call it.
+  It WINS over both the pane's auto-captured foreground command and the session's own `--command`, and it
+  is typed VERBATIM, which is the point: a pipeline or a compound line (`cd api && npm run dev`) restores,
+  which the argv capture cannot express. It also skips `restore-denylist.conf` — you named this command
+  deliberately.
+  It is STICKY: it fires again on EVERY launch until cleared, unlike the auto-capture, which reflects
+  whatever happened to be running at the last quit.
+  It still obeys Settings ▸ General ▸ "Restore running commands on restart" — with that off nothing is
+  restored, pin included.
+  `--pane` defaults to `left`; `scratch` is rejected (the scratch terminal is never restored).
+  Reads back as the tree node's `restoreCommand`/`splitRestoreCommand`.
+  The line is stored verbatim in the window's state file and is readable over the socket, so it must not
+  carry secrets.
+  Not to be confused with the app-global `restore clear`, which wipes every session's CAPTURED foreground
+  command and does not touch these per-session pins.
 - `session flag [on|off|toggle|clear] [--target] [--window W]` — flag/unflag a session for the flagged
   working-set view (a durable, persisted membership). `on`/`off`/`toggle` act on `--target` (default
   `active`) and are idempotent; `clear` ignores the target and unflags every session in the window.
@@ -901,7 +967,10 @@ so `{AGT_SESSION_NAME}` and `{AGT_SESSION_PWD}` are as untrusted as `{AGT_SELECT
 Built-in action names for `map` include: `new_window`, `new_workspace`, `new_session`,
 `open_directory`, `rename_session`, `close_session`, `reopen_recent`, `undo_close`, `clear_status`, `increase_font_size`,
 `decrease_font_size`, `reset_font_size`, `toggle_split`, `toggle_scratch`, `toggle_sidebar`, `quick_terminal`,
-`session_palette`, `command_palette`, `custom_command_palette`, and the navigation actions (`previous_session`, `next_session`,
+`session_palette`, `command_palette`, `custom_command_palette`, `focus_workspace` (focus/unfocus the
+current workspace — the replace-toggle, i.e. `workspace focus toggle`), `toggle_workspace_filter`
+(apply/lift the workspace filter without touching the set — `workspace filter toggle`; both ship keyless,
+so they do nothing until you `map` a chord), and the navigation actions (`previous_session`, `next_session`,
 `first_session`, `last_session`, `previous_attention_session`, `next_attention_session`,
 `focus_left_pane`, `focus_right_pane`, `select_theme`). Editing the keymap from a terminal: open
 `keymap.conf` in `$EDITOR`, then `rookctl keymap reload`.

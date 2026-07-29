@@ -65,6 +65,51 @@ public enum ControlSidebarViewMode: Equatable, Sendable {
     }
 }
 
+/// The four modes `workspace.focus` accepts: `on` replaces the marked set with the target and enables
+/// the filter, `off` REMOVES the target from the set (disabling the filter once the set empties — it is
+/// the "remove" mode, which is why there is deliberately no separate `remove` token), `toggle`
+/// replace-toggles (clears when the set is exactly the target and the filter applies, else replaces the
+/// set with the target and enables), and `add` inserts the target WITHOUT touching the filter flag —
+/// marking alone, so a set can be built member by member with the whole tree still on screen (an add that
+/// enabled the filter would collapse the tree onto the first member and hide the rows the next add needs).
+/// There is deliberately NO membership-toggle mode: the sidebar row's membership item computes its own
+/// direction from what it just read and maps to `add` or `off`. Raw values are the wire tokens.
+///
+/// This is `workspace.focus`'s own vocabulary rather than the shared `ControlToggleMode` because `add` has
+/// no answer for that type's whole contract, `desiredValue(current:)` — it is not a boolean at all.
+public enum ControlWorkspaceFocusMode: String, CaseIterable, Equatable, Sendable {
+    case on, off, toggle, add
+
+    /// The accepted names pipe-joined (`on|off|toggle|add`) — the compact form the dispatcher's rejection
+    /// message uses. Derived from `allCases`, like `StatusShape.validNamesList`, so no message can go
+    /// stale when the set changes.
+    public static var validNamesList: String { validNames.joined(separator: "|") }
+
+    /// The accepted names comma-joined (`on, off, toggle, add`) — the prose form the `rookctl workspace
+    /// focus` local rejection message uses.
+    public static var validNamesPhrase: String { validNames.joined(separator: ", ") }
+
+    /// What this mode does to the marked set AND to the filter flag, in one clause — the building block of
+    /// the `rookctl workspace focus` argument help, so that help cannot go stale when a case is added (the
+    /// `StatusShape.validNamesPhrase`-builds-its-own-help precedent). Every clause names the filter effect,
+    /// since `add`'s "leaves the flag alone" reads as an unexplained exception unless the others say theirs.
+    public var helpSummary: String {
+        switch self {
+        case .on: return "on (mark it alone and apply the filter)"
+        case .off: return "off (unmark it; the filter switches off as the set empties)"
+        case .toggle:
+            return "toggle (replace-toggle and apply the filter, the default; "
+                + "clears when it is the only marked one AND the filter is applied)"
+        case .add: return "add (mark it alongside the others, leaving the filter flag alone)"
+        }
+    }
+
+    /// Every mode's `helpSummary`, comma-joined — the whole `--help` sentence, derived from `allCases`.
+    public static var helpPhrase: String { allCases.map(\.helpSummary).joined(separator: ", ") }
+
+    private static var validNames: [String] { allCases.map(\.rawValue) }
+}
+
 /// The mutually exclusive move forms accepted by `session.move`.
 public enum ControlSessionMove: Equatable, Sendable {
     case reorder(ReorderDirection)

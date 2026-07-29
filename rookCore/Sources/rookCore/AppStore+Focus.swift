@@ -1,131 +1,224 @@
 import Foundation
 
-/// The sidebar focus filter, split out of `AppStore.swift` to keep that file under the swiftlint size
-/// limit. Behavior of the existing entry points is unchanged; what is new is that the state is TWO bits
-/// (`markedWorkspaceID` = which workspace, `focusFilterEnabled` = whether it filters) instead of one
-/// optional id.
+/// The sidebar focus filter: WHICH workspaces are marked (`focusedWorkspaceIDs`) and WHETHER that set is
+/// applied to the tree (`focusEnabled`), everything derived from the pair (`visibleWorkspaces`,
+/// `navigableSessions`), and the mutators/lifecycle guards that keep the filter in step with the
+/// selection. Split out of `AppStore.swift` to keep that file under the swiftlint size limit; the two
+/// stored fields themselves stay on the class, since an extension cannot hold stored properties.
 ///
-/// Why the split: rook has many ways to jump across the tree that the user did not ask for — idle
-/// auto-follow to a blocked session, attention navigation, a notification reveal, the dashboard, the
-/// recent-sessions popover. Each of those runs `autoUnfocusIfOutsideFocus`, which used to NIL the focus
-/// outright, so a filter could die unattended and there was nothing left to go back to. Now an
-/// INVOLUNTARY jump only switches the filter off and the mark survives, so turning the filter back on
-/// returns to the same workspace. An EXPLICIT unfocus (the row menu, the palette, `workspace.focus …
-/// off`, the pill ✕) still forgets the mark — that is the user saying they are done with it.
+/// Why a SET plus a separate flag rather than one optional id: rook has many ways to jump across the tree
+/// that the user did not ask for — idle auto-follow to a blocked session, attention navigation, a
+/// notification reveal, the dashboard, the recent-sessions popover. Each of those runs
+/// `disableFocusIfSelectionOutsideSet`, which drops the FLAG only, so a hand-curated working set survives
+/// an unattended jump and one toggle brings it back. Peeking at the whole tree costs one toggle for the
+/// same reason, instead of losing the set.
 extension AppStore {
-    /// The EFFECTIVE focus: the marked workspace while the filter is on, else nil. Per-window UI state,
-    /// persisted in `Snapshot` (restored on relaunch). When set, the tree renders only that workspace
-    /// (see `visibleWorkspaces`); orthogonal to `sidebarMode` (flagged mode ignores focus). Flipped by the
-    /// workspace row menu, the bottom-bar pill, the View menu, the palette, and the `workspace.focus`
-    /// control command via `setFocusedWorkspace(_:)`. Cleared when the focused workspace is removed.
+    /// Switches the focus filter OFF — KEEPING the marked set — when the newly selected session lives
+    /// outside that set, so an explicit cross-set select (`session.select <id>` of a hidden session, a
+    /// notification reveal, idle auto-follow, a move/close that reselects elsewhere) reveals its target:
+    /// the active session is then always inside the visible set. Session navigation is scoped to the
+    /// filtered set (`navigableSessions`), so its targets are always in-set and never trip this. No-op when
+    /// the filter is off, when nothing is selected, or when the selection sits in a member workspace.
+    /// Persistence rides the caller's `selectSession` save.
     ///
-    /// Everything outside this file reads and writes THIS, not the two halves, so "focused" keeps meaning
-    /// exactly what it always did — the tree is collapsed to this workspace — and the `focused` tree
-    /// read-back, the snapshot, and the row menus need no change. Assigning an id marks it AND turns the
-    /// filter on; assigning nil turns the filter off AND forgets the mark.
-    public var focusedWorkspaceID: UUID? {
-        get { focusFilterEnabled ? markedWorkspaceID : nil }
-        set {
-            markedWorkspaceID = newValue
-            focusFilterEnabled = newValue != nil
+    /// Only the FLAG drops: none of the callers is the user saying they are done with the focus (most fire
+    /// while nobody is at the keyboard), so the set is kept and `setFocusEnabled(true)` returns to it.
+    func disableFocusIfSelectionOutsideSet(_ sessionID: UUID?) {
+        guard focusEnabled, let sessionID else { return }
+        if let owner = workspace(forSession: sessionID)?.id, focusedWorkspaceIDs.contains(owner) { return }
+        focusEnabled = false
+    }
+
+    /// Replaces the marked set with just `id` and ENABLES the filter — the single-workspace zoom every
+    /// row-menu / menu-bar / `workspace.focus on` caller drives. Clean no-op for an id that names no
+    /// workspace: marking a phantom id would persist a member no tree can render and would make the
+    /// `focused`/`marked` read-back contract lie until the next restore pruned it.
+    func setFocusedWorkspace(_ id: UUID) {
+        guard workspaces.contains(where: { $0.id == id }) else { return }
+        commitFocus(ids: [id], enabled: true)
+    }
+
+    /// Empties the marked set and switches the filter off, restoring the full tree — the menu/palette
+    /// "Clear Focus" and the clearing half of the replace-toggle. Clean no-op when nothing is marked.
+    /// Distinct from `setFocusEnabled(false)`, which keeps the set and only stops applying it.
+    public func clearFocus() {
+        commitFocus(ids: [], enabled: false)
+    }
+
+    /// Adds or removes ONE workspace from the marked set, leaving the other members alone. Marking ONLY
+    /// marks: an add never switches the filter on, so a working set is built row by row with the whole tree
+    /// still on screen — an add that enabled would collapse the tree onto the first member and hide the
+    /// very rows the next add needs. Removing still disables the filter once the set empties.
+    /// `setFocusedWorkspace(_:)` (the replacing "Focus") is the one that enables immediately.
+    ///
+    /// Marking is REFUSED for an id that names no workspace, so a phantom member can never be persisted;
+    /// un-marking is never gated on existence, because a stale id already in the set must stay removable.
+    public func setFocusMembership(_ id: UUID, member: Bool) {
+        if member, !workspaces.contains(where: { $0.id == id }) { return }
+        var wantIDs = focusedWorkspaceIDs
+        if member { wantIDs.insert(id) } else { wantIDs.remove(id) }
+        commitFocus(ids: wantIDs, enabled: focusEnabled)
+    }
+
+    /// Turns the focus filter on or off WITHOUT touching the marked set — the "come back to it" leg, and
+    /// the only way to re-apply a filter an involuntary jump dropped. Enabling an EMPTY set is refused (a
+    /// clean no-op), matching the bottom-bar toggle, which is disabled in exactly that state.
+    public func setFocusEnabled(_ on: Bool) {
+        commitFocus(ids: focusedWorkspaceIDs, enabled: on)
+    }
+
+    /// Replace-TOGGLE: clears the filter when `id` is the SOLE marked workspace and the filter applies,
+    /// else replaces the marked set with it (enabling). THE definition of "toggle" — the row menu's
+    /// Focus/Unfocus, the `focus_workspace` keybind/menu item, and `workspace.focus toggle` all drive this
+    /// one function, so a toggle can never mean two things. Clean no-op on an unknown id, like
+    /// `setFocusedWorkspace`.
+    public func toggleFocusedWorkspace(_ id: UUID) {
+        if isSoleFocus(id) { clearFocus() } else { setFocusedWorkspace(id) }
+    }
+
+    /// Applies one `workspace.focus` mode to `id`. Host-free, so the whole mode-to-mutator mapping is unit
+    /// tested and the app-side control arm is left with only target resolution — and so the GUI's
+    /// replace-toggle and the wire's `toggle` cannot drift apart. Every arm is delta-guarded, so each mode
+    /// is idempotent. `off` is the REMOVE mode (there is deliberately no separate `remove` token).
+    public func applyFocusMode(_ mode: ControlWorkspaceFocusMode, to id: UUID) {
+        switch mode {
+        case .on: setFocusedWorkspace(id)
+        case .off: setFocusMembership(id, member: false)
+        case .add: setFocusMembership(id, member: true)
+        case .toggle: toggleFocusedWorkspace(id)
         }
     }
 
-    /// Sets (or clears) the focused workspace and persists it. Clean no-op (no write) when unchanged, so
-    /// the delta-computed control/menu callers stay idempotent. Passing nil unfocuses and forgets the mark.
-    public func setFocusedWorkspace(_ id: UUID?) {
-        // an explicit unfocus must forget the mark even when the filter is ALREADY off, which is the
-        // state an involuntary jump leaves behind. The effective focus reads nil in both cases, so
-        // guarding on it alone would early-return and silently keep a mark the user just said they were
-        // done with — and then `workspace.filter on` would resurrect a focus they had dismissed.
-        guard focusedWorkspaceID != id || (id == nil && markedWorkspaceID != nil) else { return }
-        focusedWorkspaceID = id
-        pruneSidebarSelection()
-        save()
-    }
-
-    /// Turns the filter on/off WITHOUT touching which workspace is marked — the "come back to it" leg of
-    /// the split, and the only way to re-apply a filter an auto-unfocus dropped. Enabling with nothing
-    /// marked is a no-op (there would be nothing to filter to). Clean no-op (no write) when unchanged,
-    /// like every other delta-computed setter.
-    public func setFocusFilterEnabled(_ enabled: Bool) {
-        // enabling needs a mark that still RESOLVES: a mark whose workspace was deleted would switch the
-        // filter on while filtering nothing, which reads as "focus restored" to a script but shows the
-        // whole tree. Disabling is never gated — it must always be able to undo.
-        guard focusFilterEnabled != enabled, !enabled || focusedWorkspaceExists else { return }
-        focusFilterEnabled = enabled
-        pruneSidebarSelection()
-        save()
-    }
-
-    /// Applies (`on`), lifts (`off`), or flips (`toggle`) the filter over the CURRENT mark — the host-free
-    /// half of the `workspace.filter` control command, so its app-side arm is pure store resolution. Every
-    /// mode routes through `setFocusFilterEnabled`, so all three are idempotent and enabling with nothing
-    /// marked stays a clean no-op.
+    /// Applies (`on`), lifts (`off`), or flips (`toggle`) the filter FLAG, leaving the marked set alone —
+    /// the host-free half of the `workspace.filter` control command, so its app-side arm is pure store
+    /// resolution. Every mode routes through `setFocusEnabled`, so all three are idempotent and enabling
+    /// an empty set stays a clean no-op rather than making the filter read-back lie.
     public func applyWorkspaceFilter(_ mode: ControlToggleMode) {
-        setFocusFilterEnabled(mode.desiredValue(current: focusFilterEnabled))
+        setFocusEnabled(mode.desiredValue(current: focusEnabled))
     }
 
-    /// Whether the mark names a workspace that still exists — the gate on re-enabling the filter, so a
-    /// mark left dangling by a removal cannot switch filtering back on with nothing to filter to.
-    private var focusedWorkspaceExists: Bool {
-        guard let markedWorkspaceID else { return false }
-        return workspaces.contains { $0.id == markedWorkspaceID }
+    /// The single write point for the two filter fields. It clamps `enabled` to false on an empty set —
+    /// the guard that makes `enabled + empty` unrepresentable — skips the write entirely when nothing
+    /// changes (so the delta-computed control/menu callers stay idempotent and a no-op never persists),
+    /// then prunes the sidebar selection and saves. The clamp, the delta guard, the prune and the save
+    /// live HERE and nowhere else, which is what makes the invariants hold for every mutator above.
+    private func commitFocus(ids: Set<UUID>, enabled: Bool) {
+        let wantEnabled = enabled && !ids.isEmpty
+        guard focusedWorkspaceIDs != ids || focusEnabled != wantEnabled else { return }
+        focusedWorkspaceIDs = ids
+        focusEnabled = wantEnabled
+        pruneSidebarSelection()
+        save()
     }
 
-    /// Stops filtering when the newly selected session lives outside the focused workspace, so a cross-set
-    /// select (`session.select <id>` of a hidden session, a notification reveal, idle auto-follow, a
-    /// move/close that reselects elsewhere) reveals its target — the active session is then always inside
-    /// the visible set. Session navigation (`navigateSession`/`session.go`, Ctrl-Tab, attention-nav) is
-    /// scoped to the filtered set (`navigableSessions`), so its targets are always in-set and never trip
-    /// this — it stays the safety net only for the cross-set cases. No-op when unfiltered, when nothing is
-    /// selected, or when the selection is inside the focused workspace. Persistence rides the caller's save.
-    ///
-    /// Only the FLAG drops: none of the callers is the user asking to give the focus up (most fire while
-    /// they are away from the keyboard), so the mark is kept and `setFocusFilterEnabled(true)` restores
-    /// the same workspace.
-    func autoUnfocusIfOutsideFocus(_ sessionID: UUID?) {
-        guard focusFilterEnabled, let markedWorkspaceID, let sessionID else { return }
-        if workspace(forSession: sessionID)?.id != markedWorkspaceID { focusFilterEnabled = false }
+    /// Drops `id` from the marked set, disabling the filter once the set empties — the LIFECYCLE half of
+    /// the `enabled + empty` invariant, for the paths that remove a workspace OUTRIGHT (`removeWorkspace`,
+    /// `softRemoveWorkspace`) rather than un-marking it. It exists so the remove-then-disable pair lives in
+    /// ONE place: a third removal path added later gets the invariant for free. Deliberately does NOT
+    /// `save()` or prune the sidebar selection — the callers do both as part of the larger removal they are
+    /// in the middle of.
+    func dropFocusMember(_ id: UUID) {
+        focusedWorkspaceIDs.remove(id)
+        if focusedWorkspaceIDs.isEmpty { focusEnabled = false }
     }
 
-    /// Restores BOTH bits from a snapshot — the read leg of `Snapshot.focusedWorkspaceID` (the effective
-    /// focus) + `Snapshot.markedWorkspaceID` (the mark behind it). Assigning the halves directly instead of
-    /// the public `focusedWorkspaceID` is the whole point: a mark whose filter is OFF has no effective focus
-    /// to assign, and it is exactly that state — what an involuntary jump leaves behind — that has to
-    /// survive a relaunch, or `workspace.filter on` has nothing to come back to.
+    /// Marks a freshly created workspace so it is visible while the filter applies (the auto-reveal
+    /// contract of `addWorkspace`/`ensureWorkspace`), and a no-op when the filter is off — the whole tree is
+    /// on screen then, so there is nothing to reveal and the set must not be widened behind the user's
+    /// back. Save-free: `addWorkspace` saves.
+    func revealNewFocusMember(_ id: UUID) {
+        guard focusEnabled else { return }
+        focusedWorkspaceIDs.insert(id)
+    }
+
+    /// Puts a workspace back into the marked set when its removal is REVERSED — both restore paths, the
+    /// pending-close undo and Reopen Closed Item. MARK-ONLY, leaving `focusEnabled` exactly as the window
+    /// has it, for two independent reasons. (1) The undo's record is only 3 s old, but the user can suspend
+    /// the filter INSIDE that grace with one click on the bottom-bar toggle, and a flag-restoring undo
+    /// would beat their most recent explicit action (the capture was one-directional too — only ever set
+    /// true). (2) ONE `RecentClosedStore` is shared by every window and its entries survive indefinitely,
+    /// so a stored flag would let a record written in window A switch window B's filter on. Membership
+    /// belongs to the closed workspace; the FLAG is current-window state.
     ///
-    /// A LEGACY snapshot carries no mark key: there the effective id WAS the whole state, so it restores as
-    /// marked AND filtering — bit-for-bit what the pre-split build did. The invariant "filtering implies a
-    /// mark" needs no guard here: a non-nil effective id IS the fallback for the mark, so the filter can
-    /// only come back on with something marked.
-    ///
-    /// A mark naming a workspace that is no longer in the tree is kept VERBATIM, like the pre-split restore
-    /// kept a stale focus id: `focusedWorkspace` resolves it to nil and `visibleWorkspaces` falls back to
-    /// the whole tree, `setFocusFilterEnabled(true)` refuses it, and an undone removal inside the grace
-    /// window brings the same id back live. No extra guard here would add anything.
+    /// That also honors the marking rule (an add never applies the filter) and keeps `enabled + empty`
+    /// unreachable, since an insert-only path can never enable. Callers run it BEFORE their reselect, so a
+    /// restored member is inside the set when `disableFocusIfSelectionOutsideSet` runs, and — in the undo —
+    /// ahead of the empty-workspace early return, whose row would otherwise stay filtered out. Save-free;
+    /// the restore paths save.
+    func markFocusMember(_ id: UUID) {
+        focusedWorkspaceIDs.insert(id)
+    }
+
+    /// Restores the focus filter from a snapshot, PRUNING member ids absent from the restored tree and
+    /// disabling the filter when the pruned set comes back empty. The prune is what keeps `enabled + empty`
+    /// unrepresentable across a restore: an all-stale set (its workspaces deleted by another window, or a
+    /// hand-edited file) would otherwise restore as an enabled-but-invisible filter, making the
+    /// row-visibility read-back contract lie. A partially stale set keeps its survivors and stays enabled.
+    /// Called from `restore(from:)` AFTER the tree is rebuilt, and deliberately writes the fields directly
+    /// rather than going through the mutators, which would `save()` what was just read.
     func restoreFocus(from snapshot: Snapshot) {
-        markedWorkspaceID = snapshot.markedWorkspaceID ?? snapshot.focusedWorkspaceID
-        focusFilterEnabled = snapshot.focusedWorkspaceID != nil
+        let present = Set(workspaces.map(\.id))
+        focusedWorkspaceIDs = Set(snapshot.focusedWorkspaceIDs ?? []).intersection(present)
+        focusEnabled = (snapshot.focusEnabled ?? false) && !focusedWorkspaceIDs.isEmpty
     }
 
-    /// The focused workspace, resolved from `focusedWorkspaceID` — nil when unfocused OR when the id is
-    /// stale (its workspace no longer exists). The single id→workspace lookup the tree filter and the
-    /// bottom-bar focus pill both read, so they can't drift.
+    /// The ONE workspace the tree is zoomed to — the sole marked workspace while the filter APPLIES, else
+    /// nil. The single definition of that state, read by everything that needs it: `isSoleFocus(_:)`, the
+    /// sidebar's force-expand of a zoomed-to workspace, and the empty-space folder-drop fallback (a Finder
+    /// folder dropped below the rows lands where the user is looking, so adding a session cannot silently
+    /// leave the filtered view). The `focusEnabled` term is load-bearing: with a workspace marked but the
+    /// filter OFF the WHOLE tree is on screen, so the mark names nothing to zoom to. Two or more members
+    /// give no unambiguous answer either.
+    public var soleFocusedWorkspaceID: UUID? {
+        guard focusEnabled, focusedWorkspaceIDs.count == 1 else { return nil }
+        return focusedWorkspaceIDs.first
+    }
+
+    /// Whether `id` is the workspace the tree is zoomed to — the "already focused on this one" state, which
+    /// is what makes Focus read Unfocus and what a `toggle` clears.
+    public func isSoleFocus(_ id: UUID) -> Bool { soleFocusedWorkspaceID == id }
+
+    /// `isSoleFocus` for the CURRENT workspace (the one new sessions land in) — the fact the keyless
+    /// View ▸ Focus/Unfocus Workspace item needs, since it has no clicked row and targets
+    /// `currentWorkspaceID` exactly as `AppActions.focusActiveWorkspace()` does.
+    public var isCurrentWorkspaceSoleFocus: Bool {
+        guard let id = currentWorkspaceID else { return false }
+        return isSoleFocus(id)
+    }
+
+    /// Whether the CURRENT workspace is already in the marked set — what View ▸ Add Workspace to Focus and
+    /// its palette twin read to avoid offering a silent no-op (the row menu instead flips to "Remove from
+    /// Focus", which it can do because it has a clicked row).
+    public var isCurrentWorkspaceFocusMember: Bool {
+        guard let id = currentWorkspaceID else { return false }
+        return focusedWorkspaceIDs.contains(id)
+    }
+
+    /// The workspaces the sidebar TREE should render: the marked set when the filter is enabled, else all
+    /// workspaces — the `!workspaceFilter || marked` TERM of the published row-visibility contract, spelled
+    /// in code. Only that term: the sidebar's mode and visibility gate the tree ABOVE this (`.flagged` mode
+    /// renders a flat session list and never calls here), so this is not the whole predicate a script
+    /// evaluates.
     ///
-    /// The stale case is also what makes a mark kept across a workspace REMOVAL harmless: a mark whose
-    /// workspace is gone resolves to nil and filters nothing, and if the removal is undone within the
-    /// grace window the same workspace id comes back and the mark is live again.
-    public var focusedWorkspace: Workspace? {
-        guard let id = focusedWorkspaceID else { return nil }
-        return workspaces.first(where: { $0.id == id })
+    /// The empty-result fallback guards an INVARIANT VIOLATION and nothing else, since the mutators keep
+    /// `enabled + empty` out of reach, marking is gated on the id existing, and `restoreFocus` prunes stale
+    /// ids — the only way to reach it is to write the two stored fields directly, which `internal(set)`
+    /// limits to inside this module. Rendering the full tree there is the lesser evil: an empty sidebar
+    /// strands the user with no rows at all.
+    public var visibleWorkspaces: [Workspace] {
+        guard focusEnabled else { return workspaces }
+        let visible = workspaces.filter { focusedWorkspaceIDs.contains($0.id) }
+        return visible.isEmpty ? workspaces : visible
     }
 
-    /// The workspaces the sidebar tree should render: just the focused workspace when the filter is on
-    /// AND that workspace still exists, else all workspaces. The source of truth the tree filters on; a
-    /// stale focus id (its workspace gone) falls back to the full tree.
-    public var visibleWorkspaces: [Workspace] {
-        guard let focused = focusedWorkspace else { return workspaces }
-        return [focused]
+    /// The session set navigation operates over — the VISIBLE/FILTERED set, not the whole tree: the flagged
+    /// sessions in `.flagged` sidebar mode, the marked workspaces' sessions while the focus filter applies,
+    /// else all sessions. Computed live, so clearing the flag/filter naturally restores the full set.
+    /// `navigateSession` next/prev WRAP within this set (an end lands on the opposite end, never leaking
+    /// across the filter). Backs `navigateSession` (and via it `session.go`, attention-nav), the Ctrl-Tab
+    /// MRU candidate set, AND the ⌃P session palette (`AppActions.paletteSessions`), so all follow the same
+    /// filter as the visible sidebar.
+    public var navigableSessions: [Session] {
+        sidebarMode == .flagged ? flaggedSessions : visibleWorkspaces.flatMap(\.sessions)
     }
 }

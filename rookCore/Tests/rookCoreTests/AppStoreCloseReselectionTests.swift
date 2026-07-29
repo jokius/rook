@@ -67,7 +67,8 @@ struct AppStoreCloseReselectionTests {
 
         store.closeSession(closing.id)
         #expect(store.selectedSessionID == inWork.id) // stays put, though `elsewhere` is more recent
-        #expect(store.focusedWorkspaceID == nil) // the close must not introduce a focus filter
+        #expect(!store.focusEnabled) // the close must not introduce a focus filter
+        #expect(store.focusedWorkspaceIDs.isEmpty) // nor mark anything
     }
 
     @Test func closeActiveSessionEmptyingItsWorkspacePicksTheRecentSurvivorElsewhere() throws {
@@ -101,14 +102,15 @@ struct AppStoreCloseReselectionTests {
 
         store.closeSession(closing.id)
         #expect(store.selectedSessionID == first.id) // the MRU survivor, not the positional neighbor `/b`
-        #expect(store.focusedWorkspaceID == work.id) // the filter survives the close
+        #expect(store.soleFocusedWorkspaceID == work.id) // the filter survives the close, still applied
     }
 
     @Test func closeTheFocusedWorkspacesLastSessionPicksTheRecentSurvivorElsewhere() throws {
         // the focus filter must NOT scope the widened MRU: under focus, `navigableSessions` collapses to the
-        // focused workspace, so scoping by it would widen into an EMPTY set once the close empties that
+        // marked set, so scoping by it would widen into an EMPTY set once the close empties the only marked
         // workspace and fall through to a positional jump into the FIRST workspace — the very disorientation
-        // this feature removes. `autoUnfocusIfOutsideFocus` drops the now-meaningless filter instead.
+        // this feature removes. `disableFocusIfSelectionOutsideSet` lifts the now-meaningless filter instead,
+        // and lifts ONLY the flag: the marked set survives, so one toggle brings the working set back.
         let store = makeStore()
         let personal = store.addWorkspace(name: "personal")
         let work = store.addWorkspace(name: "work")
@@ -122,12 +124,13 @@ struct AppStoreCloseReselectionTests {
         store.closeSession(onlyInWork.id)
         #expect(store.workspaces[1].sessions.isEmpty)
         #expect(store.selectedSessionID == cameFrom.id) // not `/first`, the positional first-workspace jump
-        #expect(store.focusedWorkspaceID == nil) // the emptied focus is dropped to reveal the pick
+        #expect(!store.focusEnabled) // the filter is lifted to reveal the pick
+        #expect(store.focusedWorkspaceIDs == [work.id]) // but the MARK survives — only the flag dropped
     }
 
     @Test func closeActiveSessionWhileAnotherWorkspaceIsFocusedStaysInTheClosingWorkspace() throws {
-        // `setFocusedWorkspace` never moves the selection, so focus can sit on a workspace the ACTIVE session
-        // doesn't belong to. Scoping the MRU by focus would yank the close into the focused workspace; the
+        // `setFocusedWorkspace` never moves the selection, so the marked set can sit on a workspace the ACTIVE
+        // session doesn't belong to. Scoping the MRU by focus would yank the close into the marked set; the
         // pick must stay next to the session that closed, exactly as the positional neighbor used to.
         let store = makeStore()
         let work = store.addWorkspace(name: "work")
@@ -142,8 +145,30 @@ struct AppStoreCloseReselectionTests {
         store.setFocusedWorkspace(personal.id) // focus elsewhere, active session still in `work`
 
         store.closeSession(closing.id)
-        #expect(store.selectedSessionID == cameFrom.id) // not `elsewhere`, in the focused workspace
-        #expect(store.focusedWorkspaceID == nil) // the pick is outside the focus, so the filter drops
+        #expect(store.selectedSessionID == cameFrom.id) // not `elsewhere`, in the marked workspace
+        #expect(!store.focusEnabled) // the pick is outside the marked set, so the filter drops
+        #expect(store.focusedWorkspaceIDs == [personal.id]) // and only the flag: the mark is still there
+    }
+
+    @Test func closeActiveSessionLandingInAnotherMARKEDWorkspaceKeepsTheFilterApplied() throws {
+        // the set generalizes the drop rule the two tests above pin: the filter is lifted only when the pick
+        // lands OUTSIDE it. A widened MRU that lands in a SECOND member is on screen already, so there is
+        // nothing to reveal and the filter must stay applied — under a single mark this same close dropped it.
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+        let cameFrom = try #require(store.addSession(toWorkspace: personal.id, cwd: "/mru"))
+        let onlyInWork = try #require(store.addSession(toWorkspace: work.id, cwd: "/only"))
+        store.selectSession(cameFrom.id)
+        store.selectSession(onlyInWork.id)
+        store.setFocusedWorkspace(work.id)
+        store.setFocusMembership(personal.id, member: true) // the marked set is {work, personal}
+
+        store.closeSession(onlyInWork.id)
+        #expect(store.workspaces[0].sessions.isEmpty)
+        #expect(store.selectedSessionID == cameFrom.id) // the widened MRU pick, in the other member
+        #expect(store.focusEnabled) // in-set, so nothing needed revealing
+        #expect(store.focusedWorkspaceIDs == [work.id, personal.id]) // and the emptied member is still marked
     }
 
     @Test func closeActiveSessionInFlaggedModeStaysWithinTheFlaggedSet() throws {

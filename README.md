@@ -160,9 +160,29 @@ Rook arranges terminals into a small hierarchy. These are the only terms you nee
 
 **Window.** A window is a whole set of workspaces and sessions in its own on-screen macOS window, with its own sidebar. Each window has its own sessions, so "work" and "personal" can run as two separate windows at once, each with its own tree. You keep a library of windows and open one per on-screen window; the windows open at quit reopen on the next launch with their frames.
 
-**Flagging and focus.** Two ways to cut down a busy sidebar. Flag a few sessions from different workspaces to get a flat working-set view of just those; a flag is durable and survives a move. Focus a single workspace to hide the others, with a one-click way back. The two are independent.
+**Flagging and focus.** Two ways to cut down a busy sidebar.
+Flag a few sessions from different workspaces to get a flat working-set view of just those; a flag is durable and survives a move.
+Focus marks a *set* of workspaces and hides every row outside it — one workspace to zoom in on a single project, or a handful to watch several at once.
+The two are independent.
 
-A focus survives an *involuntary* jump. Landing in another workspace because something pulled you there — auto-follow to a blocked session, attention navigation, clicking a notification, the dashboard, the recent-sessions popover — lifts the filter so you can see where you are, but the workspace stays marked; `rookctl workspace filter on` (`on|off|toggle`, window-scoped, and a no-op when nothing is marked or the marked workspace is gone) puts it back. Only an *explicit* unfocus — the workspace row's context menu, the bottom-bar pill's ✕, the View menu or action palette, `rookctl workspace focus off` — forgets the mark, because that is you saying you are done with it. Over the control channel the two halves read back separately: each workspace node carries `marked` (is this the pinned one, filter applying or not) and the tree carries a top-level `workspaceFilter` (is it applying), with `focused` unchanged and still meaning exactly their conjunction — the tree is collapsed to this workspace.
+Marking and filtering are separate steps, because a set has to be built before it is worth applying.
+**Focus** on a workspace row (or View ▸ Focus Workspace) replaces the whole set with that one workspace and applies the filter at once — the everyday zoom-to-one.
+**Add to Focus** (the row's context menu, View ▸ Add Workspace to Focus, the action palette) marks a workspace *alongside* whatever else is marked and deliberately does **not** switch the filter on: an add that filtered would collapse the tree onto the first member and hide the very rows the next add needs.
+So you mark two or three rows with the whole tree still in front of you, then apply them in one flip.
+A marked row draws its icon in a heavier weight so the set is legible while you build it — heavier rather than filled, because a filled icon already means a flagged session (a workspace whose custom icon is an emoji or an image file has no weight to vary, so it shows no marker; its membership is still on its context menu and in `rookctl tree`).
+
+The grid button in the sidebar footer is that flip: it applies or lifts the filter without touching the set, and its glyph fills while the filter is on, so it is the indicator as much as the control.
+It is disabled with nothing marked, and it is the only affordance that still works while the filter is **off** — every other one acts on a workspace row, and with the filter off there is no focused row to act on.
+View ▸ Toggle Workspace Filter is the same thing from the menu (keyless by default, bindable as `toggle_workspace_filter`), and **Clear Focus** drops the whole set rather than merely suspending it.
+
+A focus survives an *involuntary* jump.
+Landing outside the set because something pulled you there — auto-follow to a blocked session, attention navigation, clicking a notification, the dashboard, the recent-sessions popover — lifts the filter so you can see where you are, but the set stays marked, and the footer button (or `rookctl workspace filter on`) puts it back.
+Only an *explicit* unmark — **Remove from Focus** on the row, Clear Focus, `rookctl workspace focus off` — forgets a workspace, because that is you saying you are done with it.
+
+Over the control channel the state reads back as three fields, and a script wanting to know what is on screen needs all three.
+Each workspace node carries `marked` (is this workspace in the set, filter applying or not) and `focused` (is the tree filtered down to a set this workspace is in, *right now*); the tree carries a top-level `workspaceFilter` (is the filter applying at all).
+`focused` keeps its old meaning exactly — it is `marked && workspaceFilter` — so a script written against it before the set existed still reads true.
+A workspace row is on screen when `sidebarVisible && sidebarMode == "tree" && (!workspaceFilter || marked)`, and neither shorter form is safe: `focused` alone reports nothing visible whenever the filter is off (when in fact the whole tree is), and `marked` alone ignores a hidden sidebar and the flat flagged view.
 
 Sidebar session rows support Shift-click range selection and Cmd-click toggling for batch work. Right-clicking inside a multi-selection keeps the batch for Flag/Unflag, Close, and Move to; right-clicking outside narrows to the clicked row. Dragging from a selected row moves the selected sessions as one ordered block.
 
@@ -186,7 +206,7 @@ For jumping back to sessions you have been working in, a Ctrl-Tab switcher walks
 
 ## Settings
 
-Settings (Cmd+,) has six tabs. **General** covers mouse scroll speed and right-click-to-paste, where a new session opens, an opt-in toggle to re-run each pane's foreground command on restart, an opt-in **Resume agent conversations** toggle that rides on it (a restored Claude Code or Codex pane comes back on the conversation it was on, not a blank one — see [Resuming agent conversations](#resuming-agent-conversations)), an opt-in confirmation before closing a session, and whether to load your global Ghostty config. **Appearance** sets the terminal font and theme (512 bundled themes), the toolbar mode, the window background opacity and blur, the sidebar tint, the sidebar font size, and how much the inactive split pane dims; a "Follow system appearance" toggle (off by default) reveals a second picker for the other appearance, so the theme tracks macOS light/dark mode live. The toolbar has three modes: **Normal** shows the title with the working directory beneath it, **Compact** (the default) is a single title row, and **Hidden** drops the whole titlebar row and the window's traffic-light buttons for a full-bleed terminal with no chrome — an invisible strip along the top edge still moves the window and double-click-zooms it, and you close, minimize, or zoom the window from the keyboard or the Window menu. **Interface** hides or shows individual title-bar and sidebar-footer chrome elements — the sidebar toggle, the session and window name, the scratch/split/quick-terminal buttons, and the sidebar footer's new-workspace, new-session, flagged-view, and workspace add-session controls — all shown by default, so you can pare the chrome down to just what you use. **Notifications** toggles the banner, the unseen-count badge, and the title-bar attention indicator, plus an optional notification sound (default None, attached to the banner so it follows the banner toggle and Do Not Disturb) and an opt-in dock bounce (None / Once / Until focused) for a background notification. **Agent Status** sets the status-glyph colors, whether a blocked or completed session washes its whole sidebar row in that color, the blocked-session sound, and an idle timeout to auto-follow blocked sessions. **Key Mapping** points at the directory holding `keymap.conf`, lists any parse errors, and reloads it. Changes apply live to the open terminals.
+Settings (Cmd+,) has six tabs. **General** covers mouse scroll speed and right-click-to-paste, where a new session opens, an opt-in toggle to re-run each pane's foreground command on restart, an opt-in **Resume agent conversations** toggle that rides on it (a restored Claude Code or Codex pane comes back on the conversation it was on, not a blank one — see [Resuming agent conversations](#resuming-agent-conversations)), an opt-in confirmation before closing a session, and whether to load your global Ghostty config. **Appearance** sets the terminal font and theme (512 bundled themes), the toolbar mode, the window background opacity and blur, the sidebar tint, the sidebar font size, and how much the inactive split pane dims; a "Follow system appearance" toggle (off by default) reveals a second picker for the other appearance, so the theme tracks macOS light/dark mode live. The toolbar has three modes: **Normal** shows the title with the working directory beneath it, **Compact** (the default) is a single title row, and **Hidden** drops the whole titlebar row and the window's traffic-light buttons for a full-bleed terminal with no chrome — an invisible strip along the top edge still moves the window and double-click-zooms it, and you close, minimize, or zoom the window from the keyboard or the Window menu. **Interface** hides or shows individual title-bar and sidebar-footer chrome elements — the sidebar toggle, the session and window name, the scratch/split/quick-terminal buttons, the recent-sessions clock, and the sidebar footer's new-workspace, new-session, workspace-filter, flagged-view, and workspace add-session controls — all shown by default, so you can pare the chrome down to just what you use. **Notifications** toggles the banner, the unseen-count badge, and the title-bar attention indicator, plus an optional notification sound (default None, attached to the banner so it follows the banner toggle and Do Not Disturb) and an opt-in dock bounce (None / Once / Until focused) for a background notification. **Agent Status** sets the status-glyph colors, whether a blocked or completed session washes its whole sidebar row in that color, the blocked-session sound, and an idle timeout to auto-follow blocked sessions. **Key Mapping** points at the directory holding `keymap.conf`, lists any parse errors, and reloads it. Changes apply live to the open terminals.
 
 The theme picker (View ▸ Select Theme…, or the action palette) previews each bundled theme on the open terminals as you move through the list, so you see it before committing. Enter commits and syncs it to Settings; Esc reverts to the one you started on. While following the system appearance, the picker edits the theme for the appearance you are in; the control channel drives both slots with `rookctl theme set --light NAME --dark NAME` (or either flag alone).
 
@@ -196,7 +216,7 @@ The theme picker (View ▸ Select Theme…, or the action palette) previews each
 
 `rook` can be driven from a script over a local unix-domain socket through a companion CLI, `rookctl`. This is for personal scripting — fire-and-forget commands that manage workspaces and sessions, inject text, and invoke control actions, plus a read-only event feed you poll for what the app just did (see [Watching for events](#watching-for-events)). Everything stays request/response: nothing is pushed to you, and there is no terminal-output streaming — to read a terminal's buffer, ask for it with `session text`.
 
-The sections below cover the common cases. All 73 commands, with every argument, return value, and error, are documented in the **[Command reference](https://rook.app/commands)**. (That count is the scriptable set — it excludes `debug.appearance`, a UI-test-only command with no `rookctl` subcommand.)
+The sections below cover the common cases. All 74 commands, with every argument, return value, and error, are documented in the **[Command reference](https://rook.app/commands)**. (That count is the scriptable set — it excludes `debug.appearance`, a UI-test-only command with no `rookctl` subcommand.)
 
 The app bundles `rookctl` inside `rook.app`. The easiest way to put it on your PATH is **Help ▸ Install Command Line Tool…**, which symlinks the bundled binary into `/usr/local/bin` (the first entry in macOS's default PATH). When that directory is user-writable it installs silently; otherwise it asks once for an administrator password.
 
@@ -246,8 +266,9 @@ rookctl session flag on                        # flag the active session for the
 rookctl session reveal --target 9f3c           # reveal the focused pane's cwd in Finder
 rookctl session seen --target 9f3c             # clear a session's unseen-notification badge without visiting it (focus-free)
 rookctl sidebar mode flagged                   # show only the flagged sessions as a flat list (tree|flagged|toggle)
-rookctl workspace focus on                     # collapse the sidebar tree to the active workspace (on|off|toggle)
-rookctl workspace filter on                    # re-apply the focus filter after an involuntary jump lifted it (on|off|toggle)
+rookctl workspace focus on                     # mark the active workspace ALONE and apply the filter (on|off|toggle|add; off is the unmark)
+rookctl workspace focus add --target "$ws"     # add one more workspace to the marked set, leaving the filter exactly as it is
+rookctl workspace filter on                    # apply the set you just built — or restore a filter an involuntary jump lifted (on|off|toggle)
 rookctl workspace color "#ff8800"              # tint the workspace's sidebar icon (#rrggbb, or clear); persisted
 rookctl workspace icon hammer.fill             # set the workspace's sidebar icon (SF Symbol, emoji, svg/png/jpeg path, or clear)
 rookctl session search "error"                 # open the search bar and highlight matches; prints the "N of M" counter
@@ -389,16 +410,17 @@ The bindable built-in action names are:
 ```
 new_window         rename_window      delete_window
 new_workspace      rename_workspace   delete_workspace
-new_session        open_directory     rename_session
+new_session        open_directory     rename_session     duplicate_session
 close_session      reopen_recent      undo_close         clear_status
 increase_font_size decrease_font_size reset_font_size
 toggle_split       toggle_scratch     toggle_search
-toggle_sidebar     toggle_flag        toggle_flagged_view
-focus_left_pane    focus_right_pane   focus_workspace
+toggle_sidebar     toggle_file_tree   toggle_flag        toggle_flagged_view
+focus_workspace    toggle_workspace_filter
+focus_left_pane    focus_right_pane
 previous_session   next_session       first_session      last_session
 previous_attention_session            next_attention_session
 quick_terminal     session_palette    command_palette
-custom_command_palette                show_attention
+custom_command_palette                show_attention     dashboard
 select_theme       toggle_fullscreen  toggle_terminal_zoom
 ```
 

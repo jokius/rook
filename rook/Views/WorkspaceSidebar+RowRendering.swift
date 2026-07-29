@@ -54,9 +54,8 @@ extension WorkspaceSidebar.Coordinator {
             // roll-up badge so an unseen notification stays visible when the workspace is collapsed
             // (gated by the Settings badge toggle, like the session badge below)
             applyBadge(toCell: cell, count: effectiveUnseen(workspace?.unseenCount ?? 0))
-            // the workspace's own icon (symbol / emoji / image file), else the default grid glyph — which
-            // is also the fallback for an unresolvable symbol or a missing file.
-            let image = WorkspaceIconImage.image(for: workspace?.icon) ?? workspaceIcon
+            let image = workspaceRowIcon(for: workspace?.icon,
+                                         member: store.focusedWorkspaceIDs.contains(node.id))
             cell.imageView?.image = image
             // the workspace's color, but ONLY on an icon it can apply to — and the icon itself is the one
             // that knows: a TEMPLATE image is a mask contentTintColor (applied in setColors) recolors (the
@@ -126,6 +125,27 @@ extension WorkspaceSidebar.Coordinator {
         case (true, false): return splitSessionIcon
         case (false, true): return flaggedSessionIcon
         case (false, false): return sessionIcon
+        }
+    }
+
+    /// The leading icon for a workspace row: the workspace's own icon (SF symbol / emoji / image file),
+    /// else the default grid glyph — which is also the fallback for an unresolvable symbol or a missing
+    /// file. A member of the focus set draws the SAME symbol at `.heavy` weight (never a `.fill` variant:
+    /// fill means a flagged SESSION, heavy means a marked WORKSPACE), keyed on MEMBERSHIP alone and
+    /// independent of `focusEnabled` — a marked row reads heavy while the filter is still off, which is
+    /// what makes the set legible while it is being built.
+    ///
+    /// CEILING: weight is a symbol CONFIGURATION, not a different symbol, so the marker reaches template
+    /// SYMBOL icons only — the default glyph and a custom SF-symbol icon (re-rendered here rather than
+    /// taken from `WorkspaceIconImage`, whose memo holds the regular weight). A custom emoji or image
+    /// file has no weight axis, so it renders unchanged and carries NO membership marker; membership is
+    /// still readable from the row's context menu, the bottom-bar toggle, and `tree`'s `marked`.
+    private func workspaceRowIcon(for icon: WorkspaceIcon?, member: Bool) -> NSImage? {
+        guard member else { return WorkspaceIconImage.image(for: icon) ?? workspaceIcon }
+        guard let icon else { return focusedWorkspaceIcon }
+        switch icon.kind {
+        case .symbol: return Self.rowIcon(icon.value, weight: .heavy) ?? focusedWorkspaceIcon
+        case .emoji, .image: return WorkspaceIconImage.image(for: icon) ?? focusedWorkspaceIcon
         }
     }
 

@@ -1540,20 +1540,7 @@ struct AppStoreTests {
         #expect(store.controlTree().sidebarVisible == true)
     }
 
-    @Test func controlTreeReportsFocusedWorkspace() {
-        let store = makeStore()
-        let ws2 = store.addWorkspace(name: "second")
-        // no focus: no workspace node reports focused.
-        #expect(store.controlTree().workspaces.allSatisfy { $0.focused == nil })
-        // focus the second workspace: ONLY its node reports focused == true (distinct from active).
-        store.setFocusedWorkspace(ws2.id)
-        let nodes = store.controlTree().workspaces
-        #expect(nodes.first { $0.id == ws2.id.uuidString }?.focused == true)
-        #expect(nodes.filter { $0.focused == true }.count == 1)
-        // clearing focus: no node reports focused again.
-        store.setFocusedWorkspace(nil)
-        #expect(store.controlTree().workspaces.allSatisfy { $0.focused == nil })
-    }
+    // the focus/`marked` read-back lives in AppStoreFocusTests — one workspace no longer covers it.
 
     @Test func controlTreeReportsSidebarMode() {
         let store = makeStore()
@@ -1792,30 +1779,7 @@ extension AppStoreTests {
         #expect(store.sidebarSelectionTargets(forContextSession: a.id) == [a.id])
     }
 
-    @Test func sidebarTargetsDropRowsHiddenByModeOrFocus() {
-        let store = makeStore()
-        let ws1 = store.addWorkspace(name: "one")
-        let ws2 = store.addWorkspace(name: "two")
-        let a = try! #require(store.addSession(toWorkspace: ws1.id, cwd: "/a"))
-        let b = try! #require(store.addSession(toWorkspace: ws1.id, cwd: "/b"))
-        let c = try! #require(store.addSession(toWorkspace: ws2.id, cwd: "/c"))
-        store.setFlag(true, forSession: a.id)
-
-        store.selectSession(a.id)
-        store.setSidebarSelection([a.id, b.id, c.id])
-        store.setSidebarMode(.flagged)
-
-        #expect(store.sidebarSelectionIDs == [a.id])
-        #expect(store.sidebarSelectionTargets(forContextSession: a.id) == [a.id])
-
-        store.setSidebarMode(.tree)
-        store.selectSession(a.id)
-        store.setSidebarSelection([a.id, c.id])
-        store.setFocusedWorkspace(ws1.id)
-
-        #expect(store.sidebarSelectionIDs == [a.id])
-        #expect(store.sidebarSelectionTargets(forContextSession: a.id) == [a.id])
-    }
+    // `sidebarTargetsDropRowsHiddenByModeOrFocus` lives in AppStoreFocusTests, with the focus-filter prune.
 
     // The prune-guard tests below all share one shape: hide selected rows (assert), then RE-SHOW them
     // and assert a second time. `sidebarSelectionIDs` filters on read, so the first assert passes
@@ -1836,21 +1800,8 @@ extension AppStoreTests {
                 "rows hidden by the mode switch must not re-enter the selection when visible again")
     }
 
-    @Test func workspaceFocusPrunesRowsOutsideFocusedWorkspace() {
-        let store = makeStore()
-        let ws1 = store.addWorkspace(name: "one")
-        let ws2 = store.addWorkspace(name: "two")
-        let a = try! #require(store.addSession(toWorkspace: ws1.id, cwd: "/a"))
-        let b = try! #require(store.addSession(toWorkspace: ws2.id, cwd: "/b"))
-        store.setSidebarSelection([a.id, b.id])
-
-        store.setFocusedWorkspace(ws2.id)
-
-        #expect(store.sidebarSelectionIDs == [b.id])
-        store.setFocusedWorkspace(nil)
-        #expect(store.sidebarSelectionIDs == [b.id],
-                "rows hidden by the focus filter must not re-enter the selection when unfocused")
-    }
+    // the focus-filter leg of that same shape is `workspaceFocusPrunesRowsOutsideTheMarkedSet`,
+    // in AppStoreFocusTests.
 
     @Test func singleFlagChangePrunesRowHiddenInFlaggedMode() {
         let store = makeStore()

@@ -26,7 +26,10 @@ public protocol ControlActions {
     func moveSession(_ target: String?, window: String?, move: ControlSessionMove) -> ControlResponse
     func moveSessions(_ targets: [String], window: String?, move: ControlSessionMove) -> ControlResponse
     func moveWorkspace(_ target: String?, window: String?, direction: ReorderDirection) -> ControlResponse
-    func focusWorkspace(_ target: String?, window: String?, mode: String?) -> ControlResponse
+    /// Marks or unmarks ONE workspace in the target window's sidebar focus set. The mode is parsed and
+    /// rejected by the dispatcher, so the host only resolves the target and applies the already-valid mode
+    /// through `AppStore.applyFocusMode` — every set/flag semantic stays host-free there.
+    func focusWorkspace(_ target: String?, window: String?, mode: ControlWorkspaceFocusMode) -> ControlResponse
     /// Applies (or lifts) a window's workspace focus filter WITHOUT touching which workspace is marked.
     /// Window-scoped, so it takes no workspace target — the host resolves the store from `window`
     /// (frontmost when nil). The mode is parsed by the dispatcher; the on/off/toggle semantics are
@@ -527,7 +530,15 @@ public struct ControlDispatcher {
             }
             return actions.moveWorkspace(request.target, window: request.args?.window, direction: direction)
         case .workspaceFocus:
-            return actions.focusWorkspace(request.target, window: request.args?.window, mode: request.args?.mode)
+            // parsed + rejected BEFORE the host runs, so an unknown mode can never half-apply; the accepted
+            // list is derived from `allCases`, so it cannot go stale when a mode is added. This is the last
+            // mode-bearing command that used to validate app-side — see the dispatcher-first rule.
+            let raw = request.args?.mode ?? ControlWorkspaceFocusMode.toggle.rawValue
+            guard let mode = ControlWorkspaceFocusMode(rawValue: raw) else {
+                return ControlResponse(ok: false,
+                                       error: "invalid focus mode: \(raw) (\(ControlWorkspaceFocusMode.validNamesList))")
+            }
+            return actions.focusWorkspace(request.target, window: request.args?.window, mode: mode)
         case .workspaceFilter:
             // window-scoped: no workspace target, only the flag. Same `on|off|toggle` vocabulary and shared
             // parser as `window.minimize`, defaulting to `toggle`; parsed here so a bad mode can never

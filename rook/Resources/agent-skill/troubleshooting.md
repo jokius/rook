@@ -153,9 +153,45 @@ subscribes FROM NOW, and there is no history replay. Whatever happened before th
 a watcher's death and its restart, was never in your stream. Record that gap rather than assuming it was
 quiet — see examples.md ▸ "Watch what happens instead of diffing the tree".
 
-`--kind notify` is a special case: the kind is accepted and reserved, but nothing in the running app
-records notifications into the ring yet, so it always yields nothing. Read the badge count from `tree`
-(`unseen` on the session node) until an emitter is wired.
+`--kind notify` carries the notification's `title` + `body` from both sources (the terminal's own OSC
+9/777 and the `notify` command) and is recorded BEFORE the banner gate, so an empty `notify` stream means
+nothing was accepted for a session — not that banners are off.
+
+### "I marked workspaces into the focus set and the sidebar did not change"
+
+`workspace focus add` is MARK-ONLY: it never switches the filter on.
+That is deliberate — it is what lets a set be built member by member with the whole tree still on screen
+(an `add` that applied the filter would collapse the tree onto the first member and hide the rows the
+next `add` needs). Nothing narrows until you apply the set:
+
+```bash
+rookctl workspace focus add --target a1b2
+rookctl workspace focus add --target 7f3c
+rookctl workspace filter on            # <- the step that actually applies the set
+```
+
+Read the state back rather than guessing: a workspace node's `marked` says it is a member, the tree's
+top-level `workspaceFilter` says whether the filter applies, and `focused` is exactly their conjunction.
+Several nodes `marked` with no `focused` anywhere means the set is built and unapplied — that is this
+problem, and one `workspace filter on` ends it.
+Two other ways to see no change: `filter on` with an EMPTY set is a documented no-op (it still answers
+`ok`, so check `workspaceFilter` rather than the exit status), and NO workspace row renders at all while
+the sidebar is hidden (`sidebarVisible: false`) or in flagged mode (`sidebarMode: "flagged"`), whatever
+the filter and the membership say.
+
+### "The workspace filter switched itself off"
+
+Expected, and the marked set is still there.
+An INVOLUNTARY jump out of the set — idle auto-follow to a blocked session, attention nav (⌃⌥↑/⌃⌥↓), a
+click on a notification banner, the dashboard, the recent-sessions popover — drops only the FLAG, so the
+session it jumped to is visible, and KEEPS the set: none of those is the user saying they are done with
+their working set.
+One `workspace filter on` brings it back (the sidebar's filter toggle does the same, which is exactly why
+that button stays live while the filter is off).
+
+A set that came back EMPTY is a different problem: an explicit `workspace focus off` unmarks a workspace,
+a DELETED workspace drops out of the set on its own, and the filter switches off with the last member.
+Then there is genuinely nothing to re-apply and the set has to be rebuilt with `workspace focus add`.
 
 ### "The agent-status glyph updates the wrong session"
 

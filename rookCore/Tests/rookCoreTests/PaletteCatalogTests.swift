@@ -43,6 +43,8 @@ struct PaletteCatalogTests {
             "Show Flagged Sessions",
             "Clear Flagged",
             "Clear Focus",
+            "Add Workspace to Focus",
+            "Toggle Workspace Filter",
             "Expand Workspaces",
             "Collapse Workspaces",
             "Focus Left Pane",
@@ -51,7 +53,7 @@ struct PaletteCatalogTests {
     }
 
     @Test func catalogHasTheExpectedStaticCommandCount() {
-        #expect(PaletteCommand.allCases.count == 43)
+        #expect(PaletteCommand.allCases.count == 45)
     }
 
     @Test func idsRoundTripThroughRawValue() {
@@ -88,14 +90,41 @@ struct PaletteCatalogTests {
     @Test func workspaceAndSplitCommandsFollowTheirPredicates() {
         #expect(!PaletteCommand.deleteWorkspace.isVisible(in: PaletteContext(canRemoveWorkspace: false)))
         #expect(PaletteCommand.deleteWorkspace.isVisible(in: PaletteContext(canRemoveWorkspace: true)))
-        #expect(!PaletteCommand.clearFocus.isVisible(in: PaletteContext(hasFocusedWorkspace: false)))
-        #expect(PaletteCommand.clearFocus.isVisible(in: PaletteContext(hasFocusedWorkspace: true)))
+        #expect(!PaletteCommand.clearFocus.isVisible(in: PaletteContext(hasMarkedWorkspaces: false)))
+        #expect(PaletteCommand.clearFocus.isVisible(in: PaletteContext(hasMarkedWorkspaces: true)))
         #expect(!PaletteCommand.focusLeftPane.isVisible(in: PaletteContext(activeSessionHasSplit: false)))
         #expect(PaletteCommand.focusRightPane.isVisible(in: PaletteContext(activeSessionHasSplit: true)))
         #expect(!PaletteCommand.undoClose.isVisible(in: PaletteContext(hasPendingClose: false)))
         #expect(PaletteCommand.undoClose.isVisible(in: PaletteContext(hasPendingClose: true)))
         #expect(!PaletteCommand.reopenRecent.isVisible(in: PaletteContext(hasRecentClosed: false)))
         #expect(PaletteCommand.reopenRecent.isVisible(in: PaletteContext(hasRecentClosed: true)))
+    }
+
+    @Test func focusEntriesKeyOnMembershipNotOnTheFilterFlag() {
+        // the two focus-set entries hang off the MARKED set, not off whether the filter applies: with
+        // nothing marked there is nothing to clear and nothing to filter to, which is the same state the
+        // bottom-bar toggle renders disabled in.
+        for command in [PaletteCommand.clearFocus, .toggleWorkspaceFilter] {
+            #expect(!command.isVisible(in: PaletteContext(hasMarkedWorkspaces: false)),
+                    "\(command.rawValue) must hide with nothing marked")
+            #expect(command.isVisible(in: PaletteContext(hasMarkedWorkspaces: true)),
+                    "\(command.rawValue) must show as soon as something is marked")
+        }
+
+        // "Add Workspace to Focus" keys on the OTHER predicate — the current workspace's own membership —
+        // so it hides exactly where it would be a silent no-op, and shows even with other workspaces marked.
+        #expect(PaletteCommand.addWorkspaceToFocus.isVisible(in: PaletteContext(activeWorkspaceMarked: false)))
+        #expect(!PaletteCommand.addWorkspaceToFocus.isVisible(in: PaletteContext(activeWorkspaceMarked: true)))
+        #expect(PaletteCommand.addWorkspaceToFocus.isVisible(
+            in: PaletteContext(hasMarkedWorkspaces: true, activeWorkspaceMarked: false)))
+
+        // and it is deliberately NOT gated on the sidebar mode — membership is model state the tree applies
+        // the moment it is shown again, exactly like its Clear Focus / Toggle Workspace Filter siblings.
+        let flaggedMode = PaletteContext(sidebarShowsWorkspaceTree: false, sidebarShowsFlaggedOnly: true,
+                                         hasMarkedWorkspaces: true, activeWorkspaceMarked: false)
+        #expect(PaletteCommand.addWorkspaceToFocus.isVisible(in: flaggedMode))
+        #expect(PaletteCommand.toggleWorkspaceFilter.isVisible(in: flaggedMode))
+        #expect(PaletteCommand.clearFocus.isVisible(in: flaggedMode))
     }
 
     @Test func builtinMappingsCoverRebindableCommands() {
@@ -105,7 +134,10 @@ struct PaletteCatalogTests {
         #expect(PaletteCommand.resetFontSize.builtinAction == .resetFontSize)
         #expect(PaletteCommand.reopenRecent.builtinAction == .reopenRecent)
         #expect(PaletteCommand.undoClose.builtinAction == .undoClose)
+        #expect(PaletteCommand.toggleWorkspaceFilter.builtinAction == .toggleWorkspaceFilter)
         #expect(PaletteCommand.clearFlagged.builtinAction == nil)
         #expect(PaletteCommand.expandWorkspaces.builtinAction == nil)
+        // marking the current workspace has no keymap action of its own — it rides the palette/menu only.
+        #expect(PaletteCommand.addWorkspaceToFocus.builtinAction == nil)
     }
 }

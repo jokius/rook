@@ -12,9 +12,9 @@ struct AppStoreNavigationTests {
         _ = store.addSession(toWorkspace: personal.id, cwd: "/b")!
         store.selectSession(a.id)
         store.setFocusedWorkspace(work.id)
-        store.navigateSession(.next) // nav is scoped to the focused workspace (only a); wrap cycles to itself
-        #expect(store.selectedSessionID == a.id) // stays on a — the off-focus session is never revealed
-        #expect(store.focusedWorkspaceID == work.id) // nav never crosses the focus boundary, so focus stands
+        store.navigateSession(.next) // nav is scoped to the marked set (only a); wrap cycles to itself
+        #expect(store.selectedSessionID == a.id) // stays on a — the out-of-set session is never revealed
+        #expect(store.soleFocusedWorkspaceID == work.id) // nav never crosses the filter, so it stands
     }
 
     /// Builds a two-workspace tree (work: a, b; personal: c, d) so flattened order is [a, b, c, d].
@@ -27,6 +27,22 @@ struct AppStoreNavigationTests {
         let c = store.addSession(toWorkspace: personal.id, cwd: "/c")!
         let d = store.addSession(toWorkspace: personal.id, cwd: "/d")!
         return (store, [a.id, b.id, c.id, d.id])
+    }
+
+    /// Builds a FIVE-workspace tree — w1={a}, w2={b,c}, w3={d}, w4={e,f}, w5={g} — so the 2-of-5 marked set
+    /// {w2, w4} leaves an unmarked workspace in the MIDDLE (w3) and one at EACH END (w1, w5). Flattened tree
+    /// order is [a…g]; the marked union is [b, c, e, f], whose first and last both differ from the tree's,
+    /// so a filtered `.first`/`.last`/wrap can't accidentally agree with the unfiltered one.
+    static func makeSpacedNavTree() -> (store: AppStore, sessions: [UUID], workspaces: [UUID]) {
+        let store = makeStore()
+        var workspaces: [UUID] = []
+        var sessions: [UUID] = []
+        for (name, count) in zip(["w1", "w2", "w3", "w4", "w5"], [1, 2, 1, 2, 1]) {
+            let workspace = store.addWorkspace(name: name)
+            workspaces.append(workspace.id)
+            for i in 0..<count { sessions.append(store.addSession(toWorkspace: workspace.id, cwd: "/\(name)-\(i)")!.id) }
+        }
+        return (store, sessions, workspaces)
     }
 
     @Test func navigateNextStepsForwardCrossingWorkspaces() {
@@ -201,17 +217,76 @@ struct AppStoreNavigationTests {
 
     @Test func navigableSessionsReflectsFlaggedFocusAndUnfocused() {
         let (store, ids) = Self.makeNavTree() // work={a,b}, personal={c,d}
-        #expect(store.navigableSessions.map(\.id) == ids) // unfocused tree mode -> all sessions
+        #expect(store.navigableSessions.map(\.id) == ids) // filter off in tree mode -> every session
         let work = store.workspace(forSession: ids[0])!
         store.setFocusedWorkspace(work.id)
-        #expect(store.navigableSessions.map(\.id) == [ids[0], ids[1]]) // focused -> only that workspace
-        store.setFocusedWorkspace(UUID()) // a stale focus id falls back to all
-        #expect(store.navigableSessions.map(\.id) == ids)
-        store.setFocusedWorkspace(nil)
+        #expect(store.navigableSessions.map(\.id) == [ids[0], ids[1]]) // marked AND applied -> that member only
+        store.setFocusEnabled(false)
+        #expect(store.navigableSessions.map(\.id) == ids) // the mark stands, but a lifted filter scopes nothing
+        store.setFocusEnabled(true)
+        #expect(store.navigableSessions.map(\.id) == [ids[0], ids[1]]) // coming back re-scopes to the SAME set
+        store.clearFocus()
         store.setFlag(true, forSession: ids[1])
         store.setFlag(true, forSession: ids[2])
         store.setSidebarMode(.flagged)
         #expect(store.navigableSessions.map(\.id) == [ids[1], ids[2]]) // flagged mode -> the flagged set
+    }
+
+    @Test func navigableSessionsUnionsEveryMarkedWorkspaceInTreeOrder() {
+        let (store, ids, ws) = Self.makeSpacedNavTree() // w1={a}, w2={b,c}, w3={d}, w4={e,f}, w5={g}
+        store.setFocusedWorkspace(ws[1])
+        store.setFocusMembership(ws[3], member: true) // {w2, w4}: w3 sits UNMARKED between them
+        // the union is every member's sessions in TREE order — w3's d is dropped from the middle, and the
+        // unmarked ends (a, g) never appear, so this is neither "the first member" nor a contiguous slice.
+        #expect(store.navigableSessions.map(\.id) == [ids[1], ids[2], ids[4], ids[5]])
+        #expect(store.visibleWorkspaces.map(\.id) == [ws[1], ws[3]]) // and the rows the sidebar renders agree
+    }
+
+    @Test func navigateWalksEveryMarkedWorkspaceAndSkipsTheUnmarkedOnesBetweenThem() {
+        let (store, ids, ws) = Self.makeSpacedNavTree() // tree order [a,b,c,d,e,f,g]; union {w2,w4} = [b,c,e,f]
+        store.setFocusedWorkspace(ws[1])
+        store.setFocusMembership(ws[3], member: true)
+        store.selectSession(ids[1]) // b
+        store.navigateSession(.next)
+        #expect(store.selectedSessionID == ids[2]) // b -> c, inside the first member
+        store.navigateSession(.next)
+        #expect(store.selectedSessionID == ids[4]) // c -> e: steps over the unmarked d into the SECOND member
+        store.navigateSession(.next)
+        #expect(store.selectedSessionID == ids[5]) // e -> f
+        store.navigateSession(.next)
+        #expect(store.selectedSessionID == ids[1]) // f is the union's last: wraps to b, not on to the unmarked g
+        store.navigateSession(.previous)
+        #expect(store.selectedSessionID == ids[5]) // and back over the same wrap, never onto a
+        store.navigateSession(.previous)
+        #expect(store.selectedSessionID == ids[4])
+        store.navigateSession(.previous)
+        #expect(store.selectedSessionID == ids[2]) // e -> c: d is skipped backwards too
+        store.navigateSession(.last)
+        #expect(store.selectedSessionID == ids[5]) // .last is the UNION's last (f), not the tree's (g)
+        store.navigateSession(.first)
+        #expect(store.selectedSessionID == ids[1]) // .first is the union's first (b), not the tree's (a)
+        #expect(store.focusedWorkspaceIDs == [ws[1], ws[3]]) // every target was in-set, so the filter stands
+        #expect(store.focusEnabled)
+    }
+
+    @Test func navigateAttentionWalksEveryMarkedWorkspaceAndSkipsTheUnmarkedOnesBetweenThem() {
+        let (store, ids, ws) = Self.makeSpacedNavTree()
+        store.setFocusedWorkspace(ws[1])
+        store.setFocusMembership(ws[3], member: true) // union = [b, c, e, f]
+        store.session(withID: ids[2])?.agentIndicator = AgentIndicator(status: .blocked)   // c, in w2
+        store.session(withID: ids[3])?.agentIndicator = AgentIndicator(status: .blocked)   // d, in the UNMARKED w3
+        store.session(withID: ids[5])?.agentIndicator = AgentIndicator(status: .completed) // f, in w4
+        store.session(withID: ids[6])?.agentIndicator = AgentIndicator(status: .blocked)   // g, in the UNMARKED w5
+        store.selectSession(ids[1]) // b
+        store.navigateSession(.nextAttention)
+        #expect(store.selectedSessionID == ids[2]) // the first in-set attention session
+        store.navigateSession(.nextAttention)
+        #expect(store.selectedSessionID == ids[5]) // crosses to w4's f, never stopping on the hidden d
+        store.navigateSession(.nextAttention)
+        #expect(store.selectedSessionID == ids[2]) // wraps within the union, never reaching the hidden g
+        store.navigateSession(.previousAttention)
+        #expect(store.selectedSessionID == ids[5]) // backwards wraps through the same two
+        #expect(store.focusEnabled) // attention-nav is in-set too, so it never lifts the filter
     }
 
     @Test func navigateScopesToFocusedWorkspace() {
@@ -227,7 +302,7 @@ struct AppStoreNavigationTests {
         #expect(store.selectedSessionID == ids[1]) // .last is the focused workspace's last, not the tree's
         store.navigateSession(.first)
         #expect(store.selectedSessionID == ids[0]) // .first is the focused workspace's first
-        #expect(store.focusedWorkspaceID == work.id) // never auto-unfocuses — every target was in-set
+        #expect(store.soleFocusedWorkspaceID == work.id) // never lifts the filter — every target was in-set
     }
 
     @Test func navigateScopesToFlaggedSet() {
@@ -264,7 +339,7 @@ struct AppStoreNavigationTests {
         store.selectSession(ids[1]) // b, the in-set last of {a,b}
         store.navigateSession(.next)
         #expect(store.selectedSessionID == ids[0]) // scoped: wraps within {a,b} back to a, never crosses to c
-        store.setFocusedWorkspace(nil) // clearing focus restores the full navigable set
+        store.clearFocus() // clearing focus restores the full navigable set
         store.selectSession(ids[1]) // b again, now in the full set [a,b,c,d]
         store.navigateSession(.next)
         #expect(store.selectedSessionID == ids[2]) // now crosses into the personal workspace

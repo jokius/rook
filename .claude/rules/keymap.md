@@ -36,7 +36,7 @@ paths:
   Pure types: `Modifier`/`Chord`/`Keybind`/`parseKeybind`/`keybindConflicts`/`reservedMonitorChords`
   (`Keybind.swift`), `KeybindMatcher` (leader state machine), `CustomCommand`/`CommandContext` (the `{AGT_X}`
   token table — single source of truth for both `{AGT_X}` expansion and the `$AGT_X` env),
-  `BuiltinAction` (the 42 rebindable actions + `defaultChord`), `Keymap`/`parseKeymap` (`Keymap.swift`),
+  `BuiltinAction` (the 43 rebindable actions + `defaultChord`), `Keymap`/`parseKeymap` (`Keymap.swift`),
   `ConfigPaths` (the path resolver).
   All unit-tested under `rookCoreTests`.
 - **MENU-driven built-in override vs MONITOR-driven custom commands — two different mechanisms.** Built-ins
@@ -134,12 +134,17 @@ paths:
   own dispatch — documented, not validated.
 - **`BuiltinAction.defaultChord` is the single source of truth for the built-in shortcuts (keep-in-sync
   surface), with NO exceptions left.** Task 9 collapsed the old `BuiltinAction` ↔ menu keep-in-sync
-  convention, and the arrow port finished the job: ALL 42 built-in menu items now read `equivalent(for:)`
+  convention, and the arrow port finished the job: ALL 43 built-in menu items now read `equivalent(for:)`
   (override else `defaultChord`) with NO hardcoded `.keyboardShortcut` literal, so adding or changing a
   default chord happens in `defaultChord` alone.
-  30 of the 42 ship with a key; the other 12 (`rename_*`/`delete_*`/`duplicate_session`/`clear_status`/
-  `first_session`/`last_session`/`select_theme`/`toggle_flagged_view`/`focus_workspace`) return nil and
-  stay keyless until the user `map`s one.
+  30 of the 43 ship with a key; the other 13 (`rename_*`/`delete_*`/`duplicate_session`/`clear_status`/
+  `first_session`/`last_session`/`select_theme`/`toggle_flagged_view`/`focus_workspace`/
+  `toggle_workspace_filter`) return nil and stay keyless until the user `map`s one.
+  `toggle_workspace_filter` (applies or lifts the sidebar's workspace focus filter, keeping the marked set)
+  ships keyless because the filter already has a mouse affordance — the bottom-bar `focus-filter-toggle` —
+  and rook does not spend a default chord on an action that has one; its View ▸ Toggle Workspace Filter
+  item's `keyboardShortcut(shortcut(for:))` is the ONLY dispatch path, so a `map` line reaches it through
+  the menu like every other built-in.
 - **Arrows are ordinary bindable keys — `map cmd+shift+left previous_session` works (upstream `30581c1c`).**
   `bindableNamedKeys` is `tab`/`space`/`return`/`delete` UNION `bindableArrowKeys`
   (`left`/`right`/`up`/`down`), so `parseKeybind` spells an arrow like any other named key.

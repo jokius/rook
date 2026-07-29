@@ -67,15 +67,23 @@ struct Workspace: ParsableCommand {
         }
     }
 
+    /// `rookctl workspace focus [on|off|toggle|add] [--target W]` — marks or unmarks ONE workspace in the
+    /// sidebar's focus set. `add` only marks; applying the set is `workspace filter on`. The accepted list,
+    /// the per-mode help prose, and the local rejection message ALL derive from
+    /// `ControlWorkspaceFocusMode.allCases` (via `validNamesList`/`helpPhrase`/`validNamesPhrase`), so a
+    /// new case reaches every one of them and the CLI cannot drift from the dispatcher's parse.
     struct Focus: RequestCommand {
-        static let configuration = CommandConfiguration(abstract: "Focus the sidebar on a single workspace (on|off|toggle).")
-        @Argument(help: "Mode: on (focus), off (unfocus), or toggle (default).") var mode: String = "toggle"
+        static let configuration = CommandConfiguration(
+            abstract: "Mark a workspace in the sidebar focus set (\(ControlWorkspaceFocusMode.validNamesList))."
+        )
+        @Argument(help: "Mode: \(ControlWorkspaceFocusMode.helpPhrase).")
+        var mode: String = ControlWorkspaceFocusMode.toggle.rawValue
         @OptionGroup var target: TargetOptions
         @OptionGroup var options: ClientOptions
 
         func validate() throws {
-            guard ["on", "off", "toggle"].contains(mode) else {
-                throw ValidationError("mode must be on, off, or toggle")
+            guard ControlWorkspaceFocusMode(rawValue: mode) != nil else {
+                throw ValidationError("mode must be one of: \(ControlWorkspaceFocusMode.validNamesPhrase)")
             }
         }
 
@@ -85,12 +93,15 @@ struct Workspace: ParsableCommand {
     }
 
     /// `rookctl workspace filter [on|off|toggle] [--window W]` — applies or lifts the sidebar's workspace
-    /// focus filter for a WHOLE window, leaving the focused workspace marked. It deliberately carries NO
+    /// focus filter for a WHOLE window, leaving the marked set intact. It deliberately carries NO
     /// `--target`: it flips the window's filter rather than acting on one workspace, so its shape is
     /// `sidebar expand`/`sidebar collapse` (`ClientOptions` only), not the `workspace.*` target commands.
+    /// The three mode names are spelled out here rather than derived: `ControlToggleMode` carries no
+    /// `validNames` because its tokens are per-command (`sidebar` spells the same three `show|hide|toggle`),
+    /// so this matches its siblings (`session flag`, `sidebar mode`) instead of the enum-derived `Focus`.
     struct Filter: RequestCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Apply or lift the sidebar workspace focus filter, keeping the focused workspace (on|off|toggle)."
+            abstract: "Apply or lift the sidebar workspace focus filter, keeping the marked set (on|off|toggle)."
         )
         @Argument(help: "Mode: on, off, or toggle (default).") var mode: String = "toggle"
         @OptionGroup var options: ClientOptions

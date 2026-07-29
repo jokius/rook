@@ -242,19 +242,40 @@ extension rookApp {
                 .disabled(library.activeStore?.activeSession == nil || modalActive)
                 Button { actions.clearFlags() } label: { Label("Clear Flagged", systemImage: "flag.slash") }
                     .disabled(library.activeStore?.flaggedSessions.isEmpty ?? true || modalActive)
-                // collapse the tree to the current workspace's subtree (or unfocus when already focused).
-                // keyless by default (rebindable via focus_workspace). The control half is workspace.focus.
-                // the label tracks the toggle (Focus/Unfocus) like the workspace row's context-menu item.
+                // REPLACE the marked set with the current workspace and apply the filter (or clear it when
+                // that workspace is already the sole applied focus). Keyless by default (rebindable via
+                // focus_workspace). The control half is workspace.focus on|toggle. The label tracks the
+                // toggle (Focus/Unfocus) like the workspace row's context-menu item.
                 let focusStore = library.activeStore
-                let currentFocused = focusStore?.focusedWorkspace?.id == focusStore?.currentWorkspaceID
                 Button { actions.focusActiveWorkspace() } label: {
-                    Label(currentFocused ? "Unfocus Workspace" : "Focus Workspace", systemImage: "scope")
+                    Label(focusStore?.isCurrentWorkspaceSoleFocus == true ? "Unfocus Workspace" : "Focus Workspace",
+                          systemImage: "scope")
                 }
                 .keyboardShortcut(shortcut(for: .focusWorkspace))
-                .disabled(library.activeStore?.currentWorkspaceID == nil || modalActive)
-                // plain (non-BuiltinAction) clear, like Clear Flagged; the bottom-bar pill ✕ is primary.
+                .disabled(focusStore?.currentWorkspaceID == nil || modalActive)
+                // the ADDITIVE sibling: mark the current workspace WITHOUT dropping the other members, so a
+                // working set can be built from the menu. Plain (non-BuiltinAction) keyless item like Clear
+                // Focus below; the control half is workspace.focus add. Disabled once the current workspace
+                // is already marked — it would be a silent no-op (the sidebar row menu flips to "Remove from
+                // Focus" instead, which it can do because it has a clicked row).
+                Button { actions.addActiveWorkspaceToFocus() } label: {
+                    Label("Add Workspace to Focus", systemImage: "square.grid.2x2")
+                }
+                .disabled(focusStore?.currentWorkspaceID == nil
+                    || focusStore?.isCurrentWorkspaceFocusMember == true || modalActive)
+                // apply or suspend the filter WITHOUT losing the marked set — the menu twin of the sidebar
+                // toggle, disabled in the same empty-set state (the store refuses to enable an empty set, so
+                // the item would be a no-op). The control half is workspace.filter. This keyboardShortcut is
+                // the ONLY dispatch path for the keyless toggle_workspace_filter builtin.
+                Button { actions.toggleFocusFilter() } label: {
+                    Label("Toggle Workspace Filter", systemImage: "square.grid.2x2")
+                }
+                .keyboardShortcut(shortcut(for: .toggleWorkspaceFilter))
+                .disabled((focusStore?.focusedWorkspaceIDs.isEmpty ?? true) || modalActive)
+                // plain (non-BuiltinAction) clear, like Clear Flagged; drops the whole marked set, where the
+                // toggle above keeps it and only stops applying it.
                 Button { actions.clearFocus() } label: { Label("Clear Focus", systemImage: "scope") }
-                    .disabled(library.activeStore?.focusedWorkspaceID == nil || modalActive)
+                    .disabled((focusStore?.focusedWorkspaceIDs.isEmpty ?? true) || modalActive)
                 Button { actions.toggleSplit() } label: {
                     Label(library.activeStore?.activeSession?.isSplit == true ? "Hide Split" : "Split Right", systemImage: "rectangle.split.2x1")
                 }

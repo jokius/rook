@@ -20,7 +20,7 @@ extension AppStore {
             workspaces[index].sessions.insert(session, at: insertAt)
             selectedSessionID = session.id
             replaceSidebarSelection(with: selectedSessionID)
-            autoUnfocusIfOutsideFocus(selectedSessionID)
+            disableFocusIfSelectionOutsideSet(selectedSessionID)
             recordRecency()
             save()
             return true
@@ -35,11 +35,16 @@ extension AppStore {
             // Persistent Open Recent appends like most editors' recent-project flow:
             // reopening brings the workspace back without reshuffling current workspaces.
             workspaces.append(workspace)
+            // re-mark BEFORE the reselect below, so a restored member is inside the set when
+            // `disableFocusIfSelectionOutsideSet` runs; the workspace is already in the tree, so the
+            // unguarded insert cannot leave a phantom member behind. Entries written before the field
+            // existed carry nil and restore unmarked.
+            if recent.focusMember == true { markFocusMember(workspace.id) }
             selectedSessionID = recent.selectedSessionID.flatMap { sessionID in
                 workspace.sessions.contains { $0.id == sessionID } ? sessionID : nil
             } ?? workspace.sessions.first?.id
             replaceSidebarSelection(with: selectedSessionID)
-            autoUnfocusIfOutsideFocus(selectedSessionID)
+            disableFocusIfSelectionOutsideSet(selectedSessionID)
             recordRecency()
             save()
             return true
@@ -75,6 +80,7 @@ extension AppStore {
             let taken = Set(workspaces.flatMap(\.sessions).map(\.id)).union(pendingHeldSessionIDs())
             let missing = recent.snapshot.sessions.filter { !taken.contains($0.id) }.map(session(from:))
             workspaces[index].sessions.append(contentsOf: missing)
+            if recent.focusMember == true { markFocusMember(workspaces[index].id) } // before the reselect, as above
             let target = recent.selectedSessionID.flatMap { id in
                 workspaces[index].sessions.contains { $0.id == id } ? id : nil
             } ?? workspaces[index].sessions.first?.id
@@ -155,6 +161,7 @@ extension AppStore {
     @discardableResult
     func recordRecentClosedWorkspace(_ workspace: Workspace,
                                      selectedSessionID: UUID?,
+                                     focusMember: Bool,
                                      id: UUID = UUID()) -> UUID? {
         guard let recentClosedStore else { return nil }
         let sessionCount = workspace.sessions.count
@@ -163,7 +170,9 @@ extension AppStore {
             kind: .workspace,
             title: workspace.name,
             subtitle: "\(sessionCount) session\(sessionCount == 1 ? "" : "s")",
-            workspace: RecentClosedWorkspace(snapshot: workspaceSnapshot(workspace), selectedSessionID: selectedSessionID)
+            workspace: RecentClosedWorkspace(snapshot: workspaceSnapshot(workspace),
+                                             selectedSessionID: selectedSessionID,
+                                             focusMember: focusMember)
         ))
         recentClosedDidChange?()
         return id

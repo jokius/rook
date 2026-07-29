@@ -9,11 +9,15 @@ import rookCore
 extension ControlServer {
     /// `workspace.new`: placement target is the window's frontmost store (or `args.window`'s); the name
     /// defaults to the auto-generated workspace name. `collapsed` seeds the workspace closed so a script can
-    /// fill it with `session.new --no-select` without it opening.
+    /// fill it with `session.new --no-select` without it opening — and, for the same reason, keeps it OUT of
+    /// the workspace focus set (`revealNewWorkspace: false`): a `--collapsed` create is by definition a quiet
+    /// background build, so widening a script's carefully marked set would contradict the flag. A PLAIN
+    /// `workspace.new` keeps the auto-reveal, matching the GUI's New Workspace button — a foreground create
+    /// must not land invisibly behind an applied filter.
     func createWorkspace(window: String?, name: String?, collapsed: Bool) -> ControlResponse {
         resolver.resolvePlacementStore(window) { store in
             let name = trimmed(name) ?? store.defaultWorkspaceName
-            let workspace = store.addWorkspace(name: name, collapsed: collapsed)
+            let workspace = store.addWorkspace(name: name, collapsed: collapsed, revealNewWorkspace: !collapsed)
             return ControlResponse(ok: true, result: ControlResult(id: workspace.id.uuidString))
         }
     }

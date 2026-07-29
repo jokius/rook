@@ -285,6 +285,7 @@ struct ControlProtocolTests {
             ControlRequest(cmd: .workspaceFocus, target: "active", args: ControlArgs(mode: "on")),
             ControlRequest(cmd: .workspaceFocus, target: "9f3c", args: ControlArgs(mode: "off")),
             ControlRequest(cmd: .workspaceFocus, target: "active", args: ControlArgs(mode: "toggle")),
+            ControlRequest(cmd: .workspaceFocus, target: "9f3c", args: ControlArgs(mode: "add")),
         ]
         for request in cases {
             #expect(try roundTrip(request) == request)
@@ -357,6 +358,12 @@ struct ControlProtocolTests {
         #expect(decoded.cmd == .workspaceFocus)
         #expect(decoded.args?.mode == "on")
         #expect(decoded.target == "active")
+
+        // `add` — the marking-only mode — travels as an ordinary `mode` token, no new field.
+        let addRaw = #"{"cmd":"workspace.focus","target":"9f3c","args":{"mode":"add"}}"#
+        let addDecoded = try JSONDecoder().decode(ControlRequest.self, from: Data(addRaw.utf8))
+        #expect(addDecoded.cmd == .workspaceFocus)
+        #expect(addDecoded.args?.mode == "add")
     }
 
     @Test func sessionBackgroundRoundTrips() throws {
@@ -930,6 +937,30 @@ struct ControlProtocolTests {
         #expect(decoded.result?.tree?.workspaces.first?.marked == true)
         #expect(decoded.result?.tree?.workspaces.first?.focused == nil)
         #expect(decoded.result?.tree?.workspaceFilter == false)
+    }
+
+    @Test func workspaceNodeRoundTripsAMultiMemberFocusSet() throws {
+        // the multi-workspace set on the wire: SEVERAL workspaces carry `marked` at once, and while the
+        // filter applies each of them also carries `focused` — the frozen invariant is
+        // `focused == marked && workspaceFilter`, which the third (unmarked) node pins from the other side.
+        let work = ControlWorkspaceNode(id: "w1", name: "work", active: true,
+                                        focused: true, marked: true, sessions: [])
+        let api = ControlWorkspaceNode(id: "w2", name: "api", active: false,
+                                       focused: true, marked: true, sessions: [])
+        let archive = ControlWorkspaceNode(id: "w3", name: "archive", active: false, sessions: [])
+        let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(
+            workspaces: [work, api, archive], workspaceFilter: true)))
+
+        let decoded = try roundTrip(response)
+
+        #expect(decoded == response)
+        let tree = try #require(decoded.result?.tree)
+        #expect(tree.workspaceFilter == true)
+        #expect(tree.workspaces.map(\.marked) == [true, true, nil])
+        for node in tree.workspaces {
+            #expect(node.focused == ((node.marked == true && tree.workspaceFilter == true) ? true : nil),
+                    "focused must stay the conjunction of marked and workspaceFilter for \(node.name)")
+        }
     }
 
     @Test func workspaceNodeOmitsMarkedWhenNil() throws {

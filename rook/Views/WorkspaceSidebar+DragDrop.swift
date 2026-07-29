@@ -150,14 +150,15 @@ extension WorkspaceSidebar.Coordinator {
 
     /// Resolves a Finder drop to existing directory URLs and a destination workspace. Dropping on a
     /// workspace row adds there; dropping on a session row adds to that session's workspace; dropping into
-    /// empty sidebar space uses the focused workspace when set, otherwise the current workspace.
+    /// empty sidebar space uses the SOLE focused workspace when there is one, otherwise the current
+    /// workspace — a set of 2+ (or no applied filter) names no single obvious target, so it falls through.
     private func resolveDirectoryDrop(from info: NSDraggingInfo, item: Any?) -> DirectoryDrop? {
         let resolved = directoryURLs(from: info)
         guard !resolved.urls.isEmpty,
               let workspaceID = SidebarDrop.resolveDirectoryWorkspace(
                   sidebarMode: store.sidebarMode,
                   rowWorkspaceID: rowWorkspaceID(for: item),
-                  focusedWorkspaceID: store.focusedWorkspaceID,
+                  fallbackWorkspaceID: store.soleFocusedWorkspaceID,
                   currentWorkspaceID: store.currentWorkspaceID)
         else { return nil }
         return DirectoryDrop(urls: resolved.urls, workspaceID: workspaceID,
@@ -281,22 +282,35 @@ extension WorkspaceSidebar.Coordinator {
     /// ignored): the slot is the count of workspace rows whose midpoint sits above the cursor, so the
     /// top half of a row drops before it and the bottom half after it. The index arithmetic (post-removal
     /// off-by-one, no-op detection) defers to the host-free `SidebarDrop.resolveWorkspace`.
+    ///
+    /// That slot counts RENDERED rows, which stop being `store.workspaces` indices the moment the focus
+    /// filter hides rows in between — a NON-CONTIGUOUS marked set — so it is remapped to the store's index
+    /// space by `SidebarDrop.workspaceInsertIndex` before any of the reorder math runs. Unreachable while
+    /// the visible set is the whole tree (there the mapping is the identity).
     private func resolveWorkspaceMove(from info: NSDraggingInfo, in outlineView: NSOutlineView)
         -> (workspaceID: UUID, dropChildIndex: Int, destination: Int)? {
         guard let workspaceID = draggedWorkspaceID(from: info),
               let sourceIndex = store.workspaces.firstIndex(where: { $0.id == workspaceID }) else { return nil }
         let point = outlineView.convert(info.draggingLocation, from: nil)
-        var insertIndex = 0
-        for (i, workspace) in store.workspaces.enumerated() {
+        var visibleIndices: [Int] = []
+        var slot = 0
+        for (index, workspace) in store.workspaces.enumerated() {
             guard let node = workspaceNode(forID: workspace.id) else { continue }
             let row = outlineView.row(forItem: node)
             guard row >= 0 else { continue }
+            visibleIndices.append(index)
             // the outline is flipped (y increases downward): a cursor below a row's midpoint lands after it.
-            if point.y > outlineView.rect(ofRow: row).midY { insertIndex = i + 1 }
+            if point.y > outlineView.rect(ofRow: row).midY { slot = visibleIndices.count }
         }
+        let insertIndex = SidebarDrop.workspaceInsertIndex(visibleIndices: visibleIndices, slot: slot)
         guard let move = SidebarDrop.resolveWorkspace(sourceIndex: sourceIndex, count: store.workspaces.count,
                                                       childIndex: insertIndex) else { return nil }
-        return (workspaceID, move.dropChildIndex, move.destination)
+        // the MOVE is store-space, but `dropChildIndex` only ever feeds `setDropItem`, which counts RENDERED
+        // children — so it maps back before it leaves. Both directions are needed: without the outbound one
+        // the move lands wrong, without this one the insertion line is drawn a row off from where it lands.
+        let highlight = SidebarDrop.workspaceHighlightSlot(visibleIndices: visibleIndices,
+                                                           insertIndex: move.dropChildIndex)
+        return (workspaceID, highlight, move.destination)
     }
 
     /// Reads the dragged workspace id from the pasteboard.

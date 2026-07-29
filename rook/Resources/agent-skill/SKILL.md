@@ -17,7 +17,7 @@ description: >
 when_to_use: >
   Trigger on: rook, rookctl, rook control socket, session.new, session.close, session.type,
   session.split, session.scratch, session.filetree, session.markdown, markdown preview, session.focus, session.resize, surface.zoom, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status, session.agent, resume agent conversation,
-  session.flag, session.seen, session.reveal, session.background, session.overlay, workspace.new, workspace.select, workspace.move, workspace.focus, workspace.filter, workspace focus filter, re-apply the workspace filter, workspace.root, workspace.collapse, workspace.expand, window.new, window.list,
+  session.flag, session.seen, session.reveal, session.background, session.overlay, workspace.new, workspace.select, workspace.move, workspace.focus, workspace.focus add, workspace focus set, add a workspace to the focus set, workspace.filter, workspace focus filter, re-apply the workspace filter, workspace.root, workspace.collapse, workspace.expand, window.new, window.list,
   window.select, window.resize, window.move, window.zoom, window.fullscreen, window.minimize, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, flagged, notify, font.inc, keymap.reload, keymap.list, config.reload,
   theme.set, theme.list, select theme, edit keymap, show an image, display an image inline, show-image,
   events, events.read, rookctl events, event subscription, subscribe to events, watch rook events,
@@ -109,7 +109,8 @@ sidebar is currently shown — the read side of the write-only `sidebar` command
 (`tree` or `flagged` — the read side of `sidebar mode`), `quickVisible` (whether the window's quick
 terminal is shown — the read side of the write-only `quick` command), and `workspaceFilter` (whether
 the sidebar's workspace focus filter currently applies — the read side of `workspace filter`, whose
-pinned-workspace half is each workspace node's `marked`). List windows with
+MEMBER half is each workspace node's `marked`, with the invariant
+`focused == marked && workspaceFilter`). List windows with
 `rookctl window list --json`; each window also reports `autoFollowMs`, `sidebarVisible`, `geometry`
 (the live frame `{x, y, width, height, display}` in the units `window move`/`window resize` take — the
 read side, so record it then restore the exact frame), `fullscreen`/`zoomed` (the read side of
@@ -137,7 +138,7 @@ you work. For any session-scoped command meant to act on *this* session — `ove
 `type`, `text`, `background`, `status`, `copy`, … — pass `--target "$ROOK_SESSION_ID"`. Omit it and
 you open overlays / type into whatever the user has selected, not your own session.
 
-## Command summary (73 commands)
+## Command summary (74 commands)
 
 Run `rookctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
 **examples.md**. (The count excludes `debug.appearance`, a UI-test-only seam with no `rookctl`
@@ -185,8 +186,9 @@ event ring instead of polling `tree`. The CLI is a poll loop over the one-shot `
 (it sleeps 250 ms only after an EMPTY page, so a burst drains at full speed) and prints one line per
 event: a human column layout, or one bare JSON object per line with `--json` (NDJSON — pipe it to
 `jq`). Kinds are `status` (an agent-status transition, with the same `status`/`pane`/`blink`/`color`
-values `session status` writes), `notify` (`title` + `body` — RESERVED, nothing emits it yet, so it
-currently yields nothing), `session.created`, `session.closed`, and
+values `session status` writes), `notify` (a notification accepted for a session — `title` + `body`,
+from the terminal's own OSC 9/777 as well as the `notify` command, and recorded even when banner display
+is off), `session.created`, `session.closed`, and
 `tree.changed` (a debounced per-window structural change). Starting with NO cursor subscribes FROM
 NOW — there is no history replay. The ring is bounded (4096 entries) and lives only for one app run,
 so a cursor that is stale, from a previous run, or ahead of the sequence FAILS loudly rather than
@@ -196,12 +198,20 @@ contract.
 **workspace** — `new [name] [--collapsed]` (`--collapsed` creates it already closed in the sidebar, so a
 script can fill it with `session new --no-select` without it popping open) ·
 `rename <name>` · `delete` · `select` · `move --to up|down|top|bottom` ·
-`focus [on|off|toggle]` (collapse the sidebar tree to a single workspace; read back which workspace is
-focused from the tree workspace node's `focused` flag, and which one is PINNED from its `marked` flag) ·
-`filter [on|off|toggle] [--window W]` (apply or lift that filter WITHOUT changing which workspace is
-pinned — the way back after an involuntary jump (idle auto-follow, attention nav, a notification reveal)
-switched it off; window-scoped, so it takes no `--target`; read back from the tree's top-level
-`workspaceFilter`) · `color <#rrggbb|clear>` (tint the workspace's
+`focus [on|off|toggle|add]` (edit the sidebar's focus SET — the workspaces the filter narrows the tree
+to. Each mode does two separable things, to the SET and to the filter FLAG: `on` marks this workspace
+ALONE (replacing the set) and APPLIES the filter; `add` marks it alongside the existing members and
+leaves the flag exactly as it was; `off` is the REMOVE mode — it unmarks this workspace, and the flag
+switches off only once the set empties; `toggle` (the default) replace-toggles, clearing everything when
+this workspace is the only marked one AND the filter applies, else behaving like `on`. There is no
+`remove` token (that is `off`) and no membership-toggle mode. Build a working set with N × `focus add`
+and apply it with ONE `filter on` — an `add` never applies the filter, so the whole tree stays on screen
+while you pick. Read membership back from the workspace node's `marked` and the EFFECTIVE focus from its
+`focused`) ·
+`filter [on|off|toggle] [--window W]` (apply or lift the filter WITHOUT changing the SET — the way back
+after an involuntary jump (idle auto-follow, attention nav, a notification reveal) switched it off;
+window-scoped, so it takes no `--target`; read back from the tree's top-level `workspaceFilter`) ·
+`color <#rrggbb|clear>` (tint the workspace's
 sidebar icon; persisted, read back from the tree workspace node's `color`) ·
 `icon <symbol|emoji|path|clear>` (set the workspace's sidebar icon — an SF Symbol name like `hammer.fill`,
 a single emoji, or a path to an svg/png/jpeg, which is copied into the state dir; read back from the tree
@@ -276,6 +286,13 @@ of `sidebar collapse`/`sidebar expand`, honoring `--window`; read back from the 
   `$CLAUDE_CONFIG_DIR`/`$CODEX_HOME` and `--pane` to `$ROOK_PANE` (`scratch` is rejected). `--clear`
   forgets it. A report is accepted only from the pane's OWN agent (a nested `claude -p` you spawn cannot
   overwrite it). Reads back on the tree node as `agentSession`/`splitAgentSession`.
+- `restore "<shell line>" | --none | --clear [--pane left|right] [--pane-id TOKEN]` — pin the command a
+  session's PANE re-runs on the NEXT launch, verbatim shell and sticky until cleared. It wins over the
+  pane's auto-captured foreground command; `--none` pins the pane to nothing (a plain shell), `--clear`
+  drops the override and goes back to auto-capture. It never touches the RUNNING session and still obeys
+  Settings ▸ General ▸ "Restore running commands on restart". Reads back on the tree node as
+  `restoreCommand`/`splitRestoreCommand`. Distinct from the app-global `restore clear` below, which wipes
+  every session's CAPTURED command instead.
 - `flag [on|off|toggle|clear]` — flag a session for the flagged working-set view (`clear` unflags all).
 - `seen [--target] [--window W]` — clear the session's unseen-notification badge WITHOUT changing the
   selection or focus (the focus-free counterpart to `notify`, which raises the badge). Idempotent — a

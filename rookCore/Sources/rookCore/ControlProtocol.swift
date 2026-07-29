@@ -131,7 +131,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// Mode for `session.split` / `quick` / `surface.zoom` (`on|off|toggle`,
     /// `show|hide|toggle` for quick/surface zoom),
     /// `session.flag` (`on|off|toggle|clear`), `sidebar.mode` (`tree|flagged|toggle`),
-    /// `workspace.focus` (`on|off|toggle`), `workspace.filter` (`on|off|toggle`),
+    /// `workspace.focus` (`on|off|toggle|add`), `workspace.filter` (`on|off|toggle`),
     /// `session.markdown` (`open|close|toggle`),
     /// `window.minimize` (`on|off|toggle`),
     /// `session.background` (`image|text|color|clear`),
@@ -620,27 +620,45 @@ public struct ControlWorkspaceNode: Codable, Sendable, Equatable {
     public let id: String
     public let name: String
     public let active: Bool
-    /// Whether this workspace is the one the sidebar tree is FOCUSED (collapsed) to, or nil when it is not
-    /// the focused one / no workspace is focused (omitted from the JSON). Distinct from `active` (the
-    /// SELECTED workspace): focus collapses the sidebar to a single workspace. The read side of the
-    /// write-only `workspace.focus` — so a script can record which workspace is focused and restore it.
+    /// Whether the sidebar tree is currently FILTERED and this workspace is one of the workspaces it is
+    /// filtered to — nil otherwise (omitted from the JSON). Distinct from `active` (the SELECTED
+    /// workspace): the filter hides every workspace outside the marked set. The read side of the write-only
+    /// `workspace.focus`, so a script can record which workspaces the tree is collapsed to and restore it.
     ///
     /// EFFECTIVE focus, not membership: it goes nil the moment the filter stops applying, even though the
     /// workspace stays MARKED (see `marked`). That meaning is deliberately frozen — scripts read `focused`
-    /// as "the tree is collapsed to this workspace", so widening it to membership would silently change
-    /// what every existing reader sees.
+    /// as "the tree is collapsed to this workspace", so widening it to membership when the single focused
+    /// workspace became a SET would have silently changed what every existing reader sees. The membership
+    /// half is the new `marked` field instead, and the invariant is `focused == marked && workspaceFilter`.
     public let focused: Bool?
-    /// Whether this workspace is the one the sidebar focus filter is PINNED to, reported independently of
-    /// whether the filter currently applies — nil when it is not the pinned one (omitted from the JSON).
-    /// The pair to read with `tree.workspaceFilter`: `marked` says WHERE the filter would land,
-    /// `workspaceFilter` says WHETHER it lands, and `focused` is exactly their conjunction.
+    /// Whether this workspace is a MEMBER of the sidebar's focus set — the workspaces the filter shows —
+    /// reported independently of whether the filter currently applies; nil when it is not a member
+    /// (omitted from the JSON). The pair to read with `tree.workspaceFilter`: `marked` says WHERE the
+    /// filter lands, `workspaceFilter` says WHETHER it lands, and `focused` is exactly their conjunction.
     ///
     /// This exists because an INVOLUNTARY jump across the tree (idle auto-follow, attention nav, a
-    /// notification reveal) switches the filter off but KEEPS the mark, so `marked: true` with no `focused`
-    /// is the state `workspace.filter on` re-applies; without this field "pinned but not filtering" and
-    /// "nothing pinned at all" would look identical from outside, and a script could not tell whether
-    /// `workspace.filter on` has anywhere to go. An EXPLICIT `workspace.focus … off` forgets the mark, so
-    /// this then goes nil too.
+    /// notification reveal) switches the filter off but KEEPS the set, so `marked: true` with no `focused`
+    /// is the state `workspace.filter on` re-applies; without this field "marked but not filtering" and
+    /// "nothing marked at all" would look identical from outside, and a script could not tell whether
+    /// `workspace.filter on` has anywhere to go. It is also what makes a set buildable member by member:
+    /// `workspace.focus add` marks without enabling, so each new member is read back here while the whole
+    /// tree is still on screen. An EXPLICIT `workspace.focus … off` unmarks, so this then goes nil too.
+    ///
+    /// A workspace ROW is VISIBLE in the sidebar iff
+    /// `tree.sidebarVisible && tree.sidebarMode == "tree" && (!tree.workspaceFilter || marked)` — every
+    /// term is on the same `tree` response, so a script evaluates it without a second call. The states,
+    /// enumerated: `sidebarVisible == false` renders no sidebar at all; `sidebarMode == "flagged"` renders
+    /// a FLAT flagged-session list with NO workspace rows, whatever the filter and the membership say;
+    /// `"tree"` with the filter OFF renders EVERY workspace regardless of membership; `"tree"` with the
+    /// filter ON renders only the members. Neither shorter form works. `focused` alone (equivalently
+    /// `marked && workspaceFilter`) claims nothing is visible whenever the filter is off — where the whole
+    /// tree is on screen — and a script correcting for that reaches for `workspace.focus on`, which
+    /// REPLACES the set with one workspace rather than re-applying the one it had. A bare
+    /// `!workspaceFilter || marked` claims rows are visible in `flagged` mode and behind a hidden sidebar,
+    /// where no workspace row renders at all. The filter-ON term is exact rather than approximate, because
+    /// `workspaceFilter == true` with an empty set is unrepresentable (enabling an empty set is refused,
+    /// and restore prunes stale ids then disables when the set comes back empty), so an applied filter
+    /// always has at least one visible member.
     public let marked: Bool?
     /// Whether this workspace is COLLAPSED in the sidebar tree (`true`), or nil when expanded — the
     /// default — so an all-expanded tree omits the field (matching the persisted `WorkspaceSnapshot.collapsed`).
@@ -718,13 +736,19 @@ public struct ControlTree: Codable, Sendable, Equatable {
     /// cached copy stale — read the live tree copy instead. nil in a host-produced tree with no app closure.
     public let quickVisible: Bool?
     /// Whether the projected window's workspace focus filter currently APPLIES — the flag half of the focus
-    /// state, whose pinned-workspace half is each workspace node's `marked`. The read side of the write-only
+    /// state, whose member half is each workspace node's `marked`. The read side of the write-only
     /// `workspace.filter` command, so a script can make its toggle idempotent or record-then-restore the
     /// filter around a peek at the whole tree. LIVE, built fresh from the window's store per request.
     ///
-    /// `tree`-only (not on `window.list`), like `sidebarMode`: an involuntary jump across the tree flips it
-    /// off with no command involved, so a cached copy would go stale. nil in a host-produced tree that does
-    /// not project a window.
+    /// It is ONE TERM of the row-visibility predicate, not the whole of it: a workspace row renders iff
+    /// `sidebarVisible && sidebarMode == "tree" && (!workspaceFilter || marked)` — see `marked` for the
+    /// enumerated states, including `flagged` mode, where no workspace row renders whatever this says.
+    /// `true` here always means at least one workspace is marked: enabling an empty set is refused, so the
+    /// filter can never be applied to nothing.
+    ///
+    /// `tree`-only (not on `window.list`), like `sidebarMode`: the bottom-bar toggle, the row menu and an
+    /// involuntary jump across the tree all flip it with no command involved, so a cached copy would go
+    /// stale. nil in a host-produced tree that does not project a window.
     public let workspaceFilter: Bool?
     /// The control id of the surface terminal zoom currently fills the projected window with —
     /// `surface:<session-id>:<kind>` for a session surface, `quick` for the quick terminal — or

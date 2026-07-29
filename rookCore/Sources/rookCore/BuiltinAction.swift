@@ -18,6 +18,7 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
     case toggleSidebar = "toggle_sidebar", selectTheme = "select_theme", toggleFullscreen = "toggle_fullscreen"
     case toggleFileTree = "toggle_file_tree"
     case toggleFlaggedView = "toggle_flagged_view", toggleFlag = "toggle_flag", focusWorkspace = "focus_workspace"
+    case toggleWorkspaceFilter = "toggle_workspace_filter"
     case focusLeftPane = "focus_left_pane", focusRightPane = "focus_right_pane"
     case previousSession = "previous_session", nextSession = "next_session"
     case previousAttentionSession = "previous_attention_session", nextAttentionSession = "next_attention_session"
@@ -29,8 +30,8 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
     /// The shipped default chord for this action, or `nil` when it has no default key today.
     ///
     /// `nil` covers only the keyless actions (`rename_*`/`delete_*`/`duplicate_session`/`clear_status`/
-    /// `first_session`/`last_session`/`select_theme`/`toggle_flagged_view`/`focus_workspace`), which gain
-    /// a key only when the user `map`s one. Every action that ships with a key returns it here, including
+    /// `first_session`/`last_session`/`select_theme`/`toggle_flagged_view`/`focus_workspace`/
+    /// `toggle_workspace_filter`), which gain a key only when the user `map`s one. Every action that ships with a key returns it here, including
     /// the six arrow-bound ones — the arrows are part of the chord grammar, so their defaults round-trip
     /// through `keymap.conf` like any other and the menu needs no hardcoded fallback.
     public var defaultChord: Chord? {
@@ -66,7 +67,8 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
         case .previousAttentionSession: return Chord(mods: [.control, .option], key: "up")
         case .nextAttentionSession: return Chord(mods: [.control, .option], key: "down")
         case .renameWindow, .deleteWindow, .renameWorkspace, .deleteWorkspace, .renameSession, .duplicateSession,
-             .clearStatus, .firstSession, .lastSession, .selectTheme, .toggleFlaggedView, .focusWorkspace:
+             .clearStatus, .firstSession, .lastSession, .selectTheme, .toggleFlaggedView, .focusWorkspace,
+             .toggleWorkspaceFilter:
             return nil
         }
     }

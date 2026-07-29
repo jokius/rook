@@ -82,8 +82,23 @@ struct CommandsTests {
         #expect(try request(["workspace", "focus", "on", "--target", "9f3c"]) == expected)
     }
 
+    @Test func workspaceFocusAcceptsEveryModeIncludingAdd() throws {
+        // driven off `allCases`, so a mode the enum gains without a CLI story fails here rather than at a
+        // user's shell. `add` is the marking-only one — it rides the same positional as the other three.
+        for mode in ControlWorkspaceFocusMode.allCases {
+            let expected = ControlRequest(cmd: .workspaceFocus, target: "active",
+                                          args: ControlArgs(mode: mode.rawValue))
+            #expect(try request(["workspace", "focus", mode.rawValue]) == expected)
+        }
+        let targeted = ControlRequest(cmd: .workspaceFocus, target: "9f3c", args: ControlArgs(mode: "add"))
+        #expect(try request(["workspace", "focus", "add", "--target", "9f3c"]) == targeted)
+    }
+
     @Test func workspaceFocusRejectsBadMode() {
-        #expect(throws: (any Error).self) { try Rookctl.parseAsRoot(["workspace", "focus", "sideways"]) }
+        // the rejection is DERIVED from the enum, so assert the derived text: a hand-copied literal would
+        // keep passing after a mode is added while the CLI's actual message had moved on.
+        #expect(validationMessage(["workspace", "focus", "sideways"])
+            == "mode must be one of: \(ControlWorkspaceFocusMode.validNamesPhrase)")
     }
 
     @Test func workspaceFilterDefaultsToggleAndCarriesNoTarget() throws {

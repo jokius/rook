@@ -94,10 +94,13 @@ paths:
   `session.markdown`/`markdownPath` (the open file IS the panel's visibility, so one field covers both),
   `session.focus`/`splitFocused`, `session.resize`/`splitRatio`,
   `session.overlay.resize`/`overlaySizePercent`, `sidebar`/`sidebarVisible` (top-level),
-  `sidebar.mode`/`sidebarMode`, `workspace.focus`/`focused` (workspace node),
-  `workspace.filter`/`workspaceFilter` (top-level, `tree`-only) + `marked` (workspace node) — the two
-  ADDITIVE halves of the focus state, see the `workspace.focus`/`workspace.filter` section for why the
-  meaning of `focused` was NOT widened instead,
+  `sidebar.mode`/`sidebarMode`, `workspace.focus`/`marked` + `focused` (workspace node),
+  `workspace.filter`/`workspaceFilter` (top-level, `tree`-only) — THREE fields for the focus state, not
+  two, because the state itself is two independent bits (which workspaces are marked, and whether the mark
+  is applied): `marked` is the membership `workspace.focus` writes, `workspaceFilter` the flag
+  `workspace.filter` writes, and `focused` their conjunction, kept as a field of its own so a
+  pre-set-era script reading it still means what it used to; see the `workspace.focus`/`workspace.filter`
+  section for why the meaning of `focused` was NOT widened instead,
   `workspace.collapse`+`workspace.expand`+`workspace.new --collapsed`/`collapsed` (workspace node),
   `quick`/`quickVisible` (top-level),
   `font.*`/`fontSize`+`splitFontSize`+`scratchFontSize` (the per-pane LIVE font size — the split/scratch
@@ -322,10 +325,12 @@ paths:
   rules, then remaining targets resolve inside that same store so one command never mutates multiple windows.
   The top-level `target` also carries the first explicit batch target so a new CLI talking to a still-running
   pre-batch server degrades to a named session instead of accidentally acting on `active`.
-- **Command catalog (73 commands):**
+- **Command catalog (74 commands):**
   The count is every `Command` case MINUS `debug.appearance` (the UI-test-only seam below, which has no
   `rookctl` subcommand and is not in the skill) — `awk '/^public enum Command/,/^}/' rookCore/Sources/rookCore/ControlProtocol.swift | grep -cE '^\s+case '`
-  minus one (74 cases → 73).
+  minus one (75 cases → 74).
+  Re-RUN that command rather than trusting the number in front of you: it went stale once already, when
+  `session.restore` landed and every count surface kept saying 73.
   The same number must appear in `README.md`, `site/docs.html`, `site/commands.html` (four places there:
   the meta description, the two social-card descriptions, and the page intro), and the bundled
   `agent-skill/SKILL.md`;
@@ -334,7 +339,7 @@ paths:
   - `events.read` — its own family, NOT part of `tree`: the ring is app-wide and the command is a
     cursor-paged read of what HAPPENED, while `tree` is a snapshot of what IS
   - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.filter`/`workspace.color`/`workspace.icon`/`workspace.root`/`workspace.collapse`/`workspace.expand`
-  - `session.new`/`session.close`/`session.select`/`session.rename`/`session.duplicate`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.agent`/`session.flag`/`session.seen`/`session.background`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
+  - `session.new`/`session.close`/`session.select`/`session.rename`/`session.duplicate`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.agent`/`session.flag`/`session.seen`/`session.background`/`session.restore`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
   - `surface.zoom`
   - `dashboard`
   - `quick`/`quick.type`/`quick.text`
@@ -1527,70 +1532,147 @@ paths:
   (3) the `workspace collapse`/`workspace expand` subcommands + `workspace new --collapsed` in `rookctlKit`,
   (4) round-trip + omit-when-nil in `ControlProtocolTests` + dispatcher routing in `ControlDispatcherTests`
   + `AppStoreOrganizationTests` (the mutator + tree read-back) + CLI mapping in `CommandsTests`.
-  `workspace.focus` (target = workspace) collapses the sidebar tree to a single workspace — `args.mode`
-  is `on`|`off`|`toggle` (`off` unfocuses only when the target is the currently focused one,
-  `toggle` flips; delta-computed against `AppStore.focusedWorkspaceID` so it's idempotent,
-  unknown mode = error), drives `focusWorkspace` → `AppStore.setFocusedWorkspace`,
-  honors the global `--window` selector, and returns the workspace id.
-  Per-window + persisted, orthogonal to `sidebar.mode` (the flat flagged list ignores focus);
-  selecting a session outside the focused workspace stops the filter WITHOUT forgetting the workspace
-  (see the Sidebar section).
-  It is the control half of the workspace-row Focus/Unfocus + the `focus-pill` ✕ + `BuiltinAction.focusWorkspace`/`focusActiveWorkspace`
-  + the Clear Focus menu/palette item.
-  Its READ side is `ControlWorkspaceNode.focused` on each `tree` workspace node (`workspace.id == focusedWorkspaceID ? true : nil`
-  in the tree builder — DISTINCT from `active`, the selected workspace), so a script can record which
-  workspace is focused and restore it; omitted on the non-focused ones and absent when nothing is focused.
-  Four-point keep-in-sync audit: (1) `case workspaceFocus = "workspace.focus"` in `ControlProtocol.swift`
-  (reuses `ControlArgs.mode`), (2) the `.workspaceFocus` dispatch arm (`focusWorkspace`) in `ControlServer`,
-  (3) the `workspace focus on|off|toggle` subcommand (`Focus`) in `rookctlKit`,
-  (4) round-trip in `ControlProtocolTests` + the e2e `testWorkspaceFocusHidesOtherWorkspaces` in `ControlSidebarStatusUITests`
-  plus the `FocusWorkspaceUITests` XCUITest.
-  **`workspace.filter on|off|toggle` is the RE-APPLY leg of that focus, and the only way to switch the
-  filter back on.**
-  The focus state is two bits behind the same public `AppStore.focusedWorkspaceID`: WHICH workspace is
-  marked (`markedWorkspaceID`) and WHETHER the filter applies (`focusFilterEnabled`) — see the Sidebar
-  rule.
+  `workspace.focus` (target = workspace) marks or unmarks ONE workspace in the sidebar's focus SET — the
+  working set the tree is filtered to when the filter applies.
+  It honors the global `--window` selector and returns the workspace id, and the state is per-window +
+  persisted, orthogonal to `sidebar.mode` (the flat flagged list ignores focus entirely).
+  `args.mode` is `on`|`off`|`toggle`|`add`, and each mode is stated on BOTH axes — the SET and the FLAG —
+  because the two move independently and a mode that says only "focuses it" is unusable:
+  - `on` REPLACES the set with the target and APPLIES the filter: the single-workspace zoom.
+  - `off` REMOVES the target from the set, leaving every other member alone; the filter switches off as the
+    set empties.
+    **`off` IS the remove mode** — there is deliberately no separate `remove` token, because once the focus
+    is a set, "unfocus this workspace" and "drop it from the set" are the same act, and two tokens for it
+    would just be two ways to spell the same mutation.
+  - `toggle` REPLACE-toggles: clears everything when the target is the SOLE marked workspace and the filter
+    applies, else replaces the set with the target and applies.
+    **There is deliberately NO membership-toggle mode.**
+    A mode that flipped membership would compete with this one for the same obvious token, and nothing needs
+    it: the sidebar row's Add/Remove item computes its own direction from the `marked` it just read and
+    sends `add` or `off`, which is what any script should do too.
+  - `add` INSERTS the target alongside the existing members and leaves the FLAG exactly as it was.
+    **An `add` NEVER enables the filter.**
+    An add that applied it would collapse the tree onto the first member and hide the very rows the next add
+    needs, so a set is instead built row by row with the whole tree on screen and applied ONCE.
+  **The mode is parsed and rejected in the DISPATCHER, which pays off the last of the dispatcher-first
+  debt.**
+  `workspace.focus` was the final mode-bearing command still validating its mode app-side — in violation of
+  this file's own dispatcher-first rule — and now parses to the typed `ControlWorkspaceFocusMode` before the
+  host runs, so an unknown mode can never half-apply.
+  That is its OWN vocabulary rather than the shared `ControlToggleMode` because `add` has no answer for that
+  type's whole contract, `desiredValue(current:) -> Bool` — `add` is not a boolean at all.
+  The rejection is `invalid focus mode: <raw> (on|off|toggle|add)`, whose accepted list is
+  `ControlWorkspaceFocusMode.validNamesList` (derived from `allCases`, the `StatusShape.validNamesList`
+  precedent), so adding a mode cannot leave the message stale.
+  The `ControlActions.focusWorkspace` requirement takes the TYPED mode, and the whole mode-to-mutator
+  mapping is the host-free `AppStore.applyFocusMode(_:to:)` — so the app-side arm is target resolution and
+  nothing else, and the GUI's replace-toggle and the wire's `toggle` are literally the same function
+  (`AppStore.toggleFocusedWorkspace`) and cannot come to mean two things.
+  Every mutator underneath is delta-guarded, so all four modes are idempotent.
+  **`workspace.focus add` and `workspace.filter` ship as a PAIR by design.**
+  Because an `add` never enables, a set built with repeated `add` has NO way to be applied except
+  `workspace.filter on`: the additive builder and the applier are two halves of one gesture.
+  Shipping `add` alone would leave a set applicable only through `on`, which throws the set away first.
+  GUI half: the workspace row's context menu — Focus/Unfocus (the replacing `toggle`) plus the additive
+  Add to Focus / Remove from Focus, which is where the absent membership-toggle mode goes, since the row
+  knows its own membership and sends `add` or `off` — View ▸ Focus/Unfocus Workspace
+  (`BuiltinAction.focusWorkspace`) + View ▸ Add Workspace to Focus + View ▸ Clear Focus, and the ⌃⇧P
+  palette's "Focus Workspace"/"Add Workspace to Focus"/"Clear Focus".
+  CLI: `rookctl workspace focus [on|off|toggle|add] [--target W]` (mode defaults to `toggle`), whose
+  abstract, per-mode argument help, and local `validate()` rejection ALL derive from
+  `ControlWorkspaceFocusMode.allCases` (`validNamesList`/`helpPhrase`/`validNamesPhrase`) — so a new mode
+  reaches every one of them and the CLI cannot drift from the dispatcher's parse.
+  **A quiet BACKGROUND create must not widen a script's set.**
+  `AppStore.addWorkspace`/`ensureWorkspace` take `revealNewWorkspace` (default true): a plain
+  `workspace.new` JOINS the marked set while the filter applies, matching the GUI's New Workspace button —
+  the user asked for that workspace, so hiding it behind the filter would be absurd.
+  `workspace.new --collapsed` and `session.new --no-select --create-workspace` pass
+  `revealNewWorkspace: false` instead, because both are by definition quiet creates (a collapsed workspace
+  is being built to be filled; a `--no-select` session deliberately leaves the selection alone), and
+  widening the working set behind the caller's back is the opposite of what either asked for.
+  **`workspace.filter on|off|toggle` is the APPLY leg of that focus, and the only way to switch the filter
+  back on.**
+  The focus state is two independent fields on `AppStore`: WHICH workspaces are marked
+  (`focusedWorkspaceIDs`, a `Set<UUID>`) and WHETHER that set filters the tree (`focusEnabled`) — see the
+  Sidebar rule.
   An INVOLUNTARY jump across the tree (idle auto-follow to a blocked session, attention nav, a
-  notification reveal, the dashboard, the recent-sessions popover) drops only the FLAG and keeps the mark,
-  which left the focus unrecoverable until this command existed.
+  notification reveal, the dashboard, the recent-sessions popover) drops only the FLAG and keeps the SET,
+  which is exactly the state this command re-applies; before it existed, a hand-curated focus was
+  unrecoverable.
   It is WINDOW-scoped, so unlike every other `workspace.*` command it takes NO `--target`: the global
   `--window` selector picks the store like `sidebar.expand`/`sidebar.collapse` (frontmost by default,
   `no open window` when there is none), and the CLI shape is `rookctl workspace filter [on|off|toggle]
   [--window W]` (mode defaults to `toggle`).
   The mode parses through the shared `ControlToggleMode` in the dispatcher (`invalid workspace filter
   mode: <raw>`); the on/off/toggle semantics are host-free in `AppStore.applyWorkspaceFilter` →
-  `setFocusFilterEnabled`, whose delta guard makes all three modes idempotent, so the app-side arm
+  `setFocusEnabled`, whose delta guard makes all three modes idempotent, so the app-side arm
   (`ControlServer.setWorkspaceFilter`) is pure store resolution.
-  Enabling with NOTHING marked is a clean no-op — there is nothing to filter to — and so is enabling on a
-  mark whose workspace has been DELETED: that would switch the filter on while filtering nothing, which a
-  script reads as "focus restored" while the whole tree is on screen.
+  Enabling with NOTHING marked is a clean no-op — there is nothing to filter to, and switching the flag on
+  over an empty set would report "focus restored" while the whole tree is on screen.
+  A marked-but-DELETED workspace can no longer reach that state at all: removing a workspace drops it from
+  the set (`dropFocusMember`) and a restore prunes ids absent from the rebuilt tree, so `focusEnabled` with
+  an empty set is unrepresentable rather than merely refused.
   Disabling is never gated: `off` must always be able to undo.
-  **Read-back is two ADDITIVE fields, a DELIBERATE divergence from upstream (agterm `6722755a`).**
-  `ControlWorkspaceNode.marked` says whether a workspace is the pinned one regardless of the flag, and the
-  `tree` top-level `workspaceFilter` says whether the filter currently applies (`tree`-only like
-  `sidebarMode`, since an involuntary jump flips it with no command involved and a `window.list` copy would
-  go stale), with the invariant **`focused == marked && workspaceFilter`**.
+  GUI half: the bottom-bar `focus-filter-toggle` (accessibility identifier), View ▸ Toggle Workspace Filter,
+  the ⌃⇧P palette's "Toggle Workspace Filter", and the keyless `BuiltinAction.toggleWorkspaceFilter`.
+  That toggle REPLACED the old bottom-bar focus PILL, and the replacement is the point rather than a
+  restyle: the pill rendered the EFFECTIVE focus, so an involuntary jump that dropped the flag took the way
+  back with it, while the toggle is both the indicator and the control and is the only affordance that still
+  works while the filter is OFF.
+  It is disabled with nothing marked (matching the store's refusal to enable an empty set), and since an SF
+  Symbol is not accessibility-observable its `accessibilityValue` (`on`/`off`) is the only accessible read of
+  whether the filter applies.
+  **Read-back is THREE fields, a DELIBERATE divergence from upstream (agterm `6722755a`).**
+  Per workspace node, `ControlWorkspaceNode.focused` is the EFFECTIVE focus and `marked` is MEMBERSHIP;
+  at the `tree` top level, `workspaceFilter` is the flag (`tree`-only like `sidebarMode`, since an
+  involuntary jump flips it with no command involved and a cached `window.list` copy would go stale).
+  The invariant is **`focused == marked && workspaceFilter`**.
   Upstream instead REDEFINED `focused` itself, from "the tree is collapsed to this workspace" to mere
-  membership.
+  membership, and has no `marked` field.
   Here that would be a SILENT breaking change: a script doing record-then-restore through `focused` would
   start reading `true` while the tree is NOT collapsed and "restore" a focus that was never applied — a
   regression that never fails, it just does the wrong thing in code we cannot see.
-  So `focused` keeps exactly its old meaning (the EFFECTIVE focus, nil the moment the filter stops
-  applying) and the new state is read through the new fields.
-  Without `marked`, "pinned but not filtering" and "nothing pinned at all" would look identical from
-  outside and a script could not tell whether `workspace.filter on` has anywhere to go.
-  An EXPLICIT unfocus (`workspace.focus … off`, the row menu, the palette, the pill ✕) still forgets the
-  mark, so `marked` goes nil too.
-  Four-point keep-in-sync audit: (1) `case workspaceFilter = "workspace.filter"` in `ControlProtocol.swift`
-  (reuses `ControlArgs.mode`) + `ControlWorkspaceNode.marked` + `ControlTree.workspaceFilter` +
-  `AppStore.applyWorkspaceFilter`/`setFocusFilterEnabled` in `rookCore`, (2) the `.workspaceFilter`
-  dispatch arm → `ControlActions.setWorkspaceFilter` in `ControlServer+WorkspaceCommands.swift`,
-  (3) the `workspace filter [on|off|toggle]` subcommand (`Filter`, `ClientOptions` only — no `--target`)
-  in `rookctlKit`, (4) round-trip + omit-when-nil in `ControlProtocolTests` + dispatcher routing/mode
-  rejection in `ControlDispatcherTests` + `AppStoreOrganizationTests` (the mutator, the deleted-mark
-  refusal, and the tree read-back) + CLI mapping in `CommandsTests`.
-  The upstream commit's other legs — a multi-workspace focus SET, its `add` mode, the UI toggle and the
-  snapshot migration — were deliberately left out.
+  So `focused` keeps exactly its old meaning (nil the moment the filter stops applying, even though the
+  workspace stays marked) and the set state is read through the two new fields.
+  Without `marked`, "marked but not filtering" and "nothing marked at all" would look identical from
+  outside, and a script could not tell whether `workspace.filter on` has anywhere to go — nor watch a set
+  being built, since `workspace.focus add` marks without enabling and `marked` is the only field that moves.
+  An EXPLICIT `workspace.focus … off` (or the row menu's Remove from Focus) unmarks, so `marked` goes nil
+  too.
+  **The row-visibility contract, in FULL — a workspace ROW is visible iff**
+  `tree.sidebarVisible && tree.sidebarMode == "tree" && (!tree.workspaceFilter || marked)`.
+  Every term rides the same `tree` response, so a script evaluates it without a second call.
+  The states, enumerated: `sidebarVisible == false` renders no sidebar at all; `sidebarMode == "flagged"`
+  renders a FLAT flagged-session list with NO workspace rows, whatever the filter and the membership say;
+  `"tree"` with the filter OFF renders EVERY workspace regardless of membership; `"tree"` with the filter ON
+  renders only the members.
+  **Neither shorter form is safe.**
+  `focused` alone (equivalently `marked && workspaceFilter`) claims nothing is visible whenever the filter is
+  off — precisely when the whole tree is on screen — and a script correcting for that reaches for
+  `workspace.focus on`, which REPLACES the set with one workspace instead of re-applying the set it had.
+  A bare `!workspaceFilter || marked` claims rows are visible in `flagged` mode and behind a hidden sidebar,
+  where no workspace row renders at all.
+  The filter-ON term is EXACT rather than approximate, because `workspaceFilter == true` with an empty set is
+  unrepresentable (see the invariant above), so an applied filter always has at least one visible member.
+  Four-point keep-in-sync audit for the pair: (1) `case workspaceFocus`/`case workspaceFilter` in
+  `ControlProtocol.swift` (both reuse `ControlArgs.mode`) + `ControlWorkspaceFocusMode` in
+  `ControlModes.swift` + `ControlWorkspaceNode.focused`/`marked` + `ControlTree.workspaceFilter` +
+  `AppStore.applyFocusMode`/`applyWorkspaceFilter` and the `AppStore+Focus.swift` mutators in `rookCore`,
+  (2) the `.workspaceFocus`/`.workspaceFilter` dispatch arms (mode parse + rejection) →
+  `ControlActions.focusWorkspace(_:window:mode:)`/`setWorkspaceFilter(window:mode:)`, app-side in
+  `ControlServer+SessionActions.swift`/`ControlServer+WorkspaceCommands.swift`,
+  (3) the `workspace focus [on|off|toggle|add]` (`Focus`, `TargetOptions`) and
+  `workspace filter [on|off|toggle]` (`Filter`, `ClientOptions` only — no `--target`) subcommands in
+  `rookctlKit`, (4) round-trip + omit-when-nil in `ControlProtocolTests` + dispatcher routing/mode rejection
+  in `ControlDispatcherTests` + `AppStoreOrganizationTests`/`AppStoreFocusTests` (the mutators, the
+  enable-empty refusal, the restore prune, and the tree read-back) + CLI mapping in `CommandsTests` + the
+  e2e `testWorkspaceFocusHidesOtherWorkspaces` in `ControlSidebarStatusUITests` plus `FocusWorkspaceUITests`.
+  **The set landed as rook's OWN design, not as a take of upstream's.**
+  Upstream (agterm `6722755a` and its follow-ups) shipped the same four legs — a multi-workspace set, an
+  `add` mode, a UI toggle, and a snapshot migration — but redefines `focused` as membership, which we refuse
+  for the reason above, so a cherry-pick was BANNED and every leg was re-derived against our three-field
+  contract.
+  Read the divergence as load-bearing when porting anything else from that series.
   `workspace.color` (target = workspace) tints that workspace's sidebar ICON — the positional arg is a
   `#rrggbb` hex or the literal `clear` (which, like an omitted color, resets it to the theme default),
   REUSING `ControlArgs.color` (no new arg) and validated by the shared `WatermarkConfig.isValidColorHex`

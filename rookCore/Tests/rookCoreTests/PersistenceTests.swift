@@ -236,26 +236,59 @@ final class PersistenceTests {
         #expect(app.sidebarMode == .tree)
     }
 
-    @Test func focusedWorkspacePersistsAndRestores() {
+    // MARK: - the focus SET and the three migration generations
+
+    @Test func focusSetPersistsAndRestores() throws {
         let app = AppStore(persistence: store)
         let work = app.addWorkspace(name: "work")
-        #expect(store.load().focusedWorkspaceID == nil) // default unfocused
+        // nothing marked: BOTH keys are omitted, so the file stays byte-identical to one written before
+        // the set existed.
+        #expect(store.load().focusedWorkspaceIDs == nil)
+        #expect(store.load().focusEnabled == nil)
+        let bare = try String(contentsOf: fileURL, encoding: .utf8)
+        #expect(!bare.contains("focusedWorkspaceIDs"))
+        #expect(!bare.contains("focusEnabled"))
+
         app.setFocusedWorkspace(work.id)
-        #expect(store.load().focusedWorkspaceID == work.id)
-        #expect(store.load().markedWorkspaceID == work.id) // both bits land; the legacy key stays effective
+        #expect(store.load().focusedWorkspaceIDs == [work.id])
+        #expect(store.load().focusEnabled == true) // the replacing Focus persists BOTH the member and the flag
 
         let restored = AppStore(persistence: store)
         restored.restore(from: store.load())
-        #expect(restored.focusedWorkspaceID == work.id)
-        #expect(restored.markedWorkspaceID == work.id)
-        #expect(restored.focusFilterEnabled)
+        #expect(restored.focusedWorkspaceIDs == [work.id])
+        #expect(restored.focusEnabled)
+        #expect(restored.visibleWorkspaces.map(\.id) == [work.id])
 
-        app.setFocusedWorkspace(nil) // an EXPLICIT unfocus forgets the mark, on disk too
-        #expect(store.load().markedWorkspaceID == nil)
+        app.clearFocus() // an EXPLICIT clear forgets the members, on disk too
+        #expect(store.load().focusedWorkspaceIDs == nil)
+        #expect(store.load().focusEnabled == nil)
         let restoredCleared = AppStore(persistence: store)
         restoredCleared.restore(from: store.load())
-        #expect(restoredCleared.focusedWorkspaceID == nil)
-        #expect(restoredCleared.markedWorkspaceID == nil)
+        #expect(restoredCleared.focusedWorkspaceIDs.isEmpty)
+        #expect(!restoredCleared.focusEnabled)
+    }
+
+    @Test func aMultiMemberFocusSetPersistsInTreeOrderAndSurvivesARoundTrip() {
+        let app = AppStore(persistence: store)
+        let a = app.addWorkspace(name: "a")
+        let b = app.addWorkspace(name: "b")
+        let c = app.addWorkspace(name: "c")
+        app.setFocusMembership(c.id, member: true) // marked LAST-first: the file must not follow that order…
+        app.setFocusMembership(a.id, member: true)
+        #expect(!app.focusEnabled) // …and marking alone never applies the filter
+        #expect(store.load().focusedWorkspaceIDs == [a.id, c.id]) // …nor the Set's hash order — TREE order
+        #expect(store.load().focusEnabled == nil)
+
+        app.setFocusEnabled(true)
+        #expect(store.load().focusEnabled == true)
+
+        let restored = AppStore(persistence: store)
+        restored.restore(from: store.load())
+        #expect(restored.focusedWorkspaceIDs == [a.id, c.id])
+        #expect(restored.focusEnabled)
+        #expect(restored.visibleWorkspaces.map(\.id) == [a.id, c.id])
+        #expect(restored.soleFocusedWorkspaceID == nil) // two members zoom to nothing in particular
+        _ = b
     }
 
     @Test func markSurvivesAnInvoluntaryJumpAcrossARelaunch() {
@@ -265,41 +298,147 @@ final class PersistenceTests {
         _ = app.addSession(toWorkspace: work.id, cwd: "/a")
         let outside = try! #require(app.addSession(toWorkspace: personal.id, cwd: "/b"))
         app.setFocusedWorkspace(work.id)
-        app.selectSession(outside.id) // idle auto-follow / a notification reveal: the filter drops, the mark stays
+        app.selectSession(outside.id) // idle auto-follow / a notification reveal: the filter drops, the set stays
         app.save() // selection saves are debounced; flush so the write lands before reading back
 
-        // the file keeps BOTH bits: the legacy key stays EFFECTIVE (nil — what an older build would read),
-        // and the mark rides alongside it instead of being lost with the filter.
+        // the file keeps BOTH bits SEPARATELY: the flag goes off, and the marked set rides alongside it
+        // instead of being lost with the filter.
         let onDisk = store.load()
-        #expect(onDisk.focusedWorkspaceID == nil)
-        #expect(onDisk.markedWorkspaceID == work.id)
+        #expect(onDisk.focusEnabled == nil)
+        #expect(onDisk.focusedWorkspaceIDs == [work.id])
 
         let restored = AppStore(persistence: store)
         restored.restore(from: onDisk)
-        #expect(restored.focusedWorkspaceID == nil) // comes back unfiltered, exactly as it was left
+        #expect(!restored.focusEnabled) // comes back unfiltered, exactly as it was left
+        #expect(restored.focusedWorkspaceIDs == [work.id])
         #expect(restored.visibleWorkspaces.map(\.id) == [work.id, personal.id])
-        restored.setFocusFilterEnabled(true) // `workspace.filter on` after the relaunch...
-        #expect(restored.focusedWorkspaceID == work.id) // ...returns to the SAME workspace
+        restored.setFocusEnabled(true) // `workspace.filter on` after the relaunch...
+        #expect(restored.soleFocusedWorkspaceID == work.id) // ...returns to the SAME workspace
         #expect(restored.visibleWorkspaces.map(\.id) == [work.id])
     }
 
     @Test func legacySnapshotWithoutMarkedWorkspaceRestoresAFilteringFocus() throws {
-        // a workspaces.json written before `markedWorkspaceID` existed carries only the effective id; it
-        // must decode (not throw and wipe the tree) as marked AND filtering — bit-for-bit what the old
-        // build restored, so the migration is invisible to the user.
+        // MIGRATION (a), the ANCIENT shape: a workspaces.json written before `markedWorkspaceID` existed
+        // carries only the effective id, and that field MEANT "the tree is collapsed to this workspace" —
+        // so it must decode (not throw and wipe the tree) as a one-member set that IS filtering,
+        // bit-for-bit what the old build restored, so the migration is invisible to the user.
         let ws = UUID()
         let json = #"{ "version": 1, "focusedWorkspaceID": "\#(ws.uuidString)", "workspaces": "# +
             #"[ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [] } ] }"#
         try Data(json.utf8).write(to: fileURL)
         let loaded = store.load()
         #expect(loaded.workspaces.map(\.id) == [ws])
-        #expect(loaded.markedWorkspaceID == nil)
+        #expect(loaded.focusedWorkspaceIDs == [ws])
+        #expect(loaded.focusEnabled == true)
 
         let app = AppStore(persistence: store)
         app.restore(from: loaded)
-        #expect(app.focusedWorkspaceID == ws)
-        #expect(app.markedWorkspaceID == ws)
-        #expect(app.focusFilterEnabled)
+        #expect(app.focusedWorkspaceIDs == [ws])
+        #expect(app.focusEnabled)
+        #expect(app.soleFocusedWorkspaceID == ws)
+        #expect(app.visibleWorkspaces.map(\.id) == [ws])
+    }
+
+    @Test func legacyMarkAndEffectiveFocusMigrateOntoTheSetAndTheFlagSeparately() throws {
+        // MIGRATION (b): the split shipped in 62097fb and LIVE IN REAL USER FILES TODAY — the MARK is the
+        // set, the effective id is only the FLAG. Reading the effective id as the set (the obvious
+        // migration) would restore an EMPTY set for the second shape below, which is the exact state an
+        // involuntary jump leaves behind — the one the split exists to persist.
+        let ws = UUID()
+        let tree = #""workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [] } ]"#
+
+        // both keys set: marked AND filtering.
+        try Data(#"{ "version": 1, "focusedWorkspaceID": "\#(ws.uuidString)", "markedWorkspaceID": "\#(ws.uuidString)", \#(tree) }"#.utf8)
+            .write(to: fileURL)
+        let filtering = store.load()
+        #expect(filtering.focusedWorkspaceIDs == [ws])
+        #expect(filtering.focusEnabled == true)
+
+        // the LOAD-BEARING shape: the mark outlived the filter. The set keeps the workspace; only the flag
+        // is off.
+        try Data(#"{ "version": 1, "focusedWorkspaceID": null, "markedWorkspaceID": "\#(ws.uuidString)", \#(tree) }"#.utf8)
+            .write(to: fileURL)
+        let suspended = store.load()
+        #expect(suspended.workspaces.map(\.id) == [ws])
+        #expect(suspended.focusedWorkspaceIDs == [ws], "the mark must NOT be dropped with the filter")
+        #expect(suspended.focusEnabled == nil)
+
+        let app = AppStore(persistence: store)
+        app.restore(from: suspended)
+        #expect(app.focusedWorkspaceIDs == [ws])
+        #expect(!app.focusEnabled)
+        app.setFocusEnabled(true) // `workspace.filter on` after the upgrade returns to the same workspace
+        #expect(app.soleFocusedWorkspaceID == ws)
+        #expect(app.visibleWorkspaces.map(\.id) == [ws])
+    }
+
+    @Test func theNewFocusKeysWinOverAnyLegacyKeyInTheSameFile() throws {
+        // MIGRATION (c): the new keys pass through verbatim, and a legacy key left in the same file (a
+        // downgrade-then-upgrade, a hand edit) is IGNORED rather than fighting them.
+        let a = UUID()
+        let b = UUID()
+        let stray = UUID()
+        let tree = #""workspaces": [ { "id": "\#(a.uuidString)", "name": "a", "sessions": [] }, "# +
+            #"{ "id": "\#(b.uuidString)", "name": "b", "sessions": [] } ]"#
+        let json = #"{ "version": 1, "focusedWorkspaceIDs": ["\#(a.uuidString)", "\#(b.uuidString)"], "focusEnabled": true, "# +
+            #""focusedWorkspaceID": "\#(stray.uuidString)", "markedWorkspaceID": "\#(stray.uuidString)", \#(tree) }"#
+        try Data(json.utf8).write(to: fileURL)
+        let loaded = store.load()
+        #expect(loaded.focusedWorkspaceIDs == [a, b])
+        #expect(loaded.focusEnabled == true)
+
+        let app = AppStore(persistence: store)
+        app.restore(from: loaded)
+        #expect(app.focusedWorkspaceIDs == [a, b])
+        #expect(app.visibleWorkspaces.map(\.id) == [a, b])
+
+        // the legacy read is gated on BOTH new keys being absent, so a file carrying only `focusEnabled`
+        // still ignores the legacy id rather than half-migrating.
+        let flagOnly = #"{ "version": 1, "focusEnabled": false, "focusedWorkspaceID": "\#(stray.uuidString)", \#(tree) }"#
+        try Data(flagOnly.utf8).write(to: fileURL)
+        #expect(store.load().focusedWorkspaceIDs == nil)
+        #expect(store.load().focusEnabled == false)
+    }
+
+    @Test func aMigratedSnapshotNeverWritesTheLegacyFocusKeysBack() throws {
+        // the legacy keys live in their own key type with no stored property, so the first load-mutate-save
+        // after the upgrade drops them — otherwise every future save would keep re-emitting a field whose
+        // meaning has changed.
+        let ws = UUID()
+        let json = #"{ "version": 1, "focusedWorkspaceID": "\#(ws.uuidString)", "markedWorkspaceID": "\#(ws.uuidString)", "# +
+            #""workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [] } ] }"#
+        try Data(json.utf8).write(to: fileURL)
+
+        try store.save(store.load()) // re-encode exactly what was migrated
+        // read the KEYS back rather than grepping the text: `focusedWorkspaceIDs` contains the legacy key
+        // as a prefix, so a substring check could never fail.
+        let object = try JSONSerialization.jsonObject(with: Data(contentsOf: fileURL))
+        let fields = try #require(object as? [String: Any])
+        let keys = Set(fields.keys)
+        #expect(!keys.contains("focusedWorkspaceID"), "the legacy effective-id key must not come back")
+        #expect(!keys.contains("markedWorkspaceID"), "nor the legacy mark key")
+        #expect(keys.contains("focusedWorkspaceIDs"))
+        #expect(keys.contains("focusEnabled"))
+        // and the migrated value is unchanged by the rewrite
+        #expect(store.load().focusedWorkspaceIDs == [ws])
+        #expect(store.load().focusEnabled == true)
+    }
+
+    @Test func snapshotWithoutAnyFocusKeyDecodesUnfocusedAndKeepsTheTree() throws {
+        // a workspaces.json with no focus key at all (any build before the filter existed) must decode —
+        // never throw and make `load()` start fresh, wiping the saved tree — and restore unfocused.
+        let ws = UUID()
+        let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [] } ] }"#
+        try Data(json.utf8).write(to: fileURL)
+        let loaded = store.load()
+        #expect(loaded.workspaces.map(\.id) == [ws])
+        #expect(loaded.focusedWorkspaceIDs == nil)
+        #expect(loaded.focusEnabled == nil)
+
+        let app = AppStore(persistence: store)
+        app.restore(from: loaded)
+        #expect(app.focusedWorkspaceIDs.isEmpty)
+        #expect(!app.focusEnabled)
         #expect(app.visibleWorkspaces.map(\.id) == [ws])
     }
 
@@ -308,29 +447,39 @@ final class PersistenceTests {
         let gone = UUID()
         let app = AppStore(persistence: store)
         app.restore(from: Snapshot(workspaces: [WorkspaceSnapshot(id: ws, name: "work", sessions: [])],
-                                   markedWorkspaceID: gone))
-        // a mark whose workspace was removed between the save and the load is kept verbatim (an undone
-        // removal can bring it back) and the EXISTING gates make it inert — nothing to add on restore.
-        #expect(app.markedWorkspaceID == gone)
-        #expect(app.focusedWorkspace == nil)
+                                   focusedWorkspaceIDs: [gone], focusEnabled: true))
+        // every member's workspace was removed between the save and the load (another window, a hand edit):
+        // the set is PRUNED empty and the flag goes with it, because an enabled-but-invisible filter would
+        // make the `focused`/`workspaceFilter` read-back lie.
+        #expect(app.focusedWorkspaceIDs.isEmpty)
+        #expect(!app.focusEnabled)
+        #expect(app.soleFocusedWorkspaceID == nil)
         #expect(app.visibleWorkspaces.map(\.id) == [ws])
-        app.setFocusFilterEnabled(true)
-        #expect(!app.focusFilterEnabled) // re-enabling refuses a mark that resolves to nothing
+        app.setFocusEnabled(true)
+        #expect(!app.focusEnabled) // re-enabling refuses an empty set
+
+        // the same clamp for a file that states the impossible pair outright
+        let handEdited = AppStore(persistence: store)
+        handEdited.restore(from: Snapshot(workspaces: [WorkspaceSnapshot(id: ws, name: "work", sessions: [])],
+                                          focusedWorkspaceIDs: [], focusEnabled: true))
+        #expect(handEdited.focusedWorkspaceIDs.isEmpty)
+        #expect(!handEdited.focusEnabled)
     }
 
-    @Test func legacySnapshotWithoutFocusedWorkspaceDecodesUnfocused() throws {
-        // a workspaces.json written before `focusedWorkspaceID` existed has no key; it must decode (not
-        // throw and wipe the tree) and restore to unfocused.
-        let ws = UUID()
-        let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [] } ] }"#
-        try Data(json.utf8).write(to: fileURL)
-        let loaded = store.load()
-        #expect(loaded.workspaces.map(\.id) == [ws])
-        #expect(loaded.focusedWorkspaceID == nil)
-
+    @Test func restorePrunesStaleMembersAndKeepsTheSurvivorsFiltering() {
+        let live = UUID()
+        let alsoLive = UUID()
+        let gone = UUID()
         let app = AppStore(persistence: store)
-        app.restore(from: loaded)
-        #expect(app.focusedWorkspaceID == nil)
+        app.restore(from: Snapshot(workspaces: [
+            WorkspaceSnapshot(id: live, name: "work", sessions: []),
+            WorkspaceSnapshot(id: alsoLive, name: "personal", sessions: []),
+        ], focusedWorkspaceIDs: [live, gone], focusEnabled: true))
+        // a PARTIALLY stale set keeps its survivors and stays enabled — only the unresolvable id is dropped.
+        #expect(app.focusedWorkspaceIDs == [live])
+        #expect(app.focusEnabled)
+        #expect(app.soleFocusedWorkspaceID == live)
+        #expect(app.visibleWorkspaces.map(\.id) == [live])
     }
 
     @Test func sessionRecencyPersistsAndRestores() {

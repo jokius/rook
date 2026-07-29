@@ -121,10 +121,10 @@ extension ControlServer: ControlActions {
                 guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     return ControlResponse(ok: false, error: "workspace name must not be blank")
                 }
-                // a --no-select create must not clear the workspace-focus filter (addWorkspace's auto-reveal),
+                // a --no-select create must not widen the workspace-focus set (addWorkspace's auto-reveal),
                 // so the background create leaves the current view untouched like the rest of --no-select.
                 let workspace = options.createWorkspace == true
-                    ? store.ensureWorkspace(named: name, clearFocus: !options.noSelect)
+                    ? store.ensureWorkspace(named: name, revealNewWorkspace: !options.noSelect)
                     : store.workspace(named: name)
                 guard let workspace else {
                     return ControlResponse(ok: false, error: "no workspace named \"\(name)\" (pass --create-workspace to add it)")
@@ -666,22 +666,20 @@ extension ControlServer: ControlActions {
         }
     }
 
-    /// Focus (or unfocus) a workspace — collapse the sidebar tree to that workspace's subtree, or restore
-    /// the full tree. `mode` is `on|off|toggle`: `on` focuses the target, `off` unfocuses it only when it
-    /// is the currently focused one (a no-op otherwise), `toggle` flips. Delta-computed via
-    /// `AppStore.setFocusedWorkspace` so a no-op mode skips the write (idempotent). An unknown mode is an
-    /// error. The control half of the workspace row's Focus/Unfocus menu + the pill ✕.
-    func focusWorkspace(_ target: String?, window: String?, mode: String?) -> ControlResponse {
-        let mode = mode ?? "toggle"
-        return resolver.resolveWorkspace(target, window: window) { store, id in
-            let want: UUID?
-            switch mode {
-            case "on": want = id
-            case "off": want = store.focusedWorkspaceID == id ? nil : store.focusedWorkspaceID
-            case "toggle": want = store.focusedWorkspaceID == id ? nil : id
-            default: return ControlResponse(ok: false, error: "invalid focus mode: \(mode)")
-            }
-            store.setFocusedWorkspace(want) // no-op + no save when unchanged (idempotent)
+    /// Mark or unmark a workspace in the sidebar focus SET. `mode` arrives already parsed and validated by
+    /// `ControlDispatcher`, and only two of the four modes touch the filter flag: `on` replaces the set with
+    /// the target and APPLIES the filter, `toggle` replace-toggles (clearing when the target is the only
+    /// marked workspace and the filter applies, else replacing the set with it and applying), `off` drops
+    /// the target from the set (the filter switches off once it empties; a no-op when it was never marked),
+    /// and `add` inserts the target alongside the existing members leaving the flag EXACTLY as it was —
+    /// marking only, so a script builds a set with repeated `add` calls and applies it with one
+    /// `workspace.filter on`. The whole mapping is host-free in `AppStore.applyFocusMode`, so this arm is
+    /// only target resolution; the mutators there are delta-guarded, so every mode is idempotent. Read back
+    /// per workspace node as `marked` (membership) + `focused` (the EFFECTIVE focus), and top-level as
+    /// `workspaceFilter`. The control half of the workspace row's Focus/Unfocus + Add to/Remove from Focus.
+    func focusWorkspace(_ target: String?, window: String?, mode: ControlWorkspaceFocusMode) -> ControlResponse {
+        resolver.resolveWorkspace(target, window: window) { store, id in
+            store.applyFocusMode(mode, to: id)
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
         }
     }

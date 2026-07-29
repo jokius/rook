@@ -25,8 +25,9 @@ paths:
 - **Menu split: View vs Navigate.**
   The menu bar has TWO custom menus (besides File/Help).
   **View** (`CommandGroup(after: .toolbar)`) holds appearance + what-is-shown:
-  font/theme, sidebar show-hide + expand/collapse, the flagged-view + Flag/Clear-Flagged + Focus Workspace
-  items, the surface toggles (Split/Scratch/Find/Quick Terminal), and Toggle Full Screen
+  font/theme, sidebar show-hide + expand/collapse, the flagged-view + Flag/Clear-Flagged items,
+  the four workspace-focus items (see the workspace-focus bullet below),
+  the surface toggles (Split/Scratch/Find/Quick Terminal), and Toggle Full Screen
   (`toggle_fullscreen`, ⌃⌘F → `AppActions.toggleFullscreen()`, native `NSWindow.toggleFullScreen` on the
   key window; the `window.fullscreen` control command is a fourth driver of native full screen, via
   `WindowRegistry.fullscreen` with id resolution (not through `toggleFullscreen()`) — see control-api / windows).
@@ -306,6 +307,44 @@ paths:
   / palette entry.
   The sidebar Coordinator takes `AppActions` so the row menu routes through it rather than duplicating
   the confirm.
+- **Workspace focus lives in its OWN action file: `AppActions+WorkspaceFocus.swift`.**
+  Do NOT confuse it with the pre-existing `AppActions+Focus.swift`, which is SESSION/PANE first-responder
+  mechanics (`focusActiveSession`, `focusSplitPane`, the zoom/dashboard/quick-terminal cover guards) and has
+  nothing to do with the sidebar filter.
+  The workspace-focus file owns six thin, frontmost-scoped, `uiActionsEnabled`-gated wrappers over the
+  `AppStore+Focus.swift` mutators — `focusWorkspace(_:)` (the replace-toggle), `setFocusMembership(_:member:)`,
+  `focusActiveWorkspace()` / `addActiveWorkspaceToFocus()` (their `currentWorkspaceID`-targeting twins for
+  callers with no clicked row), `toggleFocusFilter()`, and `clearFocus()`.
+  The semantics all live in `rookCore`, so the GUI and `workspace.focus`/`workspace.filter` cannot mean
+  different things by the same word — see [[sidebar]] for the set/flag model itself.
+  **View menu, four items** (all disabled under `modalActive` like their neighbours):
+  - **Focus / Unfocus Workspace** — `focusActiveWorkspace()`, label keyed on
+    `AppStore.isCurrentWorkspaceSoleFocus` (the row menu's item reads `isSoleFocus(node.id)` for its clicked
+    row), carrying `shortcut(for: .focusWorkspace)`.
+    It REPLACES the marked set with the current workspace, so "Unfocus" shows only while that workspace is
+    the sole member of an APPLIED filter.
+  - **Add Workspace to Focus** — `addActiveWorkspaceToFocus()`, keyless and NOT a `BuiltinAction` (like
+    Clear Focus below), disabled once `isCurrentWorkspaceFocusMember` — it would be a silent no-op, and
+    unlike the sidebar row's item it has no clicked row to flip to "Remove from Focus".
+  - **Toggle Workspace Filter** — `toggleFocusFilter()`, and its `.keyboardShortcut(shortcut(for: .toggleWorkspaceFilter))`
+    is the ONLY dispatch path for the new `toggle_workspace_filter` builtin.
+    That builtin is KEYLESS (no `defaultChord`, like `focus_workspace`/`toggle_flagged_view`), so a user
+    `map` line is what gives it a chord — and this menu item's key equivalent is the single place that chord
+    is resolved and fired.
+    The palette's twin entry does NOT go through the builtin (`PaletteCommand.toggleWorkspaceFilter` calls
+    `toggleFocusFilter()` directly), so deleting this shortcut would silently strand every keymap binding.
+    Disabled on an empty marked set, the same state the store refuses to enable in.
+  - **Clear Focus** — `clearFocus()`, plain keyless item like Clear Flagged; drops the whole set, where the
+    toggle above KEEPS it and only stops applying it.
+  **Palette:** two new `PaletteCommand`s, `addWorkspaceToFocus` and `toggleWorkspaceFilter`, alongside the
+  existing `focusWorkspace` and `clearFocus`.
+  `PaletteContext.hasFocusedWorkspace` is GONE, replaced by two facts it could not tell apart:
+  `hasMarkedWorkspaces` (membership — what Clear Focus empties and what Toggle Workspace Filter has
+  something to apply, so both hide without it) and `activeWorkspaceMarked` (the only term
+  `addWorkspaceToFocus` keys on, hiding it exactly where it would no-op).
+  Neither is gated on the sidebar MODE: membership is model state the tree applies the moment it is shown
+  again, so every focus entry stays offered in flagged mode too — the tree-mode gate belongs to
+  expand/collapse, which manipulate rows flagged mode never renders.
 - The command palettes (`Palette.swift`: `PaletteController` + `CommandPalette`) feed off `AppActions.paletteActions()`/`paletteSessions()`
   and the host-free `fuzzyScore` (rookCore, unit-tested).
   The visible list is a `@State` array recomputed on query/mode change — NOT a computed property — so

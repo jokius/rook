@@ -10,27 +10,32 @@ struct SidebarDropTests {
     // MARK: - Finder directory import
 
     @Test func directoryDropTargetsExplicitRowWorkspace() {
+        // an explicit row wins over both the fallback and the current workspace.
         #expect(SidebarDrop.resolveDirectoryWorkspace(
             sidebarMode: .tree, rowWorkspaceID: Self.wsB,
-            focusedWorkspaceID: Self.wsA, currentWorkspaceID: Self.wsA) == Self.wsB)
+            fallbackWorkspaceID: Self.wsA, currentWorkspaceID: Self.wsA) == Self.wsB)
     }
 
-    @Test func emptyDirectoryDropPrefersFocusedWorkspace() {
+    @Test func emptyDirectoryDropPrefersTheSoleFocusedWorkspace() {
+        // no row: the caller's fallback (`AppStore.soleFocusedWorkspaceID` — the ONE workspace the tree is
+        // zoomed to) beats the current workspace, so the drop lands where the user is looking.
         #expect(SidebarDrop.resolveDirectoryWorkspace(
             sidebarMode: .tree, rowWorkspaceID: nil,
-            focusedWorkspaceID: Self.wsB, currentWorkspaceID: Self.wsA) == Self.wsB)
+            fallbackWorkspaceID: Self.wsB, currentWorkspaceID: Self.wsA) == Self.wsB)
     }
 
     @Test func emptyDirectoryDropFallsBackToCurrentWorkspace() {
+        // nil fallback — nothing marked, the filter off, or two or more members, so no workspace is
+        // unambiguously "the one on screen" — falls through to the current workspace.
         #expect(SidebarDrop.resolveDirectoryWorkspace(
             sidebarMode: .tree, rowWorkspaceID: nil,
-            focusedWorkspaceID: nil, currentWorkspaceID: Self.wsA) == Self.wsA)
+            fallbackWorkspaceID: nil, currentWorkspaceID: Self.wsA) == Self.wsA)
     }
 
     @Test func directoryDropIsRejectedInFlaggedMode() {
         #expect(SidebarDrop.resolveDirectoryWorkspace(
             sidebarMode: .flagged, rowWorkspaceID: Self.wsB,
-            focusedWorkspaceID: nil, currentWorkspaceID: Self.wsA) == nil)
+            fallbackWorkspaceID: nil, currentWorkspaceID: Self.wsA) == nil)
     }
 
     // MARK: - Session, same workspace
@@ -240,6 +245,47 @@ struct SidebarDropTests {
         let move = SidebarDrop.resolveRelative(
             source: (Self.wsA, 1), anchor: (Self.wsA, 1, 3), placeAfter: true)
         #expect(move == nil)
+    }
+
+    // MARK: - Rendered-row slot -> full-array index (the focus filter's hidden rows)
+
+    @Test func workspaceInsertIndexIsTheSlotItselfWhenEveryWorkspaceIsRendered() {
+        // filter off: the rendered rows ARE the full array, so every slot passes through untouched and an
+        // unfiltered tree reorders exactly as it did before this mapping existed.
+        let all = Array(0..<4)
+        #expect((0...4).map { SidebarDrop.workspaceInsertIndex(visibleIndices: all, slot: $0) } == [0, 1, 2, 3, 4])
+    }
+
+    @Test func workspaceInsertIndexLandsAdjacentToTheRenderedRowAcrossAFilteredHole() {
+        // 6 workspaces with only 1 and 4 marked: the rendered rows are [1, 4], and 2/3 are hidden BETWEEN
+        // them — the case a raw slot gets wrong the moment a marked set is non-contiguous.
+        let visible = [1, 4]
+        // slot 1 = below the first rendered row -> immediately AFTER workspace 1. Not the raw slot 1 (which
+        // means something else entirely in the full array) and not next to 4, which would jump the dragged
+        // workspace across the two hidden ones — invisible at drop time, revealed only once the filter lifts.
+        #expect(SidebarDrop.workspaceInsertIndex(visibleIndices: visible, slot: 1) == 2)
+        // slot 2 = below the last rendered row -> immediately after workspace 4.
+        #expect(SidebarDrop.workspaceInsertIndex(visibleIndices: visible, slot: 2) == 5)
+    }
+
+    @Test func workspaceInsertIndexAtTheTopTakesTheFirstRenderedRowsOwnIndex() {
+        // slot 0 = the cursor is above every rendered row, so the drop lands just BEFORE the first one, i.e.
+        // at that row's own array index — never at 0, which the filter may render no row for.
+        #expect(SidebarDrop.workspaceInsertIndex(visibleIndices: [1, 4], slot: 0) == 1)
+        #expect(SidebarDrop.workspaceInsertIndex(visibleIndices: [3], slot: 0) == 3)
+    }
+
+    @Test func workspaceInsertIndexClampsASlotPastTheLastRenderedRow() {
+        // a slot past the rendered rows (the cursor below the whole tree) clamps to "just after the last
+        // rendered row" instead of indexing off the end of `visibleIndices`.
+        #expect(SidebarDrop.workspaceInsertIndex(visibleIndices: [1, 4], slot: 5) == 5)
+        #expect(SidebarDrop.workspaceInsertIndex(visibleIndices: [0, 1, 2], slot: 9) == 3)
+    }
+
+    @Test func workspaceInsertIndexIsZeroWithNothingRendered() {
+        // nothing rendered: there is no row to drop against, so the insert collapses to the front for any slot.
+        #expect(SidebarDrop.workspaceInsertIndex(visibleIndices: [], slot: 0) == 0)
+        #expect(SidebarDrop.workspaceInsertIndex(visibleIndices: [], slot: 3) == 0)
     }
 
     // MARK: - Workspace reorder
