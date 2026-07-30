@@ -4,7 +4,8 @@ import AppKit
 /// `WorkspaceSidebar.Coordinator` native drag-and-drop — the pasteboard writer plus validate/accept and
 /// the resolve helpers that glue AppKit's proposed drop to the host-free `SidebarDrop` index math. Split
 /// out of `WorkspaceSidebar.swift` to keep that file under the swiftlint size limit. `workspaceNode(forID:)`
-/// stays in the main file (it reads the private `roots` cache); the pasteboard type constants are file-level.
+/// stays in the main file (it reads the `roots` cache, which lives there); the pasteboard type constants
+/// are file-level.
 extension WorkspaceSidebar.Coordinator {
     // MARK: - Drag and drop
 
