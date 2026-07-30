@@ -918,7 +918,7 @@
 
             <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
-                rookctl session type &lt;text&gt; [--stdin] [--select] [--pane left|right|scratch] [--target T] [--window W]
+                rookctl session type &lt;text&gt; [--stdin] [--select] [--pane left|right|scratch] [--flagged] [--target T]… [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.type</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -927,6 +927,13 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--stdin</span> reads the text from stdin instead of the
                 argument. <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--select</span> selects and realizes a
                 never-shown session first (the main pane only); any realized session is normally typable without it.
+                Repeat <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--target</span> — or pass
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--flagged</span> — to broadcast the same text into
+                many sessions of one window (the two are mutually exclusive, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--select</span> takes a single target only). Targets
+                resolve all-or-nothing, so one unknown id fails before any shell sees the text; the typing is best-effort and a
+                partial run reports the count that took it rather than claiming success. An empty flagged set is
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">0 sessions</span>, not an error.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">--pane left</span> is the main pane (the default),
