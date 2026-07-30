@@ -177,6 +177,8 @@ struct WorkspaceSidebar: NSViewRepresentable {
         /// user toggle (row click / disclosure triangle) — which fires the callback with this false —
         /// persists. `expandAll`/`collapseOthers` set it too and persist once explicitly at the end.
         var suppressExpansionPersist = false
+        /// True while a `scheduleRollUpRefresh` is queued, so one rebuild's N callbacks yield ONE reconcile.
+        private var pendingRollUpRefresh = false
         /// Scheduled single-click workspace expand/collapse, deferred by the double-click interval so a
         /// double-click (rename) can cancel it — otherwise the first click of a rename double-click would
         /// flip the workspace open/closed on its way into edit mode. See `handleSingleClick`.
@@ -322,16 +324,26 @@ struct WorkspaceSidebar: NSViewRepresentable {
             rebuildAndReload()
         }
 
-        /// Re-apply the agent status on every visible session row — the glyph AND the row highlight (the
-        /// wash color plus the name text) — so a global change from Settings (a status color, or the
-        /// row-highlight toggle) re-renders the existing rows. Both are GLOBAL, not per-row, so
-        /// `reconcile`'s content diff can't see them. Appearance changes are rare, so the full sweep is
-        /// cheap.
+        /// Re-apply the agent status on every visible row — a session row's glyph AND row highlight (the
+        /// wash color plus the name text), a workspace row's andon roll-up GLYPH — so a global change from
+        /// Settings (a status color, a per-status shape, the row-highlight toggle, a Reduce-Motion flip)
+        /// re-renders the existing rows. All of those are GLOBAL, not per-row, so `reconcile`'s content diff
+        /// can't see them. Appearance changes are rare, so the full sweep is cheap.
+        ///
+        /// A workspace row gets the glyph ONLY, never `statusTint`: the row wash is a SESSION concept
+        /// (`statusRowHighlight` keys on `needsAttention`), and washing a parent row is not what the
+        /// roll-up promises.
         private func reapplyStatusRows() {
             guard let outline = outlineView else { return }
             for row in 0 ..< outline.numberOfRows {
-                guard let node = outline.item(atRow: row) as? SidebarNode, node.kind == .session,
+                guard let node = outline.item(atRow: row) as? SidebarNode,
                       let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView else { continue }
+                guard node.kind == .session else {
+                    if let workspace = store.workspaces.first(where: { $0.id == node.id }) {
+                        cell.statusIcon.apply(rollUpIndicator(forWorkspace: workspace))
+                    }
+                    continue
+                }
                 let indicator = effectiveIndicator(forSession: node.id)
                 cell.statusIcon.apply(indicator)
                 // setting the tint invalidates the row's background; setColors re-reads it for the text.
@@ -431,6 +443,19 @@ struct WorkspaceSidebar: NSViewRepresentable {
             store.session(withID: id)?.agentIndicator ?? AgentIndicator()
         }
 
+        /// The andon roll-up glyph for a WORKSPACE row: its worst child status (`Workspace.rollUpIndicator`)
+        /// while the row is COLLAPSED, else idle (no glyph). An EXPANDED workspace shows every child's own
+        /// status on its own row, so a parent glyph would just duplicate one of them — unlike the unseen
+        /// badge, which aggregates a COUNT and is therefore not gated.
+        ///
+        /// The gate reads the VISUAL `expandedWorkspaceIDs`, NOT the persisted `Workspace.isExpanded`: a
+        /// programmatic force-reveal (`syncSelection`, the `soleFocusedWorkspaceID` zoom) shows the session
+        /// rows WITHOUT touching the persisted state, and the glyph must go then too — what matters is
+        /// whether the children are on screen.
+        func rollUpIndicator(forWorkspace workspace: Workspace) -> AgentIndicator {
+            expandedWorkspaceIDs.contains(workspace.id) ? AgentIndicator() : workspace.rollUpIndicator
+        }
+
         /// The unseen-count after the badge-visibility gate: 0 (hidden) when the Settings badge toggle
         /// is off, else the raw count. Render-only — `unseenCount` keeps tracking, so re-enabling the
         /// toggle instantly shows the current counts. The agent-status glyph is NOT gated by this.
@@ -506,7 +531,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
         /// and `snapshotRowContent` so the change-detection snapshot and the diff can't drift.
         private func rowContent(forWorkspace workspace: Workspace) -> RowContent {
             RowContent(label: workspace.name, hasSplit: false, unseen: effectiveUnseen(workspace.unseenCount),
-                       indicator: AgentIndicator(), flagged: false, colorHex: workspace.colorHex,
+                       indicator: rollUpIndicator(forWorkspace: workspace), flagged: false, colorHex: workspace.colorHex,
                        icon: workspace.icon, agent: nil,
                        focusMember: store.focusedWorkspaceIDs.contains(workspace.id))
         }
@@ -566,6 +591,13 @@ struct WorkspaceSidebar: NSViewRepresentable {
             // reveal keeps its already-present id (formUnion only adds), so neither is disturbed.
             expandedWorkspaceIDs.formIntersection(Set(store.workspaces.map(\.id)))
             expandedWorkspaceIDs.formUnion(store.workspaces.filter(\.isExpanded).map(\.id))
+            // the SOLE focused workspace joins the tracked set HERE, BEFORE the reload — not implicitly via
+            // the force-expand below. ORDER IS LOAD-BEARING: a workspace row's roll-up glyph is gated on this
+            // set, so a persisted-COLLAPSED zoom target would RENDER collapsed (glyph on) while the content
+            // snapshot taken right after read expanded (glyph off), and the deferred refresh — seeing no
+            // delta — would strand the duplicate glyph until the next shape change. `didExpand` inserts the
+            // same id moments later anyway, so this is no behavior change; do NOT move it back below.
+            if let sole = store.soleFocusedWorkspaceID { expandedWorkspaceIDs.insert(sole) }
 
             // restore expansion from the tracked set rather than the live outline state: a flagged-mode
             // reload drops the workspace nodes, so the outline forgets they were expanded, but the tracked
@@ -578,7 +610,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
             // persisted collapse (the zoom-in shows it, but doesn't un-collapse it).
             outline.reloadData()
             suppressExpansionPersist = true
-            for node in roots where expandedWorkspaceIDs.contains(node.id) || store.soleFocusedWorkspaceID == node.id {
+            for node in roots where expandedWorkspaceIDs.contains(node.id) {
                 outline.expandItem(node)
             }
             suppressExpansionPersist = false
@@ -672,16 +704,38 @@ struct WorkspaceSidebar: NSViewRepresentable {
             guard let node = notification.userInfo?[Self.outlineItemUserInfoKey] as? SidebarNode,
                   node.kind == .workspace else { return }
             expandedWorkspaceIDs.insert(node.id)
+            scheduleRollUpRefresh()
             // persist ONLY a genuine user expand (row click / disclosure triangle). A programmatic reveal or
             // rebuild re-apply sets suppressExpansionPersist, so it updates the visual set above without
             // burning the persisted collapse intent.
             if !suppressExpansionPersist { store.setWorkspaceExpanded(node.id, expanded: true) }
         }
 
+        /// Re-runs the content diff after a workspace's VISUAL expansion changed, so its andon roll-up glyph
+        /// (shown only while collapsed) appears or disappears. The tree shape is unchanged, so this lands in
+        /// `reloadChangedContentRows` and reloads exactly the one row whose `indicator` flipped.
+        ///
+        /// Deferred to the next main-loop turn on purpose: the delegate callback fires DURING the
+        /// expand/collapse — including the programmatic re-apply inside `rebuildAndReload`, which would
+        /// re-enter `reconcile` before it has snapshotted the row content — so a synchronous per-row reload
+        /// would land mid-animation and mid-rebuild.
+        /// Coalesced by `pendingRollUpRefresh`: a rebuild expands N workspaces in one loop, so without the
+        /// guard each `didExpand` would queue its own full-tree content diff (labels included). The flag is
+        /// cleared BEFORE the reconcile, so an expand/collapse the reconcile itself causes can queue the next.
+        private func scheduleRollUpRefresh() {
+            guard !pendingRollUpRefresh else { return }
+            pendingRollUpRefresh = true
+            DispatchQueue.main.async { [weak self] in
+                self?.pendingRollUpRefresh = false
+                self?.reconcile()
+            }
+        }
+
         func outlineViewItemDidCollapse(_ notification: Notification) {
             guard let node = notification.userInfo?[Self.outlineItemUserInfoKey] as? SidebarNode,
                   node.kind == .workspace else { return }
             expandedWorkspaceIDs.remove(node.id)
+            scheduleRollUpRefresh()
             // persist only a genuine user collapse; programmatic collapses are suppressed (see didExpand).
             if !suppressExpansionPersist { store.setWorkspaceExpanded(node.id, expanded: false) }
         }

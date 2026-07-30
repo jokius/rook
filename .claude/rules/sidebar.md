@@ -203,6 +203,69 @@ paths:
   `.rookAppearanceChanged` → the Coordinator's `reapplyStatusRows()` sweep (which re-applies the glyph,
   the tint, and the text color on every visible session row; it was `reapplyStatusGlyphs` before the wash).
   Settings ▸ Agent Status ▸ "Highlight blocked and completed rows"; `resetAgentStatus()` clears it back on.
+- **Andon roll-up — a COLLAPSED workspace row wears its worst child's agent-status glyph.**
+  A blocked agent inside a closed workspace was invisible; since `workspace.new --collapsed` a collapsed
+  workspace is a normal scripted working state, so the parent row now reports the most important state
+  inside it.
+  Host-free: `Workspace.rollUpIndicator` walks `sessions` and picks the best `AgentStatus.rollUpRank`.
+  **`rollUpRank` is deliberately NOT `attentionRank`** — `blocked > completed > active > idle` here, while
+  `attentionRank` ranks `active` ABOVE `completed` because it drives the attention QUEUE (what to look at
+  next); a roll-up answers "the most important thing in there", where a finished run outranks one still
+  working.
+  The winner's indicator is carried WHOLE (`blink`/`color`/`shape`/`autoReset` are the agent's deliberate
+  signals and belong on the parent too) with `statusPane` NULLED: a pane is meaningless at workspace level,
+  and keeping it would make `AgentIndicator.tooltipText` claim "(split pane)" about a WORKSPACE.
+  It is a COPY of the winner minus that one field, never a fresh
+  `AgentIndicator(status:blink:color:shape:)` — a rebuild silently drops whatever field is added to
+  `AgentIndicator` next.
+  TIES go to the FIRST session in `sessions` order (sidebar order — the session the user would point at),
+  which the "seed idle, replace only on a STRICTLY better rank" walk gives for free, together with the
+  all-idle/empty case (`idle` ranks last, so an idle session can never win and leak its own stray
+  `blink`/`color` onto the parent).
+- **The roll-up glyph is gated on COLLAPSE, and the gate is the VISUAL expansion, not the persisted one.**
+  An EXPANDED workspace shows every child's status on its own row, so a parent glyph would just duplicate
+  one of them — unlike the unseen BADGE roll-up, which is NOT gated because it aggregates a COUNT.
+  `Coordinator.rollUpIndicator(forWorkspace:)` therefore reads `expandedWorkspaceIDs`, NOT
+  `Workspace.isExpanded`: a programmatic force-reveal (`syncSelection`, the `soleFocusedWorkspaceID` zoom,
+  spring-loading) puts the session rows on screen WITHOUT touching the persisted state, and what matters is
+  whether the children are visible.
+  It fills the status slot that `makeCell` ALREADY builds for both branches (`StatusIconView` owns its own
+  width, 0 on `.idle`), and it sets the `indicator` field `RowContent` already had (idle for workspace rows
+  before this) — the cell builder in `viewFor` and `rowContent(forWorkspace:)` must compute it the SAME way,
+  since that field is the only diff the reconcile sees.
+  An expand/collapse changes no tree SHAPE, so `outlineViewItemDidExpand`/`DidCollapse` re-run `reconcile()`
+  through `scheduleRollUpRefresh()` and land in `reloadChangedContentRows`, reloading exactly the row whose
+  glyph flipped.
+  That refresh is DEFERRED one main-loop turn on purpose: the callback fires DURING the expand/collapse and
+  during the programmatic re-apply inside `rebuildAndReload`, so a synchronous per-row reload would land
+  mid-animation and re-enter `reconcile` before it has snapshotted the row content.
+  **The roll-up is a THIRD render site for the same indicator, so it joins the `.rookAppearanceChanged`
+  sweep.**
+  `reapplyStatusRows` now walks WORKSPACE rows too, re-applying `rollUpIndicator(forWorkspace:)` — that
+  sweep is the mechanism by which a GLOBAL, non-observable Settings flip (a status color, a per-status
+  shape, the Reduce-Motion pulse kill) reaches glyphs already on screen, and a render site that opts out
+  keeps a stale tint until its row reloads for an unrelated reason.
+  It re-applies the GLYPH only, never `statusTint`: the row wash keys on a session's `needsAttention`, and
+  washing a parent row is not what the roll-up promises.
+  Verified by eye at visual acceptance — neither the glyph's tint nor its silhouette is
+  accessibility-observable, and the Settings flip is not drivable from the socket, so there is nothing for a
+  test to assert (the session half of the same sweep has no test either).
+  **The force-reveal half of the gate IS socket-reachable, and it IS e2e covered.**
+  Two control paths reach "rows on screen, `isExpanded` still false": `session.select` of a session inside a
+  collapsed workspace (`syncSelection`'s `expandItem(owner)` under `suppressExpansionPersist`) and
+  `workspace.focus on <collapsed workspace>` (the `soleFocusedWorkspaceID` force-expand in
+  `rebuildAndReload`).
+  So the visual-vs-persisted distinction is testable END TO END and must stay tested: reveal a collapsed
+  workspace's rows that way and the roll-up glyph GOES while `tree` still reports `collapsed: true` on that
+  workspace — which is what proves the gate reads `expandedWorkspaceIDs` and not `Workspace.isExpanded`.
+  An earlier revision of this rule claimed the opposite ("no control handle reveals rows without writing
+  `isExpanded`"); that was false and is the reason this paragraph is explicit — a wrong claim in a subsystem
+  rule is worse than a stated gap, because the next change trusts it.
+  **Control keep-in-sync: EXEMPT, and this is the reasoning, not an omission.**
+  The glyph is a pure DERIVATIVE of `session.status` plus the workspace's collapse state, and a script
+  already reads both from `tree` (`status` on every session node, `collapsed` on the workspace node), so it
+  can compute the roll-up itself — exactly the "pure rendering with nothing to drive" exemption.
+  There is nothing to WRITE, hence no read-back to add either.
 - **Agent logo (`Session.agentKind`) — the row icon while a coding agent runs.**
   A session whose FOCUSED pane runs `claude` or `codex` swaps its leading icon to that agent's LOGO
   (`AgentClaude`/`AgentCodex` in `rook/Assets.xcassets` — the simple-icons marks, CC0, vector + template so

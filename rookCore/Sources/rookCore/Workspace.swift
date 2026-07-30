@@ -48,4 +48,31 @@ public struct Workspace: Identifiable {
     /// Total unseen-notification count across this workspace's sessions, for the badge on a
     /// collapsed workspace row (when its session rows are hidden).
     public var unseenCount: Int { sessions.reduce(0) { $0 + $1.unseenCount } }
+
+    /// The agent-status glyph a COLLAPSED workspace row shows — the most important state among its
+    /// sessions (`AgentStatus.rollUpRank`: blocked > completed > active), so a blocked agent inside a
+    /// collapsed workspace stays visible. The winning session's indicator is carried WHOLE (its
+    /// per-call `color`/`shape`/`blink` are the agent's deliberate signals and belong on the parent too),
+    /// but `statusPane` is dropped: a pane is meaningless at workspace level, and keeping it would make
+    /// the glyph's tooltip claim "(split pane)" about a WORKSPACE. All-idle or empty → `.idle`, which
+    /// renders no glyph and collapses the slot.
+    ///
+    /// TIES go to the FIRST session in `sessions` order — sidebar order, so the winner is the one the user
+    /// would point at, and the walk stays stable instead of re-sorting equal ranks. Same "just walk
+    /// `sessions`" shape as `unseenCount` above.
+    ///
+    /// WHOLE means whole: the winner's indicator is COPIED and only `statusPane` nulled, never rebuilt from
+    /// `AgentIndicator(status:blink:color:shape:)` — a rebuild would silently drop any field added to
+    /// `AgentIndicator` later (`autoReset` rides along today, harmlessly: the roll-up is never persisted and
+    /// never reaches `clearAutoResetIndicator`). The walk seeds with an idle indicator and replaces only on a
+    /// STRICTLY better rank, which is both the tie rule and the all-idle case: `idle` ranks last, so an idle
+    /// session can never win and carry its own stray `blink`/`color` onto the parent.
+    public var rollUpIndicator: AgentIndicator {
+        var winner = AgentIndicator()
+        for session in sessions where session.agentIndicator.status.rollUpRank < winner.status.rollUpRank {
+            winner = session.agentIndicator
+        }
+        winner.statusPane = nil
+        return winner
+    }
 }

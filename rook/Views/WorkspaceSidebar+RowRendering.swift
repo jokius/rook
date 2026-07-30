@@ -54,6 +54,11 @@ extension WorkspaceSidebar.Coordinator {
             // roll-up badge so an unseen notification stays visible when the workspace is collapsed
             // (gated by the Settings badge toggle, like the session badge below)
             applyBadge(toCell: cell, count: effectiveUnseen(workspace?.unseenCount ?? 0))
+            // andon roll-up: the worst child status while this row is COLLAPSED (idle when expanded, where
+            // the child rows carry their own glyphs), so a blocked agent inside a closed workspace stays
+            // visible. MUST match `rowContent(forWorkspace:)`'s `indicator` exactly — that is the only diff
+            // the reconcile sees, so a divergence means the row never reloads for it.
+            cell.statusIcon.apply(workspace.map(rollUpIndicator(forWorkspace:)) ?? AgentIndicator())
             let image = workspaceRowIcon(for: workspace?.icon,
                                          member: store.focusedWorkspaceIDs.contains(node.id))
             cell.imageView?.image = image

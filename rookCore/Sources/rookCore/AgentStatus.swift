@@ -38,6 +38,19 @@ public enum AgentStatus: String, Codable, Sendable, CaseIterable {
         }
     }
 
+    /// Sort priority for the SIDEBAR ROLL-UP a collapsed workspace row shows: lower wins.
+    /// DELIBERATELY NOT `attentionRank` — that one ranks `active` ABOVE `completed` because it drives the
+    /// attention QUEUE (what to look at next), while a roll-up answers "the most important thing inside",
+    /// where a finished run outranks one still working.
+    public var rollUpRank: Int {
+        switch self {
+        case .blocked: return 0
+        case .completed: return 1
+        case .active: return 2
+        case .idle: return 3
+        }
+    }
+
     /// The sound to play for a `session.status` call, or nil for none. An explicit per-call sound
     /// (`session.status --sound`) always wins; otherwise the caller-configured `blockedDefault` plays, but
     /// ONLY for the `blocked` state (the Settings "Blocked sound"). Empty strings count as unset. The app
