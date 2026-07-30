@@ -419,7 +419,7 @@ bare event object (NDJSON — pipe it straight into `jq`).
   move as one ordered block after all sources are removed. Repeated `--target` is rejected with
   `--to up|down|top|bottom` because relative reorder is per-session. Batch moves return `result.affected`,
   counting only sessions whose position/workspace changed.
-- `session type <text> [--stdin] [--select] [--pane left|right|scratch] [--target] [--window W]` — inject text
+- `session type <text> [--stdin] [--select] [--pane left|right|scratch] [--target T ...] [--flagged] [--window W]` — inject text
   as real keystrokes (printable runs plus Return for each newline; no bracketed-paste markers).
   `--stdin` reads the text from stdin instead of the argument. `--select` selects (and realizes) a
   never-shown session before injecting. Any realized session is normally typable without `--select`.
@@ -432,6 +432,18 @@ bare event object (NDJSON — pipe it straight into `jq`).
   the session becomes an ordinary single pane, `tree` reports `split:false`, and it is addressed as the
   MAIN pane — no `--pane` (or `--pane left`) reaches it, `--pane right` now errors, and a later
   `session split on` opens a fresh right pane beside it.
+  **BROADCAST**: repeat `--target` to type the same text into several sessions, or pass `--flagged` to type
+  it into every flagged session of the target window (`--window`/frontmost). The two selectors are mutually
+  exclusive (`session.type takes --flagged or --target, not both`) and `--select` is single-target only
+  (`session.type --select works with a single target only`). `--pane` applies to every target alike.
+  Resolution is ALL-OR-NOTHING: one unknown/ambiguous id fails the whole command before any shell sees the
+  text, and every target must live in ONE window (the first one resolves the store, the rest resolve inside
+  it). Injection is then BEST-EFFORT with an honest count: the reply carries `result.affected` = how many
+  sessions actually took the text, and if some could not (`session not realized`, `session has no split
+  pane`) it comes back `ok: false` WITH that count — the text already landed in the others, so check
+  `affected` rather than assuming all-or-nothing. Broadcasting to NO flagged session is `ok` with
+  `affected: 0`; an explicitly EMPTY target list is an error instead (an empty dynamic list must not fall
+  back to typing into `active`). A single `--target` (or none) behaves exactly as before.
 - `session copy [--target] [--window W]` — returns `result.text` with the session's current selection.
   Does NOT touch the system clipboard (pipe the returned text into another `session type`). No/empty
   selection → `no selection` error. Selection is readable on any realized session regardless of focus.

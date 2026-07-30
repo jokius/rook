@@ -133,7 +133,13 @@ struct SocketClient {
             return ""
         }
         if !response.ok {
-            return "error: " + (response.error ?? "unknown error")
+            let message = "error: " + (response.error ?? "unknown error")
+            // A PARTIAL batch (broadcast `session.type`) answers `ok: false` carrying the count that DID
+            // take the effect — the only shape where both exist, since every other batch answers ok. Drop
+            // the count and the line reads as "nothing happened", so the user re-runs it and the sessions
+            // that already took the text get it TWICE; keystrokes don't roll back.
+            guard let affected = response.result?.affected else { return message }
+            return message + " (\(affectedPhrase(affected)) affected)"
         }
         if let tree = response.result?.tree {
             return formatTree(tree)
@@ -155,7 +161,7 @@ struct SocketClient {
             return "exit \(exitCode)"
         }
         if let affected = response.result?.affected {
-            return affected == 1 ? "1 session" : "\(affected) sessions"
+            return affectedPhrase(affected)
         }
         if let count = response.result?.count {
             // keymap.reload reports its parse-diagnostic count; 0 reads as a clean reload.
@@ -169,6 +175,12 @@ struct SocketClient {
             return id
         }
         return "ok"
+    }
+
+    /// The batch-count phrase, shared by the success line and the partial-failure suffix so the two can
+    /// never disagree about how a count reads.
+    private static func affectedPhrase(_ affected: Int) -> String {
+        affected == 1 ? "1 session" : "\(affected) sessions"
     }
 
     /// Render the `theme.list` payload as one theme name per line, the active theme(s) marked with `* `

@@ -128,6 +128,10 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var text: String?
     /// Whether `session.type` may select a never-shown session to realize its surface.
     public var select: Bool?
+    /// Broadcast selector for `session.type`: type into the window's FLAGGED working set instead of a
+    /// named target. Mutually exclusive with `targets` (a request carrying both is rejected rather than
+    /// silently dropping one) and with `select` (only one session can be selected).
+    public var flagged: Bool?
     /// Mode for `session.split` / `quick` / `surface.zoom` (`on|off|toggle`,
     /// `show|hide|toggle` for quick/surface zoom),
     /// `session.flag` (`on|off|toggle|clear`), `sidebar.mode` (`tree|flagged|toggle`),
@@ -296,7 +300,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public init(name: String? = nil, cwd: String? = nil, targets: [String]? = nil,
                 workspace: String? = nil, workspaceName: String? = nil,
                 createWorkspace: Bool? = nil, collapsed: Bool? = nil, minimized: Bool? = nil,
-                noSelect: Bool? = nil, text: String? = nil, select: Bool? = nil, mode: String? = nil,
+                noSelect: Bool? = nil, text: String? = nil, select: Bool? = nil, flagged: Bool? = nil,
+                mode: String? = nil,
                 command: String? = nil, wait: Bool? = nil, sizePercent: Int? = nil, full: Bool? = nil,
                 follow: Bool? = nil, window: String? = nil,
                 pane: String? = nil, paneID: String? = nil, to: String? = nil,
@@ -324,6 +329,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.noSelect = noSelect
         self.text = text
         self.select = select
+        self.flagged = flagged
         self.mode = mode
         self.command = command
         self.wait = wait

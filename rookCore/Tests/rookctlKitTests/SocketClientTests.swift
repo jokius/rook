@@ -306,6 +306,29 @@ struct SocketClientTests {
         #expect(SocketClient.formatResponse(ControlResponse(ok: false), json: false) == "error: unknown error")
     }
 
+    // A PARTIAL batch injection answers `ok: false` WITH a truthful `affected` count (broadcast
+    // `session.type`), and the human line must SAY that count — a bare "error" reads as "nothing happened",
+    // so the caller re-runs the broadcast and every session that already took the text gets it twice.
+    // Keystrokes don't roll back. The count's PRESENCE is pinned, not the phrasing (the wording is the
+    // implementer's call); the error text must survive, since the count alone doesn't say what went wrong.
+    // The no-`affected` shape stays byte-identical — that guard is `formatResponseError` /
+    // `formatResponseErrorFallback` above, whose exact `==` fails on any stray suffix.
+    @Test func formatResponseErrorCarriesAffectedCount() throws {
+        let response = ControlResponse(ok: false, result: ControlResult(affected: 2),
+                                       error: "session not realized")
+
+        let human = SocketClient.formatResponse(response, json: false)
+        #expect(human.hasPrefix("error: session not realized"), "the error must lead the line; got \(human)")
+        #expect(human.contains("2"), "a partial broadcast must report how many sessions took the text; got \(human)")
+
+        // --json is unchanged and keeps carrying the whole response, count included.
+        let decoded = try JSONDecoder().decode(ControlResponse.self,
+                                               from: Data(SocketClient.formatResponse(response, json: true).utf8))
+        #expect(decoded.ok == false)
+        #expect(decoded.error == "session not realized")
+        #expect(decoded.result?.affected == 2)
+    }
+
     @Test func formatResponseJSONIsRaw() throws {
         let response = ControlResponse(ok: true, result: ControlResult(id: "9f3c"))
         let line = SocketClient.formatResponse(response, json: true)

@@ -96,6 +96,13 @@ public protocol ControlActions {
     func typeQuick(text: String) async -> ControlResponse
     func readQuickText(all: Bool, lines: Int?) async -> ControlResponse
     func typeSession(_ target: String?, window: String?, options: ControlSessionTypeOptions) async -> ControlResponse
+    /// Broadcast `session.type`: inject the same text into EVERY resolved session. `targets` is the
+    /// explicit ordered batch (empty when `flagged` selects the set instead); `flagged` types into the
+    /// window's flagged working set. Resolution is all-or-nothing like the batch `session.close`, but the
+    /// injection itself is best-effort — `result.affected` reports how many sessions actually took the
+    /// text, and a partial failure answers `ok: false` WITH that count rather than claiming success.
+    func typeSessions(_ targets: [String], flagged: Bool, window: String?,
+                      options: ControlSessionTypeOptions) async -> ControlResponse
     func copySessionSelection(_ target: String?, window: String?) -> ControlResponse
     func pasteSession(_ target: String?, window: String?) -> ControlResponse
     func selectAllSession(_ target: String?, window: String?) -> ControlResponse
@@ -656,15 +663,7 @@ public struct ControlDispatcher {
             }
             return actions.setSurfaceZoom(request.target, window: request.args?.window, mode: mode)
         case .sessionType:
-            guard let text = request.args?.text else {
-                return ControlResponse(ok: false, error: "session.type requires text")
-            }
-            return await actions.typeSession(request.target, window: request.args?.window,
-                                             options: ControlSessionTypeOptions(
-                                                text: text,
-                                                select: request.args?.select ?? false,
-                                                pane: request.args?.pane
-                                             ))
+            return await dispatchSessionType(request)
         case .sessionCopy:
             return actions.copySessionSelection(request.target, window: request.args?.window)
         case .sessionPaste:
@@ -790,6 +789,50 @@ public struct ControlDispatcher {
         default:
             preconditionFailure("unexpected quick command: \(request.cmd.rawValue)")
         }
+    }
+
+    /// `session.type`: one target, or a BROADCAST into many. The single/absent-target form is left
+    /// untouched — every script already in the wild depends on it byte-for-byte — so a broadcast is opted
+    /// into only by a repeated `--target` (`args.targets`, more than one) or by `--flagged`.
+    ///
+    /// The two selectors are mutually exclusive: a request naming both is REJECTED rather than dropping
+    /// one silently (unlike `session.flag clear`, whose `--target` is meaningless anyway — here a target
+    /// looks like it was honored). `--select` is single-target by nature — it selects a session to realize
+    /// its surface, which N sessions cannot share — and only an EXPLICIT `true` conflicts: the CLI always
+    /// sends the field, so testing for presence would reject every CLI broadcast.
+    ///
+    /// An EMPTY `targets` array is an ERROR, deliberately unlike an empty FLAGGED set (`ok`,
+    /// `affected: 0`): "every flagged session" with none flagged is an honest zero, while an empty explicit
+    /// list means the caller's dynamic target list came out empty, and falling back to `active` there would
+    /// type the text into a session nobody named — an injection into a live shell cannot be taken back.
+    private func dispatchSessionType(_ request: ControlRequest) async -> ControlResponse {
+        guard let text = request.args?.text else {
+            return ControlResponse(ok: false, error: "session.type requires text")
+        }
+        let args = request.args
+        let targets = args?.targets
+        let flagged = args?.flagged == true
+        if flagged, targets?.isEmpty == false {
+            return ControlResponse(ok: false, error: "session.type takes --flagged or --target, not both")
+        }
+        if args?.select == true, flagged || (targets?.count ?? 0) > 1 {
+            return ControlResponse(ok: false, error: "session.type --select works with a single target only")
+        }
+        let options = ControlSessionTypeOptions(text: text, select: args?.select ?? false, pane: args?.pane)
+        if flagged {
+            return await actions.typeSessions([], flagged: true, window: args?.window, options: options)
+        }
+        if let targets {
+            guard let first = targets.first else {
+                return ControlResponse(ok: false, error: "session.type requires at least one --target")
+            }
+            // a one-element array is the singular form, like the batch `session.close`/`session.move`.
+            if targets.count == 1 {
+                return await actions.typeSession(first, window: args?.window, options: options)
+            }
+            return await actions.typeSessions(targets, flagged: false, window: args?.window, options: options)
+        }
+        return await actions.typeSession(request.target, window: args?.window, options: options)
     }
 
     private func dispatchSessionBackground(_ request: ControlRequest) -> ControlResponse {

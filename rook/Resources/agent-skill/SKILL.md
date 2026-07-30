@@ -246,10 +246,13 @@ of `sidebar collapse`/`sidebar expand`, honoring `--window`; read back from the 
   workspace, so this relocates + positions in one shot, even cross-workspace). For workspace and
   after/before placement, repeat `--target` to move several sessions as one ordered block. Do not repeat
   `--target` with `--to up|down|top|bottom`.
-- `type <text> [--stdin] [--select] [--pane left|right|scratch]` — inject keystrokes (real typing, Enter
-  included) into the main pane, the split pane with `--pane right`, or the scratch terminal (even hidden)
-  with `--pane scratch`. Pass `--target "$ROOK_SESSION_ID"` to type into YOUR session, not the user's
-  active one (see Addressing).
+- `type <text> [--stdin] [--select] [--pane left|right|scratch] [--target T ...] [--flagged]` — inject
+  keystrokes (real typing, Enter included) into the main pane, the split pane with `--pane right`, or the
+  scratch terminal (even hidden) with `--pane scratch`. Pass `--target "$ROOK_SESSION_ID"` to type into
+  YOUR session, not the user's active one (see Addressing).
+  BROADCAST the same text into a whole flock by repeating `--target`, or into every flagged session with
+  `--flagged`; returns `result.affected` = how many sessions took the text. The two selectors are mutually
+  exclusive, and `--select` works with a single target only.
 - `copy` — print the session's selected text (does NOT touch the system clipboard).
 - `paste` — paste the system clipboard into the session (the socket analogue of ⌘V; read it back with
   `session text`).

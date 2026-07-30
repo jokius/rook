@@ -348,7 +348,7 @@ struct CommandsTests {
         let command = try Session.TypeText.parse(["--stdin", "--target", "s1"])
         #expect(command.stdin)
         #expect(command.text == nil)
-        #expect(command.target.target == "s1")
+        #expect(command.target.targets == ["s1"])
     }
 
     @Test func sessionTypeWithPane() throws {
@@ -377,6 +377,56 @@ struct CommandsTests {
     @Test func sessionTypeRejectsBadPane() {
         // `other` is a session.focus mode, not a typable pane — type accepts left|right|scratch only.
         #expect(validationMessage(["session", "type", "x", "--pane", "other"]) == "--pane must be left, right, or scratch")
+    }
+
+    @Test func sessionTypeMultipleTargets() throws {
+        // repeated --target is the broadcast form: the ordered list rides in args.targets while the
+        // top-level target keeps naming the FIRST one, so a pre-broadcast server degrades to that session
+        // instead of typing into `active`.
+        let expected = ControlRequest(cmd: .sessionType, target: "a",
+                                      args: ControlArgs(targets: ["a", "b"], text: "ls\n", select: false))
+        #expect(try request(["session", "type", "ls\n", "--target", "a", "--target", "b"]) == expected)
+    }
+
+    @Test func sessionTypeFlaggedWithPaneAndWindow() throws {
+        // --flagged names the set server-side (no targets on the wire); --pane rides along as ONE value for
+        // every session it resolves to.
+        let expected = ControlRequest(cmd: .sessionType, target: "active",
+                                      args: ControlArgs(text: "ls\n", select: false, flagged: true,
+                                                        window: "w1", pane: "right"))
+        #expect(try request(["session", "type", "ls\n", "--flagged", "--pane", "right", "--window", "w1"]) == expected)
+    }
+
+    @Test func sessionTypeSingleTargetKeepsThePreBroadcastWireForm() throws {
+        // BACKWARD COMPATIBILITY: a single --target (and a bare call) must produce byte-identical requests to
+        // the pre-broadcast CLI — neither `targets` nor `flagged` may appear on the wire.
+        let single = try request(["session", "type", "ls\n", "--target", "s1"])
+        #expect(single == ControlRequest(cmd: .sessionType, target: "s1",
+                                         args: ControlArgs(text: "ls\n", select: false)))
+        let bare = try request(["session", "type", "ls\n"])
+        #expect(bare == ControlRequest(cmd: .sessionType, target: "active",
+                                       args: ControlArgs(text: "ls\n", select: false)))
+        for req in [single, bare] {
+            let json = String(data: try JSONEncoder().encode(req), encoding: .utf8) ?? ""
+            #expect(!json.contains("targets"), "a single target must not emit targets; got \(json)")
+            #expect(!json.contains("flagged"), "an unflagged type must not emit flagged; got \(json)")
+        }
+    }
+
+    @Test func sessionTypeRejectsFlaggedWithTarget() {
+        // the flagged set and an explicit target are conflicting intents — a usage error, not a silent drop.
+        #expect(validationMessage(["session", "type", "x", "--flagged", "--target", "a"])
+            == "session.type takes --flagged or --target, not both")
+        #expect(validationMessage(["session", "type", "x", "--flagged", "--target", "a", "--target", "b"])
+            == "session.type takes --flagged or --target, not both")
+    }
+
+    @Test func sessionTypeRejectsSelectWithBroadcast() {
+        // --select realizes ONE session by selecting it, so it is meaningless for a broadcast.
+        #expect(validationMessage(["session", "type", "x", "--select", "--target", "a", "--target", "b"])
+            == "session.type --select works with a single target only")
+        #expect(validationMessage(["session", "type", "x", "--select", "--flagged"])
+            == "session.type --select works with a single target only")
     }
 
     @Test func sessionSplitDefaultsToggle() throws {

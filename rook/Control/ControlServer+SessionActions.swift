@@ -42,6 +42,48 @@ extension ControlServer: ControlActions {
         }
     }
 
+    /// Broadcast `session.type`: resolve the whole set first, then inject into each in turn.
+    /// Resolution is ALL-OR-NOTHING (the shared `resolveBatchSessions`, so one unknown/ambiguous id fails
+    /// before any shell sees the text) and scoped to ONE store; `flagged` instead takes the target
+    /// window's flagged working set, whose empty case is an honest `affected: 0` rather than an error.
+    /// The injection itself is BEST-EFFORT: a session that can't take the text (not realized, no split
+    /// pane) leaves the others typed, so a partial failure answers `ok: false` carrying the real count —
+    /// the text already landed somewhere and the reply must not claim otherwise in either direction.
+    /// The resolvers hand their store back through a synchronous closure, so it is captured and the async
+    /// injection loop runs after it returns.
+    func typeSessions(_ targets: [String], flagged: Bool, window: String?,
+                      options: ControlSessionTypeOptions) async -> ControlResponse {
+        var resolved: (store: AppStore, ids: [UUID])?
+        let resolution = flagged
+            ? resolver.resolvePlacementStore(window) { store in
+                resolved = (store, store.flaggedSessions.map(\.id))
+                return ControlResponse(ok: true)
+            }
+            : resolveBatchSessions(targets, window: window) { store, ids in
+                resolved = (store, ids)
+                return ControlResponse(ok: true)
+            }
+        guard resolution.ok, let resolved else { return resolution }
+
+        var affected = 0
+        var failure: String?
+        for id in resolved.ids {
+            // `select` is always false for a broadcast (the dispatcher rejects it) — forwarded rather than
+            // hardcoded so the two sides can't disagree about what it means.
+            let response = await injectText(options.text, into: id, store: resolved.store,
+                                            select: options.select, pane: options.pane)
+            if response.ok {
+                affected += 1
+            } else if failure == nil {
+                failure = response.error
+            }
+        }
+        guard let failure else {
+            return ControlResponse(ok: true, result: ControlResult(affected: affected))
+        }
+        return ControlResponse(ok: false, result: ControlResult(affected: affected), error: failure)
+    }
+
     func copySessionSelection(_ target: String?, window: String?) -> ControlResponse {
         copySelection(target, window: window)
     }

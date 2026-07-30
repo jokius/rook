@@ -152,6 +152,37 @@ struct ControlProtocolTests {
         #expect(decoded.args?.pane == "right")
     }
 
+    @Test func sessionTypeBroadcastTargetsRoundTrip() throws {
+        let request = ControlRequest(cmd: .sessionType, target: "9f3c",
+                                     args: ControlArgs(targets: ["9f3c", "abcd"], text: "ls\n", select: false))
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.args?.targets == ["9f3c", "abcd"])
+        #expect(decoded.args?.flagged == nil)
+    }
+
+    @Test func sessionTypeFlaggedRoundTrips() throws {
+        let request = ControlRequest(cmd: .sessionType, target: "active",
+                                     args: ControlArgs(text: "ls\n", select: false, flagged: true, pane: "right"))
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.args?.flagged == true)
+        #expect(decoded.args?.targets == nil)
+        #expect(decoded.args?.pane == "right")
+    }
+
+    @Test func sessionTypeOmitsFlaggedWhenNil() throws {
+        // omit-when-nil WIRE contract for the broadcast selector (the reason `flagged` is Bool?): a plain
+        // single-target type must not emit the field at all, so a broadcast-aware CLI keeps sending the
+        // byte-identical request an older server already understands.
+        let request = ControlRequest(cmd: .sessionType, target: "9f3c", args: ControlArgs(text: "ls\n", select: false))
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.args?.flagged == nil)
+        let json = String(data: try JSONEncoder().encode(request), encoding: .utf8) ?? ""
+        #expect(!json.contains("flagged"), "a nil flagged must be omitted from the JSON; got \(json)")
+    }
+
     @Test func sessionSeenRoundTrips() throws {
         let request = ControlRequest(cmd: .sessionSeen, target: "9f3c", args: ControlArgs(window: "win"))
         let decoded = try roundTrip(request)

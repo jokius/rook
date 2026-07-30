@@ -196,10 +196,23 @@ struct Session: ParsableCommand {
         @Flag(name: .long, help: "Read the text from stdin instead of an argument.") var stdin = false
         @Flag(name: .long, help: "Select (and realize) a never-shown session before injecting (main pane only; a split pane must already exist).") var select = false
         @Option(name: .long, help: "Which pane to type into: left (main), right (split), or scratch (the session's scratch terminal, even when hidden). Defaults to the left pane.") var pane: String?
-        @OptionGroup var target: TargetOptions
+        @Flag(name: .long, help: "Broadcast into every flagged session of the target window instead of a named target.") var flagged = false
+        @OptionGroup var target: BatchTargetOptions
         @OptionGroup var options: ClientOptions
 
-        func validate() throws { try validatePaneArgument(pane) }
+        /// The two broadcast conflicts are caught here with the SAME strings the dispatcher uses (the
+        /// `session.move` precedent), so a mistake reads identically whether it came from the CLI or a raw
+        /// socket client: naming both selectors would silently drop one, and `--select` realizes ONE
+        /// session, which a broadcast has no way to share.
+        func validate() throws {
+            try validatePaneArgument(pane)
+            if flagged, !target.targets.isEmpty {
+                throw ValidationError("session.type takes --flagged or --target, not both")
+            }
+            if select, flagged || target.targets.count > 1 {
+                throw ValidationError("session.type --select works with a single target only")
+            }
+        }
 
         func makeRequest() throws -> ControlRequest {
             let payload: String
@@ -212,8 +225,13 @@ struct Session: ParsableCommand {
             } else {
                 throw ValidationError("provide TEXT or --stdin")
             }
-            return ControlRequest(cmd: .sessionType, target: target.target,
-                                  args: options.withWindow(ControlArgs(text: payload, select: select, pane: pane)))
+            // `flagged` rides as nil when the flag is absent (never `false`), so a single `session.type`
+            // stays byte-identical to its pre-broadcast wire form.
+            return ControlRequest(cmd: .sessionType, target: target.targets.first ?? "active",
+                                  args: options.withWindow(ControlArgs(targets: target.batchTargets,
+                                                                       text: payload, select: select,
+                                                                       flagged: flagged ? true : nil,
+                                                                       pane: pane)))
         }
     }
 

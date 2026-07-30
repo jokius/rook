@@ -710,6 +710,67 @@ paths:
   if the surface still isn't up.
   The realize/select path applies to the MAIN pane only — a split pane is never created by selecting,
   so `pane:right`/`pane:scratch` inject into the existing surface or error.
+  **`session.type` also BROADCASTS**: a repeated `--target` (`args.targets`, more than one) or `--flagged`
+  types the SAME text into many sessions in one call, which is what a flock of agents actually needs (the
+  loop used to live outside, in the caller's shell).
+  The two selectors are mutually EXCLUSIVE and the conflict is an ERROR, not a silent drop
+  (`session.type takes --flagged or --target, not both`) — unlike `session.flag clear`, whose `--target`
+  is meaningless anyway; here a target LOOKS honored, so losing it quietly would be a lie.
+  `--select` is single-target by nature (it selects one session to realize its surface), so it is rejected
+  for a broadcast (`session.type --select works with a single target only`).
+  Both strings are pinned at BOTH levels — the CLI `validate()` and the dispatcher — like `session.move`'s,
+  so the same mistake reads identically from `rookctl` and from a raw socket client.
+  The `select` check tests for an explicit `true`, NOT for presence: the CLI always sends the field
+  (`select: false`), so a `!= nil` check would reject every CLI broadcast.
+  `flagged` conversely rides as nil when the flag is absent, never `false`, so a single `session.type`
+  request stays BYTE-IDENTICAL to its pre-broadcast wire form.
+  **Resolution is all-or-nothing; the INJECTION is best-effort.**
+  The set resolves through the same `resolveBatchSessions` as `session.close`/`session.move` (dedup,
+  one-window scoping, any unknown/ambiguous target fails the whole request before a single shell sees the
+  text); `--flagged` instead resolves the store by `--window`/frontmost and takes `store.flaggedSessions`,
+  keeping the batch's one-window scope.
+  Injection then runs `injectText` per session and reports `result.affected` — and when some session could
+  not take it (`session not realized`, `session has no split pane`) the reply is `ok: false` WITH that
+  count plus the first failure's error.
+  A partial failure must NOT report `ok: true` and must NOT drop the count: the text has already landed in
+  the other shells and an injection cannot be taken back, so the reply has to be truthful in both
+  directions.
+  **That truth has to reach the HUMAN output too, which is why `SocketClient.formatResponse` now appends
+  the count to a non-ok line** (`error: session not realized (3 sessions affected)`).
+  It used to return early on `!ok` and throw `result` away, so the count lived only under `--json`: the user
+  read a bare `error:`, concluded nothing happened, re-ran the broadcast, and the sessions that already took
+  the text got it TWICE.
+  The fix belongs in `formatResponse`, NOT in one command's error string — the next batch command inherits it
+  instead of re-discovering the trap.
+  It changes no existing command's output because the "non-ok WITH `affected`" shape did not exist before
+  this feature (batch `close`/`move` always answer `ok: true`), and a non-ok response WITHOUT a count stays
+  byte-identical.
+  The count phrase itself is the shared `affectedPhrase` helper, so the success line (`3 sessions`) and the
+  failure suffix cannot drift apart.
+  **The empty-set asymmetry is deliberate.**
+  An empty FLAGGED set is `ok` with `affected: 0` (the caller asked for "every flagged session" and there
+  are honestly none, matching batch `move`/`close`), while an explicitly EMPTY `targets` array is an ERROR
+  (`session.type requires at least one --target`).
+  Measured on RED: an empty/flagged-less request fell through to `typeSession(target: "active")` and TYPED
+  THE TEXT INTO THE ACTIVE SESSION, which the caller never named — the worst outcome for an input command.
+  The CLI never sends it (`batchTargets` is nil below two targets), so the guard is dispatcher-ONLY — there
+  is no CLI-side twin to keep in step, because the CLI cannot produce the request at all.
+  The guard fires with ZERO calls into `ControlActions`: for an input command "reject after resolving" is
+  already too late, since the resolve step is what lands on `active`.
+  **Do NOT collapse the two empty cases into one branch** — they are the same shape on the wire and opposite
+  in meaning: an empty `targets` array is a MALFORMED call, an empty flagged set is a WELL-FORMED call whose
+  honest answer is zero.
+  A one-element `targets` array routes to the singular path, like the batch `session.close`/`session.move`.
+  `--pane` applies to every target with one value (validated server-side in `injectText`, as before).
+  The command CATALOG does NOT grow — these are flags on an existing command, so every count surface stays
+  at 74.
+  **No new `tree` read-back is owed**: `session.type` mutates no app state (the text goes into a shell), and
+  its read leg is the existing `session.text`.
+  Keep-in-sync: `ControlArgs.flagged` in `ControlProtocol.swift`, the `.sessionType` arm
+  (`ControlDispatcher.dispatchSessionType`, which owns both conflicts + the empty-array guard + the
+  single/broadcast routing), `ControlActions.typeSessions` implemented in
+  `ControlServer+SessionActions.swift`, `rookctl session type`'s `BatchTargetOptions` + `--flagged` +
+  `validate()`, and round-trip / dispatcher / CLI tests plus the `SessionTypeBroadcastUITests` e2e.
   Four-point keep-in-sync audit for `session.type --pane`: (1) reuses `ControlArgs.pane` in
   `ControlProtocol.swift` (no new field), (2) the pane switch in `injectText`
   (`ControlServer+SurfaceIO.swift`), (3) the `session type --pane left|right|scratch` option

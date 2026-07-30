@@ -897,6 +897,200 @@ struct ControlDispatcherTests {
         ])
     }
 
+    // Repeated `--target` makes session.type a BROADCAST: the dispatcher routes it to `typeSessions` with
+    // the ordered wire list, one `pane` value for every target, and echoes the host response (the count
+    // included) untouched. `select: false` is what the CLI always sends, so it must NOT read as a
+    // broadcast/select conflict — only an explicit `select: true` does (see the reject test below).
+    @Test func sessionTypeRoutesRepeatedTargetsToBroadcast() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        actions.nextSessionTypeBatchResponse = ControlResponse(ok: true, result: ControlResult(affected: 2))
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType,
+            target: "a",
+            args: ControlArgs(targets: ["a", "b"], text: "ls\n", select: false, window: "win", pane: "right")
+        ))
+
+        #expect(response == ControlResponse(ok: true, result: ControlResult(affected: 2)))
+        #expect(actions.calls == [
+            .sessionTypeBatch(targets: ["a", "b"], flagged: false, window: "win",
+                              ControlSessionTypeOptions(text: "ls\n", select: false, pane: "right"))
+        ])
+    }
+
+    // `--flagged` selects the set server-side, so the wire carries NO targets — the dispatcher must still
+    // route to `typeSessions` (with the flag set) rather than typing into the single top-level target. An
+    // EMPTY flagged set is the host's `ok` + `affected: 0`, not an error, and the dispatcher passes it
+    // through as-is.
+    @Test func sessionTypeFlaggedRoutesToBroadcastWithoutTargets() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        actions.nextSessionTypeBatchResponse = ControlResponse(ok: true, result: ControlResult(affected: 0))
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType,
+            target: "active",
+            args: ControlArgs(text: "ls\n", select: false, flagged: true, window: "win")
+        ))
+
+        #expect(response == ControlResponse(ok: true, result: ControlResult(affected: 0)))
+        #expect(actions.calls == [
+            .sessionTypeBatch(targets: [], flagged: true, window: "win",
+                              ControlSessionTypeOptions(text: "ls\n", select: false, pane: nil))
+        ])
+    }
+
+    // BACKWARD COMPATIBILITY: a bare type, a single `--target`, and an explicit `flagged: false` all keep
+    // taking the pre-broadcast `typeSession` path unchanged — including `select: true`, which stays legal
+    // for a single session. A one-element `targets` array is equivalent to the singular form, the same way
+    // `session.move` routes it.
+    @Test func sessionTypeKeepsSingleTargetOnTheLegacyPath() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let bare = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType,
+            target: "active",
+            args: ControlArgs(text: "ls\n", select: false)
+        ))
+        let single = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType,
+            target: "a",
+            args: ControlArgs(text: "ls\n", select: true, window: "win")
+        ))
+        let oneElementBatch = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType,
+            target: "a",
+            args: ControlArgs(targets: ["a"], text: "ls\n", select: false)
+        ))
+        let notFlagged = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType,
+            target: "a",
+            args: ControlArgs(text: "ls\n", select: false, flagged: false)
+        ))
+
+        #expect(bare == ControlResponse(ok: true))
+        #expect(single == ControlResponse(ok: true))
+        #expect(oneElementBatch == ControlResponse(ok: true))
+        #expect(notFlagged == ControlResponse(ok: true))
+        #expect(actions.calls == [
+            .sessionType(target: "active", window: nil,
+                         ControlSessionTypeOptions(text: "ls\n", select: false, pane: nil)),
+            .sessionType(target: "a", window: "win",
+                         ControlSessionTypeOptions(text: "ls\n", select: true, pane: nil)),
+            .sessionType(target: "a", window: nil,
+                         ControlSessionTypeOptions(text: "ls\n", select: false, pane: nil)),
+            .sessionType(target: "a", window: nil,
+                         ControlSessionTypeOptions(text: "ls\n", select: false, pane: nil))
+        ])
+    }
+
+    // An EMPTY `targets` array is a MALFORMED call, not a selection — rejected like `session.close`'s, and
+    // never allowed to fall through to the legacy path, which would type the payload into whatever session
+    // is active (a session the caller never named, and injected keystrokes cannot be taken back).
+    // Distinct from an empty FLAGGED set, a well-formed call whose honest answer is `ok` + `affected: 0`
+    // (see sessionTypeFlaggedRoutesToBroadcastWithoutTargets).
+    @Test func sessionTypeRejectsEmptyTargetsBeforeCallingActions() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType,
+            target: "active",
+            args: ControlArgs(targets: [], text: "ls\n", select: false)
+        ))
+
+        #expect(response == ControlResponse(ok: false, error: "session.type requires at least one --target"))
+        #expect(actions.calls.isEmpty)
+    }
+
+    // `--flagged` names the set, so an explicit target is a conflicting intent — rejected, NOT silently
+    // dropped (unlike `session.flag clear`, where a target is meaningless). Any non-empty `targets` counts,
+    // one included: a raw socket client can send that pair even though the CLI stops it earlier.
+    @Test func sessionTypeRejectsFlaggedWithTargetsBeforeCallingActions() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let many = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType,
+            target: "a",
+            args: ControlArgs(targets: ["a", "b"], text: "ls\n", select: false, flagged: true)
+        ))
+        let one = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType,
+            target: "a",
+            args: ControlArgs(targets: ["a"], text: "ls\n", select: false, flagged: true)
+        ))
+
+        #expect(many == ControlResponse(ok: false, error: "session.type takes --flagged or --target, not both"))
+        #expect(one == ControlResponse(ok: false, error: "session.type takes --flagged or --target, not both"))
+        #expect(actions.calls.isEmpty)
+    }
+
+    // `--select` realizes ONE session by selecting it, so it cannot mean anything for a multi-session
+    // broadcast — an error rather than a silently ignored flag, in either selector form.
+    @Test func sessionTypeRejectsSelectWithBroadcastBeforeCallingActions() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let repeated = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType,
+            target: "a",
+            args: ControlArgs(targets: ["a", "b"], text: "ls\n", select: true)
+        ))
+        let flagged = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType,
+            target: "active",
+            args: ControlArgs(text: "ls\n", select: true, flagged: true)
+        ))
+
+        #expect(repeated == ControlResponse(ok: false, error: "session.type --select works with a single target only"))
+        #expect(flagged == ControlResponse(ok: false, error: "session.type --select works with a single target only"))
+        #expect(actions.calls.isEmpty)
+    }
+
+    @Test func sessionTypeBroadcastRequiresTextBeforeCallingActions() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let repeated = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType,
+            args: ControlArgs(targets: ["a", "b"])
+        ))
+        let flagged = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType,
+            args: ControlArgs(flagged: true)
+        ))
+
+        #expect(repeated == ControlResponse(ok: false, error: "session.type requires text"))
+        #expect(flagged == ControlResponse(ok: false, error: "session.type requires text"))
+        #expect(actions.calls.isEmpty)
+    }
+
+    // A PARTIAL injection failure must not be dressed up as success: the host answers `ok: false` WITH the
+    // truthful count of sessions that did take the text, and the dispatcher relays both — it neither drops
+    // `result` on an error nor rewrites `affected`.
+    @Test func sessionTypeBroadcastRelaysPartialFailureWithItsCount() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        actions.nextSessionTypeBatchResponse = ControlResponse(ok: false, result: ControlResult(affected: 1),
+                                                              error: "session not realized")
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType,
+            target: "a",
+            args: ControlArgs(targets: ["a", "b"], text: "ls\n", select: false)
+        ))
+
+        #expect(response == ControlResponse(ok: false, result: ControlResult(affected: 1),
+                                            error: "session not realized"))
+        #expect(actions.calls == [
+            .sessionTypeBatch(targets: ["a", "b"], flagged: false, window: nil,
+                              ControlSessionTypeOptions(text: "ls\n", select: false, pane: nil))
+        ])
+    }
+
     @Test func sessionCopyRoutesTargetAndWindow() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)

@@ -105,6 +105,24 @@ Typing goes to the session's main (left) pane by default; `--pane right` targets
 errors with `session has no split pane` when there is none. In a custom keymap command, `$AGT_PANE`
 holds the pane the shortcut fired from, so `session type --pane "$AGT_PANE"` types back into it.
 
+## Broadcast one line into a flock of agents
+
+Repeat `--target` to type the same text into several sessions in one call, or use `--flagged` to hit every
+flagged session of the window — no shell loop, and one unknown id fails the whole thing before anything is
+typed:
+
+```bash
+rookctl session type $'/compact\n' --target "$a" --target "$b" --target "$c"
+rookctl session flag on --target "$a"                        # mark the flock once…
+rookctl session type $'git pull --rebase\n' --flagged         # …then broadcast to it
+rookctl session type $'/clear\n' --flagged --json | jq '.result.affected'   # how many took it
+```
+
+The two selectors are mutually exclusive, and `--select` only works with a single target. Injection is
+best-effort with an honest count: `result.affected` is how many sessions actually took the text, and a
+partial failure answers `ok: false` while still carrying that count — so read `affected` instead of
+assuming all-or-nothing. `--flagged` with nothing flagged is a successful `affected: 0`.
+
 Run a command AS the session's process (closes when it exits, no echoed command line):
 
 ```bash

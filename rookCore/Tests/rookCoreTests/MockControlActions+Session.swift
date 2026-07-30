@@ -124,6 +124,12 @@ extension MockControlActions {
         return nextSessionTypeResponse
     }
 
+    func typeSessions(_ targets: [String], flagged: Bool, window: String?,
+                      options: ControlSessionTypeOptions) async -> ControlResponse {
+        calls.append(.sessionTypeBatch(targets: targets, flagged: flagged, window: window, options))
+        return nextSessionTypeBatchResponse
+    }
+
     func copySessionSelection(_ target: String?, window: String?) -> ControlResponse {
         calls.append(.sessionCopy(target: target, window: window))
         return nextSessionCopyResponse
