@@ -20,8 +20,11 @@ struct AgentStatusWrapperTests {
 
     // run the wrapper with a stub rookctl. the stub records each received arg on its own line, prints
     // `stubStdout`, and exits `stubExit`. returns the recorded argv, the wrapper's own stdout, and its exit.
+    // `stdin` is the hook payload to feed the wrapper on a PIPE (nil = /dev/null, never the inherited
+    // stdin: the wrapper's subagent filter branches on whether stdin is a tty).
     private func runWrapper(_ args: [String], env: [String: String],
-                            stubStdout: String = "ok", stubExit: Int = 0) throws -> (argv: [String], stdout: String, exit: Int32) {
+                            stubStdout: String = "ok", stubExit: Int = 0,
+                            stdin: String? = nil) throws -> (argv: [String], stdout: String, exit: Int32) {
         let fm = FileManager.default
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("rook-wrapper-\(UUID().uuidString)")
         try fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -47,6 +50,14 @@ struct AgentStatusWrapperTests {
         let out = Pipe()
         proc.standardOutput = out
         proc.standardError = Pipe()
+        if let stdin {
+            let input = Pipe()
+            proc.standardInput = input
+            try input.fileHandleForWriting.write(contentsOf: Data(stdin.utf8))
+            try input.fileHandleForWriting.close()
+        } else {
+            proc.standardInput = FileHandle(forReadingAtPath: "/dev/null")
+        }
         try proc.run()
         proc.waitUntilExit()
 
@@ -154,5 +165,68 @@ struct AgentStatusWrapperTests {
         // ROOK_PANE set but no ROOK_PANE_ID: no --pane-id flag
         let r = try runWrapper(["active"], env: ["ROOK_SESSION_ID": "sid", "ROOK_PANE": "right"])
         #expect(!r.argv.contains("--pane-id"))
+    }
+
+    // MARK: - subagent filter
+    //
+    // Claude Code fires the status hooks inside a subagent too, with the SAME session_id, so a busy
+    // flock of subagents used to keep re-asserting `active` over the main thread's `completed`. The
+    // hook payload's `agent_type` is the only discriminator: absent on the main thread, the subagent's
+    // own type inside one (verified against claude-code 2.1.207: a subagent's PostToolUse carries
+    // `"agent_type":"Explore"`, the main thread's carries no such key).
+
+    private static let hookEnv = ["ROOK_SESSION_ID": "sid", "CLAUDECODE": "1"]
+    private static let subagentPayload = #"{"session_id":"s","hook_event_name":"PostToolUse","agent_id":"a1","agent_type":"Explore"}"#
+    private static let mainPayload = #"{"session_id":"s","hook_event_name":"PostToolUse","tool_name":"Agent"}"#
+
+    @Test func subagentProgressIsDropped() throws {
+        let r = try runWrapper(["active", "--blink"], env: Self.hookEnv, stdin: Self.subagentPayload)
+        #expect(r.argv.isEmpty)
+        #expect(r.exit == 0)
+    }
+
+    @Test func mainThreadProgressStillReported() throws {
+        // the main thread's payload has no agent_type at all — it must pass through untouched
+        let r = try runWrapper(["active", "--blink"], env: Self.hookEnv, stdin: Self.mainPayload)
+        #expect(r.argv == ["session", "status", "active", "--target", "sid", "--blink"])
+    }
+
+    @Test func explicitMainAgentTypeStillReported() throws {
+        // a build that names the main thread (`main`, `main-session`) must not be mistaken for a subagent
+        for kind in ["main", "main-session"] {
+            let payload = #"{"session_id":"s","agent_type":"\#(kind)"}"#
+            let r = try runWrapper(["active"], env: Self.hookEnv, stdin: payload)
+            #expect(r.argv == ["session", "status", "active", "--target", "sid"], "agent_type \(kind)")
+        }
+    }
+
+    @Test func nestedAgentTypeInBackgroundTasksIsNotASubagent() throws {
+        // REGRESSION: the main thread's `Stop` payload lists the session's `background_tasks`, and a
+        // BACKGROUNDED subagent's entry there carries its own nested `agent_type`. A substring match read
+        // that as "a subagent reported this" and swallowed the `completed` — caught on a live dev instance
+        // (the row stayed active+blink after the turn ended), which is why the filter parses the payload
+        // instead of grepping it.
+        let payload = #"{"session_id":"s","hook_event_name":"Stop","stop_hook_active":false,"background_tasks":[{"id":"t1","agent_type":"Explore","status":"running"}]}"#
+        let r = try runWrapper(["completed", "--auto-reset"], env: Self.hookEnv, stdin: payload)
+        #expect(r.argv == ["session", "status", "completed", "--target", "sid", "--auto-reset"])
+    }
+
+    @Test func subagentBlockedIsStillReported() throws {
+        // a subagent's permission prompt is a REAL question waiting on the user: never dropped
+        let r = try runWrapper(["blocked"], env: Self.hookEnv, stdin: Self.subagentPayload)
+        #expect(r.argv == ["session", "status", "blocked", "--target", "sid"])
+    }
+
+    @Test func stdinIsNotReadOutsideAClaudeHook() throws {
+        // the shell integration, the Codex adapter (which parses the same stdin itself) and the Pi
+        // extension all call the wrapper without $CLAUDECODE: it must not consume their stdin
+        let r = try runWrapper(["active", "--blink"], env: ["ROOK_SESSION_ID": "sid"], stdin: Self.subagentPayload)
+        #expect(r.argv == ["session", "status", "active", "--target", "sid", "--blink"])
+    }
+
+    @Test func unparseablePayloadStillReports() throws {
+        // a payload rook cannot recognize must never silence the indicator
+        let r = try runWrapper(["active"], env: Self.hookEnv, stdin: "not json at all")
+        #expect(r.argv == ["session", "status", "active", "--target", "sid"])
     }
 }

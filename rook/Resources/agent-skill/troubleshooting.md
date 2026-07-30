@@ -232,6 +232,26 @@ grep -c pane-id ~/.config/rook/agent-status/rook-agent-status.sh   # 0 = the old
 A shell spawned before the token existed simply falls back to `--pane`, i.e. the old behavior — nothing
 breaks, it just stays stale until that shell is restarted.
 
+### "A subagent is working but the row does not show `active`"
+
+By design. Claude Code fires the status hooks INSIDE a Task subagent too, stamped with the SAME
+`session_id`, so a flock of subagents used to hold the row on `active` over the `completed` the main
+thread had already reported — i.e. the row claimed to be busy when it was the user's turn. The installed
+wrapper therefore drops a subagent's progress report, keyed on the hook payload's `agent_type` (absent on
+the main thread, the subagent's own type inside one), and the row tracks the MAIN thread only. A
+subagent's permission prompt still parks the row `blocked`, because that one really is waiting on a human.
+
+If a long fan-out should show something anyway, drive it explicitly from the orchestrating agent — that is
+what `session status` is for:
+
+```bash
+rookctl session status active --blink --target "$ROOK_SESSION_ID"   # before dispatching the fan-out
+```
+
+An install predating the filter still shows the old behavior (an installed hook is a copy): re-run
+Rook ▸ Help ▸ Install Agent Status Hooks…, then check
+`grep -c agent_type ~/.config/rook/agent-status/rook-agent-status.sh` (0 = the old hook).
+
 ### "Clicking a path in the terminal does nothing / opens Finder instead of the preview"
 
 ⌘-clicking a link routes by what the path IS, and a click that lands on nothing is silently ignored on

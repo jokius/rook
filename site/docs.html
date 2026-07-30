@@ -2187,6 +2187,12 @@
               The status wrapper now also forwards the pane's stable surface token, so a status set from a split that was promoted
               into the main pane still lands on the right row — an older installed copy keeps the previous behavior until you
               re-run the installer, and a shell that was already open needs a fresh one.
+              Claude Code subagents no longer move the row either: it fires the same hooks inside a Task subagent under the same
+              session id, so a busy flock of them used to keep the row on active over the main thread's completed. The wrapper
+              reads the payload's
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agent_type</span> and drops a
+              subagent's progress, while still passing a subagent's permission prompt through — that one is a real question
+              waiting on you.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               <strong style="color: #e6e1d7">Resume agent conversations.</strong> A restored pane that was running an agent gets

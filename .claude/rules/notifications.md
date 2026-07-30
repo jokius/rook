@@ -233,6 +233,35 @@ paths:
   clear is the only signal.
   The `PostToolUse→active --blink` install hook covers the answer-then-resume case (the agent's next
   tool re-asserts `active`).
+- **A Claude Code SUBAGENT's turn is filtered OUT in the installed wrapper, not app-side.**
+  Claude Code fires the SAME status hooks INSIDE a subagent (the Task tool) as on the main thread, and stamps them with
+  the SAME `session_id`, so a flock of working subagents kept re-asserting `active` over the `completed`
+  the main thread had already reported — the row read "working" when it was actually the user's turn.
+  The ONLY discriminator is the hook payload on stdin: `agent_type` is ABSENT on the main thread
+  (it defaults to an unset `mainThreadAgentType`) and carries the subagent's own type
+  (`Explore`, `general-purpose`, `teammate`, …) inside one — verified against claude-code 2.1.207,
+  where a subagent's `PostToolUse` carries `"agent_type":"Explore"` and the main thread's carries no such key
+  (`agent_id` is likewise subagent-only).
+  So `rook-agent-status.sh` drops the call, treating an `agent_type` of `main`/`main-*` (or none at all) as the main thread.
+  **It must read the TOP-LEVEL key, which is why the parse is `/usr/bin/plutil -extract agent_type raw` and NOT a substring match.**
+  A `Stop` payload also carries `background_tasks`, and a BACKGROUNDED subagent's entry there has its OWN nested
+  `agent_type` — a `case` over the raw JSON therefore read the MAIN thread's `Stop` as a subagent's and swallowed the
+  `completed` (caught on a live dev instance: the row stayed `active+blink` after the turn ended; `AgentStatusWrapperTests.nestedAgentTypeInBackgroundTasksIsNotASubagent`
+  is that regression).
+  `plutil` is always present on macOS and the Codex adapter in the same package already parses its stdin with it, so it
+  costs no new dependency; anything it cannot parse yields an empty value, i.e. report anyway (fail open — an
+  unrecognized payload must never silence the indicator).
+  Two deliberate scopes:
+  `blocked` is NEVER dropped (a subagent's permission prompt is a real question waiting on you — and answering
+  it clears the glyph through the pane's own keystroke, not through a hook),
+  and stdin is read ONLY when `$CLAUDECODE` is set (present in a Claude hook's env, absent for the shell
+  integration, the Codex adapter — which parses the same stdin ITSELF — and the Pi extension) AND stdin is not a tty,
+  so no other caller can block on a `cat` of a pipe nobody closes.
+  The bash-3.2 `read -t` has no fractional timeout, which is why the gate is env-based rather than a timed read.
+  Tested by running the shipped wrapper with a stub `rookctl` and a payload on stdin
+  (`AgentStatusWrapperTests`, the subagent-filter section).
+  There is NO Swift/app-side leg and NO settings-json change — the filter is a policy of the BRIDGE, so an
+  existing install picks it up by re-running Help ▸ Install Agent Status Hooks… (which re-copies the script).
   Peer terminals get the decline case for free by different means rook avoids:
   cmux owns the permission decision UI (a blocking hook round-trip captures accept/deny),
   herdr scrapes the PTY (the prompt chrome leaving the screen clears it).

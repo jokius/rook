@@ -151,6 +151,9 @@ paths:
   and the gated tool's own PreToolUse fires BEFORE `blocked` is set, so the approved tool's PostToolUse
   is the first hook afterwards), and merges SIX Codex lifecycle hooks into `~/.codex/config.toml` with a
   `.bak`.
+  **Those Claude hooks also fire inside a Task SUBAGENT under the SAME `session_id`, and the wrapper drops
+  those calls** (all but `blocked`) by reading the payload's `agent_type` — see the subagent-filter bullet in
+  the Notifications rule; the args the installer writes did NOT change.
   **The Codex hooks do NOT map events to statuses — they call a SECOND installed script,
   `rook-codex-status.sh` (`AgentHooksInstall.codexWrapperName`), with an ACTION**
   (SessionStart→`session-start`, UserPromptSubmit→`user-prompt-submit`, PreToolUse→`pre-tool-use`,

@@ -30,6 +30,37 @@ set -u
 state=$1
 shift
 
+# a SUBAGENT's turn is not the session's turn state. Claude Code fires the SAME status hooks INSIDE a
+# subagent (the Task tool) as on the main thread, and stamps them with the SAME session_id — so a flock
+# of working subagents keeps re-asserting `active` over the `completed` the main thread already
+# reported, and the sidebar row lies about whose turn it is. The only discriminator is the hook's JSON
+# payload on stdin: `agent_type` is ABSENT on the main thread (it defaults to an unset
+# mainThreadAgentType) and carries the subagent's own type — `Explore`, `general-purpose`, `teammate` —
+# inside one. So drop a subagent's report.
+#
+# It must be the TOP-LEVEL `agent_type` and nothing else: a `Stop` payload also lists the session's
+# `background_tasks`, and a BACKGROUNDED subagent's entry there carries its own nested `agent_type` — so
+# a substring match on the raw payload reads the MAIN thread's Stop as a subagent's and swallows the
+# `completed` (observed live: the row stayed on active+blink after the turn ended). `plutil` parses the
+# JSON and extracts exactly the top-level key; it is always present on macOS, and the Codex adapter in
+# this same package already relies on it. Anything it cannot parse yields an empty value, i.e. report
+# anyway — a payload rook does not understand must never silence the indicator.
+#
+# `blocked` is NEVER dropped: a subagent's permission prompt is a real question waiting on you (and
+# answering it clears the glyph through the pane's own keystroke, not through a hook).
+#
+# Reading stdin is gated on $CLAUDECODE — set only in a Claude Code hook's environment — plus a
+# non-tty stdin, so the other callers (the shell integration, the Codex adapter which parses the same
+# stdin itself, the Pi extension) never block on a `cat` of a pipe nobody closes.
+if [ "$state" != "blocked" ] && [ -n "${CLAUDECODE:-}" ] && [ ! -t 0 ]; then
+  payload=$(cat 2>/dev/null) || payload=''
+  agent_type=$(printf '%s' "$payload" | /usr/bin/plutil -extract agent_type raw -o - - 2>/dev/null) || agent_type=''
+  case $agent_type in
+    ''|main|main-*) ;;   # the main thread (or a payload carrying no such key)
+    *) exit 0 ;;         # a subagent: not this session's turn state
+  esac
+fi
+
 # forward the pane discriminators when the app injected them: each session surface
 # (main/split/scratch) sets its own ROOK_PANE (the role) plus ROOK_PANE_ID (a stable
 # per-surface token). the role can go stale — a split survivor promoted into the main pane
