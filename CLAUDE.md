@@ -133,6 +133,19 @@ surface ownership, and the C-boundary concurrency contract before changing the b
 
 The app must build, `swift test` must stay green, and `make lint` must pass after every change.
 
+- **A finished feature ends with `make deploy` — always, without being asked.**
+  As soon as the work is COMPLETE (committed, and the gate is green: `swift test`, `make lint`, the build),
+  deploy the Release build to `/Applications`.
+  It is part of "done", not a separate errand the user has to request each time.
+  **Do NOT relaunch (or quit, or `pkill`) the running instance** — the standing ban above still holds:
+  the deployed copy is the user's live daily driver with live sessions, and they relaunch it themselves
+  when it suits them.
+  Just report that it is installed and that the new code arrives on their next relaunch.
+  When the change touches the INSTALLED hook scripts or the agent skill, also say whether
+  Help ▸ Install Agent Status Hooks… / Install Agent Skill… has to be re-run to pick it up
+  (a change confined to `rookctl` or the app does NOT need it — the hooks call the same baked path) —
+  say it, never run the installers yourself.
+
 - **Manage file sizes for real — source files stay under 1000 lines, tests under a hard 2000 (= 2×).**
   In OUR OWN work: when you touch a long file, PROPOSE splitting/relocating it toward that rather than
   growing it further — but ALWAYS ask the user first, never restructure a file unprompted; and don't
