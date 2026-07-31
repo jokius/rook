@@ -562,6 +562,17 @@ bare event object (NDJSON — pipe it straight into `jq`).
   shells claim to be the right pane and a `blocked` lands on the wrong one. The token is opaque and
   validated only by whether it resolves. **The installed agent-status hook forwards it for you**, so
   scripts normally pass neither and leave the pane to the hook.
+  **Only the pane's OWN agent may move the row**, the same ownership check `session agent` runs (below):
+  `rookctl` reports its nearest agent ANCESTOR's pid, and the app drops a status whose pid differs from the
+  pane's foreground process — answering ok with `result.text = "ignored: not the pane's agent"` and changing
+  nothing. So a nested `claude -p …` an agent spawns cannot report `completed` over the pane's real agent.
+  There is no flag: the pid is computed by the CLI and never passed by hand.
+  UNLIKE `session agent` the check is NARROW and fail-OPEN — a report is dropped only when the call names
+  the CALLER's own session (`--target "$ROOK_SESSION_ID"`), an AGENT is the pane's foreground process, AND
+  the pids differ. So setting a status on ANOTHER session (an orchestrator flagging a worker's pane) sends
+  no pid and is never checked; a pane running **tmux or ssh** — where the foreground process is the wrapper,
+  not the agent — passes untouched; and so does `--target active`, a hand-run `rookctl`, or an unreadable
+  foreground process. Losing a `blocked` is worse than one stray `active`.
   An unknown state errors. Setting non-idle is for agents/hooks; `idle` clears it (also available in the GUI).
 - `session agent <claude|codex> [--id ID] [--from-hook] [--clear] [--config-dir DIR] [--pane left|right] [--target] [--window W]` —
   remember which agent CONVERSATION the pane is on, so a restart RESUMES it instead of coming back on a

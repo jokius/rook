@@ -169,8 +169,9 @@ extension ControlDispatcher {
     /// status untouched rather than half-applying the call: the state itself, the `#rrggbb` tint, the
     /// silhouette (the shape axis, for when the tint can't carry the state), and the pane role. The
     /// opaque `--pane-id` token rides through unchecked — only the app side can resolve it against the
-    /// session's live surfaces. Its own arm (like `session.agent`'s) so the `dispatchSessionCommand`
-    /// switch stays a flat router.
+    /// session's live surfaces, and so does `--agent-pid`, the reporter's ownership proof (there is no
+    /// pid to validate against here, and it is not user input). Its own arm (like `session.agent`'s) so
+    /// the `dispatchSessionCommand` switch stays a flat router.
     func dispatchSessionStatus(_ request: ControlRequest) -> ControlResponse {
         guard let status = AgentStatus(rawValue: request.args?.status ?? "") else {
             return ControlResponse(ok: false, error: "invalid status")
@@ -194,7 +195,8 @@ extension ControlDispatcher {
                                                 autoReset: request.args?.autoReset,
                                                 sound: request.args?.sound, color: request.args?.color,
                                                 shape: shape,
-                                                pane: pane, paneID: request.args?.paneID)
+                                                pane: pane, paneID: request.args?.paneID,
+                                                agentPid: request.args?.agentPid)
         return actions.setSessionStatus(request.target, window: request.args?.window, update: update)
     }
 

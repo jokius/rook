@@ -6,7 +6,8 @@ import rookCore
 
 struct CommandsTests {
     /// Parse argv into a subcommand and build its `ControlRequest`. Throws if parsing or request-building fails.
-    private func request(_ argv: [String]) throws -> ControlRequest {
+    /// Not private: `SessionStatusOwnershipPidTests` (below) builds its requests the same way.
+    func request(_ argv: [String]) throws -> ControlRequest {
         let parsed = try Rookctl.parseAsRoot(argv)
         guard let command = parsed as? any RequestCommand else {
             throw SocketClientError("parsed \(argv) is not a RequestCommand")
@@ -644,7 +645,10 @@ struct CommandsTests {
         #expect(req.cmd == .sessionStatus)
         #expect(req.args?.status == "active")
         #expect(req.args?.blink == true)
-        #expect(req == ControlRequest(cmd: .sessionStatus, target: "active", args: ControlArgs(status: "active", blink: true)))
+        // no `agentPid` here and in the sibling cases below: none of them names this shell's own session,
+        // so none is a self-report — see `SessionStatusOwnershipPidTests` for that contract.
+        #expect(req == ControlRequest(cmd: .sessionStatus, target: "active",
+                                      args: ControlArgs(status: "active", blink: true)))
     }
 
     @Test func sessionStatusWithoutBlink() throws {
@@ -1529,5 +1533,61 @@ struct CommandsTests {
         #expect(validationMessage(["session", "restore", "--none", "--clear"]) != nil)
         #expect(validationMessage(["session", "restore", "htop", "--clear"]) != nil)
         #expect(validationMessage(["session", "restore", "htop", "--pane", "middle"]) != nil)
+    }
+}
+
+/// `session status` carries the reporter's pid ONLY for a SELF-report — an explicit `--target` naming the
+/// session id in this shell's own environment.
+///
+/// The pid is proof of owning OUR OWN pane: the app checks it against the target pane's foreground process.
+/// For anyone else's pane it is not just useless but harmful — an orchestrator marking a sibling agent's
+/// pane (a legitimate call) would hand over a pid belonging to its own pane, never match, and have every
+/// report silently dropped.
+///
+/// The suite is `.serialized` because each test mutates the PROCESS-wide `ROOK_SESSION_ID`, so no two of
+/// them may overlap. Other suites are unaffected: the variable is read only while building a
+/// `session status` request, and the ids the sibling tests target match nothing we set here.
+@Suite(.serialized) struct SessionStatusOwnershipPidTests {
+    /// Stands in for `$ROOK_SESSION_ID` — the session the reporting shell itself lives in.
+    private let mine = "11111111-1111-1111-1111-111111111111"
+
+    private func request(_ argv: [String]) throws -> ControlRequest { try CommandsTests().request(argv) }
+
+    /// Runs `body` with `ROOK_SESSION_ID` set to `id` (REMOVED when nil), then restores the ambient value —
+    /// the test runner itself may well be running inside a rook session.
+    private func withRookSessionID<T>(_ id: String?, _ body: () throws -> T) rethrows -> T {
+        func put(_ value: String?) {
+            if let value { setenv("ROOK_SESSION_ID", value, 1) } else { unsetenv("ROOK_SESSION_ID") }
+        }
+        let ambient = ProcessInfo.processInfo.environment["ROOK_SESSION_ID"]
+        defer { put(ambient) }
+        put(id)
+        return try body()
+    }
+
+    @Test func reportsPidWhenTargetIsOwnSession() throws {
+        // the expected pid is RECOMPUTED, not pinned: it is the reporter's nearest agent ANCESTOR, so it is
+        // a real pid when the runner sits under `claude` and nil on CI, where this one degenerates.
+        let req = try withRookSessionID(mine) { try request(["session", "status", "blocked", "--target", mine]) }
+        #expect(req.args?.agentPid == AgentProcess.nearestAgentPid())
+    }
+
+    @Test func omitsPidForAnotherSession() throws {
+        // an orchestrator flagging a sibling pane: claiming ownership of a pane we do not own would only get
+        // the report dropped, so no claim is made.
+        let req = try withRookSessionID(mine) { try request(["session", "status", "blocked", "--target", "s1"]) }
+        #expect(req.args?.agentPid == nil)
+    }
+
+    @Test func omitsPidWithoutExplicitTarget() throws {
+        // no --target means `active` — whatever pane the user is looking at, which is not provably ours.
+        let req = try withRookSessionID(mine) { try request(["session", "status", "blocked"]) }
+        #expect(req.args?.agentPid == nil)
+    }
+
+    @Test func omitsPidOutsideRookSession() throws {
+        // a plain shell has no ROOK_SESSION_ID, so there is nothing to prove the target is our own pane.
+        let req = try withRookSessionID(nil) { try request(["session", "status", "blocked", "--target", mine]) }
+        #expect(req.args?.agentPid == nil)
     }
 }

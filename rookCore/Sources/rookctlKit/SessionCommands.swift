@@ -451,11 +451,28 @@ struct Session: ParsableCommand {
             try validatePaneArgument(pane)
         }
 
+        /// The reporter's nearest agent ANCESTOR, so the app can drop a status from a NESTED agent process
+        /// that is not the pane's own agent. Computed here like `session agent` does — never a CLI flag.
+        ///
+        /// Reported ONLY when the call names THIS shell's own session: the pid proves who we are, and the
+        /// app checks it against the TARGET pane's foreground process. An orchestrator flagging ANOTHER
+        /// session (or the `active` default, which is whatever pane the user is looking at) would hand over
+        /// a pid belonging to its own pane, never match, and have every report silently dropped. No claim
+        /// is the honest answer there, and the check is skipped. The hook always passes
+        /// `--target "$ROOK_SESSION_ID"`, so the case this exists for stays covered — and a nested agent
+        /// inherits the same variable, so it is still caught.
+        private var ownershipPid: Int? {
+            guard let mine = ProcessInfo.processInfo.environment["ROOK_SESSION_ID"],
+                  target.target.caseInsensitiveCompare(mine) == .orderedSame else { return nil }
+            return AgentProcess.nearestAgentPid()
+        }
+
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .sessionStatus, target: target.target,
                            args: options.withWindow(ControlArgs(pane: pane, paneID: paneID, status: state,
                                                                  blink: blink ? true : nil,
                                                                  autoReset: autoReset ? true : nil, sound: sound,
+                                                                 agentPid: ownershipPid,
                                                                  color: color, shape: shape)))
         }
     }

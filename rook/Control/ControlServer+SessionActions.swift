@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import os
 import rookCore
 
 /// `ControlServer` session/workspace/sidebar action adapter arms. Dispatcher-routed commands parse in
@@ -522,6 +523,16 @@ extension ControlServer: ControlActions {
             // `--pane`, so a status set from a promoted-then-re-split pane lands on the pane's CURRENT
             // slot; an absent/unknown token falls back to the baked `--pane` (the pre-token behavior).
             let resolvedPane = update.paneID.flatMap { session?.paneRole(forToken: $0) } ?? update.pane
+            if self.isForeignAgent(update.agentPid, session: session, pane: resolvedPane) {
+                // log the silent DROP at `.notice` (the level the unified log persists), mirroring the
+                // notification path: the reporting hook swallows our stdout and no event is emitted, so
+                // without this line "my status never arrives" is indistinguishable from "the hook never
+                // fired" — and the answer lives only here.
+                Logger(subsystem: "com.rook.app", category: "ControlServer")
+                    .notice("session.status dropped: reporter pid \(update.agentPid ?? -1) is not the pane's agent")
+                return ControlResponse(ok: true, result: ControlResult(id: id.uuidString,
+                                                                       text: "ignored: not the pane's agent"))
+            }
             store.setAgentIndicator(AgentIndicator(status: update.status, blink: update.blink ?? false,
                                                    autoReset: update.autoReset ?? false,
                                                    color: update.color, shape: update.shape, statusPane: resolvedPane), forSession: id)

@@ -2192,7 +2192,23 @@
               reads the payload's
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agent_type</span> and drops a
               subagent's progress, while still passing a subagent's permission prompt through — that one is a real question
-              waiting on you.
+              waiting on you. An agent your agent <em>started</em> is a separate case with a separate fix: a nested
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">claude -p …</span> is the main thread of
+              its own session, so it carries no
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agent_type</span> and used to report
+              completed while your real agent kept working. Rook now applies to
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session status</span> the same ownership
+              test <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session agent</span> already used:
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl</span> reports its nearest agent
+              ancestor, and a status whose pid differs from the pane's foreground process is dropped (the call still succeeds,
+              it just changes nothing). You need both checks — a nested process has its own pid but no
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agent_type</span>, an in-process
+              subagent has an <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agent_type</span> but
+              shares the pane's pid. The check is deliberately narrow, because a false drop loses a blocked and leaves you
+              staring at a silent row: it discards a report only when the call names the caller's own session, an agent is the
+              pane's foreground process, and the pids differ. Flagging another session from an orchestrator keeps working, and
+              so does an agent running under tmux or ssh — there the pane's foreground process is the wrapper rather than the
+              agent, so Rook cannot judge ownership and does not try. Losing a blocked is worse than one stray active.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               <strong style="color: #e6e1d7">Resume agent conversations.</strong> A restored pane that was running an agent gets

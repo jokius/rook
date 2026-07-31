@@ -36,4 +36,44 @@ extension ControlServer {
         }
     }
 
+    /// The `session.status` half of the same ownership check: does `claimed` PROVABLY belong to someone
+    /// other than the pane's own agent? A nested `claude -p` inherits the pane's `ROOK_SESSION_ID`, so
+    /// without this it moves the sidebar row — reporting `completed` while the pane's real agent is still
+    /// working.
+    ///
+    /// Unlike `setAgentSession` above this is fail-OPEN — it drops ONLY what it can PROVE is foreign, and
+    /// everything unprovable passes. `session.agent` writes persistent state (which conversation to
+    /// resume), where losing a write beats storing a stranger's; a status is an ephemeral signal, and
+    /// losing a `blocked` — the agent waits for a human while the row says nothing — is worse than one
+    /// stray `active`. So a drop needs THREE things to line up:
+    ///
+    /// 1. a `claimed` pid at all. The CLI reports one only when the call names its OWN session, so a
+    ///    cross-session status (an orchestrator flagging another pane) arrives unclaimed and is never
+    ///    weighed against a pane it was never running in.
+    /// 2. an AGENT at the head of the pane. Behind tmux, ssh, or a bare shell the foreground process is
+    ///    the wrapper, never the agent, so its pid could not match even for the pane's rightful agent —
+    ///    judging ownership there would break every tmux user's status reporting, which works today.
+    /// 3. the pids actually differ.
+    ///
+    /// It does NOT catch IN-PROCESS subagents (Task, teammates): their hooks run in the pane's own
+    /// `claude`, so the pid matches. Those are filtered by `agent_type` in `rook-agent-status.sh` — two
+    /// mechanisms, two different holes.
+    func isForeignAgent(_ claimed: Int?, session: Session?, pane: StatusPane?) -> Bool {
+        guard let claimed, let session else { return false }
+        let surface: (any TerminalSurface)?
+        switch pane {
+        case .right where session.hasSplit: surface = session.splitSurface
+        case .scratch: surface = session.scratchSurface
+        default: surface = session.surface
+        }
+        guard let view = surface as? GhosttySurfaceView, let foreground = view.foregroundPid() else {
+            return false
+        }
+        // the same argv classification `AgentMonitor` runs for the sidebar logo, so both sides agree on
+        // what counts as an agent (and an idle shell reads as no command at all, hence no agent).
+        let shellBasename = ProcessInfo.processInfo.environment["SHELL"].map(CommandRestore.basename)
+        let argv = ForegroundProcess.command(for: view, shellBasename: shellBasename)
+        guard AgentKind.classify(argv: argv) != nil else { return false }
+        return Int(foreground) != claimed
+    }
 }

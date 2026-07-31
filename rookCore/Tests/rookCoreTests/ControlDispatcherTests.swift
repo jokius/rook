@@ -635,6 +635,39 @@ struct ControlDispatcherTests {
         #expect(actions.calls.isEmpty)
     }
 
+    /// The reporter's pid rides through as PROOF of who set the status, exactly like `session.agent`'s:
+    /// `rookctl` stamps the nearest agent ancestor and the app arm drops a report whose pid is not the
+    /// pane's foreground process, so a nested `claude -p` cannot mark the spawning agent's row `completed`.
+    /// The dispatcher itself never validates the pid — it is not user input — it only must not lose it.
+    /// A call with NO pid (a human or script running `rookctl` by hand) stays unchecked, so nil must reach
+    /// the app as nil rather than being invented into a value.
+    @Test func sessionStatusCarriesReporterPidAndNilWhenAbsent() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let reported = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionStatus,
+            target: "session",
+            args: ControlArgs(status: "blocked", agentPid: 4242)
+        ))
+        let byHand = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionStatus,
+            target: "session",
+            args: ControlArgs(status: "blocked")
+        ))
+
+        #expect(reported == ControlResponse(ok: true))
+        #expect(byHand == ControlResponse(ok: true))
+        #expect(actions.calls == [
+            .sessionStatus(target: "session", window: nil,
+                           ControlSessionStatusUpdate(status: .blocked, blink: nil, autoReset: nil,
+                                                      sound: nil, agentPid: 4242)),
+            .sessionStatus(target: "session", window: nil,
+                           ControlSessionStatusUpdate(status: .blocked, blink: nil, autoReset: nil,
+                                                      sound: nil, agentPid: nil))
+        ])
+    }
+
     @Test func splitScratchFocusAndResizeRouteParsedInputs() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)

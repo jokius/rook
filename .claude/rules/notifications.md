@@ -262,6 +262,21 @@ paths:
   (`AgentStatusWrapperTests`, the subagent-filter section).
   There is NO Swift/app-side leg and NO settings-json change — the filter is a policy of the BRIDGE, so an
   existing install picks it up by re-running Help ▸ Install Agent Status Hooks… (which re-copies the script).
+  **This filter is HALF the story — the other half is `session.status`'s app-side ownership check, and the
+  two close DIFFERENT holes.**
+  The `agent_type` filter catches IN-PROCESS subagents: their hooks run inside the pane's OWN `claude`, so
+  no process-level test can distinguish them and only the payload can.
+  A nested agent PROCESS (a `claude -p …` the pane's agent spawned through Bash) is the opposite case: it
+  IS the main thread of its own session, so its payload carries no `agent_type` and the filter waves it
+  through, while its pid is plainly not the pane's foreground.
+  That one is caught app-side, by comparing `args.agentPid` (the CLI's nearest agent ANCESTOR) with the
+  resolved pane's `foregroundPid()`.
+  That check is deliberately NARROW — it needs the call to name the caller's OWN session AND an agent to be
+  the pane's foreground process before a pid mismatch means anything, so a cross-session report and a pane
+  running tmux/ssh both pass untouched.
+  See the `session.status` ownership-check bullet in the Control API rule for all three conditions and for
+  why it is fail-OPEN.
+  Neither mechanism subsumes the other; a change to one is not a reason to drop the other.
   Peer terminals get the decline case for free by different means rook avoids:
   cmux owns the permission decision UI (a blocking hook round-trip captures accept/deny),
   herdr scrapes the PTY (the prompt chrome leaving the screen clears it).

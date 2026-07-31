@@ -1343,6 +1343,53 @@ paths:
   **Any doc that lists the spawned shell's `ROOK_*` variables, or shows scrubbing them for a daemon/tmux
   (`env -u ROOK_ENABLED -u ROOK_PANE …`, tmux `set-environment -g -r`), MUST include `ROOK_PANE_ID`** — a
   recipe that misses it no longer cleans everything the app bakes, which is functional, not cosmetic.
+  **`args.agentPid` — the SAME ownership check `session.agent` runs, but FAIL-OPEN and THREE-CONDITIONED.**
+  It exists because a NESTED agent PROCESS — a `claude -p …` the pane's own agent spawned through Bash —
+  inherits the pane's `ROOK_SESSION_ID`/`ROOK_PANE`, so its hooks used to drive the sidebar row: it
+  finished, reported `completed`, and the row said "done" while the pane's real agent was still working.
+  A status is DROPPED only when all three of these hold, and each one exists to kill a specific false drop:
+  1. **The call NAMES the caller's own session** — a CLI-side condition.
+     `Session.Status.makeRequest` reports `AgentProcess.nearestAgentPid()` ONLY when `--target`
+     case-insensitively equals the shell's `$ROOK_SESSION_ID`; otherwise it sends NO pid and the server
+     never weighs one.
+     Without this, an orchestrator agent flagging ANOTHER session would hand over the pid of ITS OWN
+     pane's foreground, compare it against a pane it was never running in, and have every cross-session
+     report silently dropped.
+     The default `--target active` fails the test too, on purpose — `active` is whatever pane the user is
+     looking at, which is not a claim about ownership.
+     The installed hook always passes `--target "$ROOK_SESSION_ID"`, so the case the check exists for
+     stays covered, and a NESTED agent inherits that same variable and is still caught.
+  2. **An AGENT sits at the head of the resolved pane** — an app-side condition.
+     `isForeignAgent` classifies the pane's foreground argv with `AgentKind.classify`, the very call
+     `AgentMonitor` makes for the sidebar logo (via `ForegroundProcess.command(for:shellBasename:)`, which
+     already returns nil for an idle shell).
+     Behind **tmux or ssh** the foreground process is the WRAPPER and the agent lives under it, so the pid
+     could not match even for the pane's rightful agent — judging ownership there would have broken every
+     tmux user's status reporting, which works today.
+     That regression would have been worse than the bug being fixed.
+  3. **The pids differ.**
+
+  Only then: `ok: true` + `result.text = "ignored: not the pane's agent"`, with no indicator mutation and
+  no sound.
+  Everything else PASSES — no `agentPid`, no `GhosttySurfaceView`, no readable `foregroundPid()`, a
+  non-agent foreground.
+  That is the OPPOSITE default to `session.agent`'s, which drops on any unproven case: `session.agent`
+  writes PERSISTENT state, where losing a write beats storing a stranger's;
+  a status is EPHEMERAL, and losing a `blocked` — the agent waits on a human while the row stays silent —
+  is worse than one stray `active`.
+  The comparison uses `resolvedPane`, so a status sent with the promoted pane's `--pane-id` is checked
+  against THAT pane's foreground, not the main one.
+  **This is a DIFFERENT hole from the `agent_type` subagent filter in `rook-agent-status.sh`** (see the
+  Notifications rule): the pid check catches nested agent PROCESSES, which have their own pid;
+  the `agent_type` filter catches IN-PROCESS subagents (Task, teammates), whose hooks run in the pane's own
+  `claude` and therefore MATCH the pane's foreground pid.
+  Neither subsumes the other.
+  Keep-in-sync: `ControlSessionStatusUpdate.agentPid` (LAST in `init`, so existing call sites keep
+  compiling) + the `request.args?.agentPid` passthrough in `ControlDispatcher.dispatchSessionStatus`
+  (no validation — it is not user input) + the `ownershipPid` gate in `rookctlKit`'s
+  `Session.Status` + `isForeignAgent` in `ControlServer+Agent.swift`.
+  No read-back field is owed: the pid is not session state, it is a proof of origin, and the status it
+  gates already reads back on `tree` as `status`/`statusPane`.
   Visibility is keep-state vs one-time, decided by `autoReset` alone: `AppStore.selectSession` resets
   an `autoReset` indicator (the `completed` flash) to idle on BOTH the session visited AND the one left
   (right after `clearUnseen`), so it never lingers on a row you switch away from,

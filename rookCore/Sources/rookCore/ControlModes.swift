@@ -165,10 +165,6 @@ public struct ControlSessionCreateOptions: Equatable, Sendable {
     }
 }
 
-/// Parsed `session.status` payload. Sound validation and playback stay host-side; `color` is the
-/// per-call `#rrggbb` glyph-tint override (validated for hex in the dispatcher) and `shape` the per-call
-/// silhouette override (parsed to `StatusShape` in the dispatcher), both threaded onto the ephemeral
-/// `AgentIndicator`.
 /// What `session.agent` asks the app to remember for one pane: the conversation ref (nil = clear it), which
 /// pane it belongs to (`left`=main, `right`=split; nil = main), and the pid of the agent that reported it —
 /// the ownership proof the app checks against the pane's live foreground process.
@@ -184,6 +180,10 @@ public struct ControlAgentSessionUpdate: Equatable, Sendable {
     }
 }
 
+/// Parsed `session.status` payload. Sound validation and playback stay host-side; `color` is the
+/// per-call `#rrggbb` glyph-tint override (validated for hex in the dispatcher) and `shape` the per-call
+/// silhouette override (parsed to `StatusShape` in the dispatcher), both threaded onto the ephemeral
+/// `AgentIndicator`.
 public struct ControlSessionStatusUpdate: Equatable, Sendable {
     public let status: AgentStatus
     public let blink: Bool?
@@ -202,10 +202,15 @@ public struct ControlSessionStatusUpdate: Equatable, Sendable {
     /// pane. nil/empty/unknown falls back to `pane`. The resolution stays app-side because the dispatcher
     /// has no session — this only carries the token through.
     public let paneID: String?
+    /// The pid of the agent that reported the status — the ownership proof the app checks against the
+    /// pane's live foreground process, so a NESTED agent process the pane's own agent spawned cannot move
+    /// the row. nil (a human or a script calling `rookctl` by hand) skips the check. Last in `init` so
+    /// every existing call site keeps compiling.
+    public let agentPid: Int?
 
     public init(status: AgentStatus, blink: Bool?, autoReset: Bool?, sound: String?,
                 color: String? = nil, shape: StatusShape? = nil,
-                pane: StatusPane? = nil, paneID: String? = nil) {
+                pane: StatusPane? = nil, paneID: String? = nil, agentPid: Int? = nil) {
         self.status = status
         self.blink = blink
         self.autoReset = autoReset
@@ -214,5 +219,6 @@ public struct ControlSessionStatusUpdate: Equatable, Sendable {
         self.shape = shape
         self.pane = pane
         self.paneID = paneID
+        self.agentPid = agentPid
     }
 }

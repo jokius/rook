@@ -245,12 +245,52 @@ If a long fan-out should show something anyway, drive it explicitly from the orc
 what `session status` is for:
 
 ```bash
-rookctl session status active --blink --target "$ROOK_SESSION_ID"   # before dispatching the fan-out
+rookctl session status active --blink --target "$ROOK_SESSION_ID" --pane "$ROOK_PANE"  # before the fan-out
 ```
 
 An install predating the filter still shows the old behavior (an installed hook is a copy): re-run
 Rook ▸ Help ▸ Install Agent Status Hooks…, then check
 `grep -c agent_type ~/.config/rook/agent-status/rook-agent-status.sh` (0 = the old hook).
+
+### "My nested `claude -p` does not move the status"
+
+Also by design, and by a DIFFERENT mechanism than the one above. A nested agent PROCESS — a `claude -p …`
+you spawned through Bash — is the main thread of its own session, so its payload carries no `agent_type`
+and the subagent filter waves it through. It used to report `completed` when it finished, while the
+pane's real agent was still working. So `session status` now runs the same ownership check `session agent`
+does: `rookctl` reports its nearest agent ANCESTOR's pid, and the app drops a status whose pid provably
+differs from the pane's foreground process, answering `ok` with `ignored: not the pane's agent` and
+changing nothing.
+
+Two checks, two holes, and neither replaces the other: a nested process has its own pid but no
+`agent_type`; an in-process subagent (Task, teammates) has an `agent_type` but shares the pane's pid.
+
+**The check is NARROW and fail-OPEN** — it drops a report only when all THREE of these hold, so the
+things it could plausibly break are not broken:
+
+1. the call names the CALLER's own session (`--target "$ROOK_SESSION_ID"`, what the hook always passes).
+   Flagging ANOTHER session — an orchestrator setting a status on a worker's pane — sends no pid at all
+   and is never checked, since the caller's pid says nothing about a pane it is not running in.
+2. an AGENT is the pane's foreground process. **Under tmux or ssh it is not** (the wrapper is), so
+   ownership is unknowable there and the status passes — reporting from inside tmux works exactly as
+   before.
+3. the pids differ.
+
+Everything else passes: `rookctl session status` from your own shell or a script (no agent ancestor = no
+claim), `--target active`, a pane whose foreground process cannot be read. Losing a `blocked` — your
+agent waits on a human while the row stays silent — is worse than one stray `active`.
+
+If a nested run really should surface, report it from the PANE's agent instead of from inside the nested
+one:
+
+```bash
+rookctl session status active --blink --target "$ROOK_SESSION_ID" --pane "$ROOK_PANE"  # before nesting
+```
+
+**Pass `--pane "$ROOK_PANE"` whenever you report by hand** (the installed hook already does). With no pane
+the check resolves to the MAIN pane, so an agent reporting from a split or the scratch is measured against
+its NEIGHBOUR's foreground process — a mismatch, and the report is dropped. In the main pane it changes
+nothing, so passing it is always right.
 
 ### "Clicking a path in the terminal does nothing / opens Finder instead of the preview"
 
