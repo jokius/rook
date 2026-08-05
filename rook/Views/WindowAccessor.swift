@@ -162,6 +162,7 @@ struct WindowAccessor: NSViewRepresentable {
                         session.surface?.teardown()
                         session.splitSurface?.teardown()
                         session.overlaySurface?.teardown()
+                        session.teardownPaneOverlays()
                         session.scratchSurface?.teardown()
                     }
                     library.closeWindow(windowID)

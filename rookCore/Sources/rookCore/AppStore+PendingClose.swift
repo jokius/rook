@@ -379,6 +379,12 @@ extension AppStore {
         }
         let insertAt = max(0, min(close.sessionIndex, workspaces[workspaceIndex].sessions.count))
         workspaces[workspaceIndex].sessions.insert(close.session, at: insertAt)
+        // the deck's `dropUnrealizedPaneOverlays` watchers are unmounted while the session sits outside the
+        // tree, and `.onChange` does not fire on the remount, so the last host of a pane overlay can go away
+        // unobserved: the zoom layer clears a target whose session it can no longer resolve, and a stillborn
+        // slot that target was sparing comes back marked open with no surface and no program. Reconcile the
+        // SAME object being reinserted; a snapshot rebuild (`session(from:)`) carries no pane overlays.
+        close.session.dropUnrealizedPaneOverlays()
     }
 
     private func restorePendingSessions(_ close: PendingSessionsClose, selecting requestedSessionID: UUID?) {
@@ -411,10 +417,14 @@ extension AppStore {
         // session held by this record cannot already be live elsewhere.
         if let existing = workspaces.firstIndex(where: { $0.id == close.workspace.id }) {
             let live = Set(workspaces.flatMap(\.sessions).map(\.id))
-            workspaces[existing].sessions.append(contentsOf: close.workspace.sessions.filter { !live.contains($0.id) })
+            let restored = close.workspace.sessions.filter { !live.contains($0.id) }
+            workspaces[existing].sessions.append(contentsOf: restored)
+            // reinserted LIVE objects, as in `restorePendingSession` — reconcile their pane overlays.
+            for session in restored { session.dropUnrealizedPaneOverlays() }
         } else {
             let insertAt = max(0, min(close.workspaceIndex, workspaces.count))
             workspaces.insert(close.workspace, at: insertAt)
+            for session in close.workspace.sessions { session.dropUnrealizedPaneOverlays() } // as above
         }
         // put the workspace back into the focus set BEFORE the reselect below, so a restored member is
         // already inside the set when `disableFocusIfSelectionOutsideSet` runs. It also has to happen ahead
@@ -432,6 +442,7 @@ extension AppStore {
         session.surface?.teardown()
         session.splitSurface?.teardown()
         session.overlaySurface?.teardown()
+        session.teardownPaneOverlays()
         session.scratchSurface?.teardown()
         WatermarkStorage.removeRenderedText(sessionID: session.id)
         removeFromRecency(session.id)

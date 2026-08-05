@@ -729,6 +729,27 @@ struct ControlProtocolTests {
         #expect(decoded.result?.tree?.workspaces.first?.sessions.first?.overlaySizePercent == 95)
     }
 
+    @Test func treeSessionNodeRoundTripsWithPaneOverlays() throws {
+        // the read side of `session.overlay.open --pane`: a script asks which panes are covered before
+        // opening another, and closes exactly the one it opened.
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: true,
+                                         paneOverlays: ["left", "right"])
+        let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(
+            workspaces: [ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [session])])))
+        let decoded = try roundTrip(response)
+        #expect(decoded == response)
+        #expect(decoded.result?.tree?.workspaces.first?.sessions.first?.paneOverlays == ["left", "right"])
+    }
+
+    @Test func treeSessionNodeOmitsPaneOverlaysWhenNil() throws {
+        // neither pane covered — the key must be ABSENT, not an empty array, so a script reads "no pane
+        // overlay" the same way it reads every other omitted-when-nil field.
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: true)
+        let data = try JSONEncoder().encode(session)
+        let json = String(decoding: data, as: UTF8.self)
+        #expect(!json.contains("paneOverlays"))
+    }
+
     @Test func treeSessionNodeOmitsOverlaySizePercentWhenNil() throws {
         // no overlay, or a FULL-pane overlay — the key must be omitted, not emitted as null (so a script
         // reads absent as "full or no overlay", gating on the `overlay` bool first).

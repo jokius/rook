@@ -89,13 +89,25 @@ extension ControlServer: ControlActions {
         copySelection(target, window: window)
     }
 
+    /// `options.pane` picks the kind: nil opens the session-wide overlay, `left`/`right` a pane-scoped one
+    /// covering that pane alone. The pane arm's two rejections need the LIVE session (its own slot occupied,
+    /// or the pane not laid out at all, which would leave the slot active with no surface ever created), so
+    /// they sit here rather than in the dispatcher.
     func openSessionOverlay(_ target: String?, window: String?,
                             options: ControlSessionOverlayOpenOptions) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
-            guard store.openOverlay(id, command: options.command, cwd: options.cwd,
-                                    wait: options.wait, sizePercent: options.sizePercent,
-                                    backgroundColor: options.backgroundColor) else {
-                return ControlResponse(ok: false, error: "overlay already open")
+            if let pane = options.pane {
+                if let failure = store.openPaneOverlay(id, pane: pane, command: options.command,
+                                                       cwd: options.cwd, wait: options.wait,
+                                                       backgroundColor: options.backgroundColor) {
+                    return paneOverlayFailure(failure, target: target)
+                }
+            } else {
+                guard store.openOverlay(id, command: options.command, cwd: options.cwd,
+                                        wait: options.wait, sizePercent: options.sizePercent,
+                                        backgroundColor: options.backgroundColor) else {
+                    return ControlResponse(ok: false, error: "overlay already open")
+                }
             }
             // Both overlay kinds mount and run in the per-session eager deck regardless of which session
             // is active (the floating panel is a constant-shape sibling in `sessionDetail`), so opening
@@ -108,9 +120,18 @@ extension ControlServer: ControlActions {
         }
     }
 
-    func closeSessionOverlay(_ target: String?, window: String?) -> ControlResponse {
+    private func paneOverlayFailure(_ failure: PaneOverlayOpenFailure, target: String?) -> ControlResponse {
+        switch failure {
+        case .unknownSession: return ControlResponse(ok: false, error: "no such session: \(target ?? "active")")
+        case .alreadyOpen: return ControlResponse(ok: false, error: PaneOverlayError.alreadyOpen)
+        case .paneNotVisible: return ControlResponse(ok: false, error: PaneOverlayError.paneNotVisible)
+        }
+    }
+
+    func closeSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
-            guard store.closeOverlay(id) else {
+            let closed = pane.map { store.closePaneOverlay(id, pane: $0) } ?? store.closeOverlay(id)
+            guard closed else {
                 return ControlResponse(ok: false, error: "no overlay")
             }
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
@@ -126,15 +147,17 @@ extension ControlServer: ControlActions {
         }
     }
 
-    func sessionOverlayResult(_ target: String?, window: String?) -> ControlResponse {
+    func sessionOverlayResult(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
             guard let session = store.session(withID: id) else {
                 return ControlResponse(ok: false, error: "no such session")
             }
-            if session.overlayActive {
+            let (running, exitCode) = pane.map { (session.paneOverlay($0) != nil, session.paneOverlayExitCode($0)) }
+                ?? (session.overlayActive, session.overlayExitCode)
+            if running {
                 return ControlResponse(ok: false, error: OverlayResultError.stillRunning)
             }
-            guard let code = session.overlayExitCode else {
+            guard let code = exitCode else {
                 return ControlResponse(ok: false, error: OverlayResultError.noResult)
             }
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString, exitCode: code))

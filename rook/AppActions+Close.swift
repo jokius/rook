@@ -35,6 +35,10 @@ extension AppActions {
         guard let store, let session = store.activeSession else { return false }
         if session.overlayActive { store.closeOverlay(session.id); return true }
         if session.scratchActive { store.toggleScratch(session.id); return true }
+        // the focused pane's own overlay is the last cover: without this rung ⌘W over one falls straight
+        // through and closes the SESSION. An overlay on the OTHER pane is not in front of the user, so it
+        // does not intercept — that pane stays live and ⌘W keeps its ordinary meaning.
+        if let pane = session.focusedOverlayPane { store.closePaneOverlay(session.id, pane: pane); return true }
         // ⌘W was handled either way — on cancel we return true so the File menu doesn't fall back to
         // closing the whole window.
         guard confirmCloseSession(session) else { return true }

@@ -223,7 +223,9 @@ final class NotificationManager: NSObject, @preconcurrency UNUserNotificationCen
         return UNNotificationSound(named: UNNotificationSoundName(name.contains(".") ? name : name + ".aiff"))
     }
 
-    /// Which of the session's surfaces fired, by identity against its three slots.
+    /// Which of the session's surfaces fired, by identity against its three slots. Pane overlays are absent
+    /// on purpose: `notify` needs `view.session`, which only the two pane factories assign, so no overlay
+    /// surface reaches here. Wiring pane-overlay notifications would need that link, not another slot test.
     private func paneRole(of view: GhosttySurfaceView, in session: Session) -> PaneRole {
         if view === (session.splitSurface as? GhosttySurfaceView) { return .split }
         if view === (session.overlaySurface as? GhosttySurfaceView) { return .overlay }

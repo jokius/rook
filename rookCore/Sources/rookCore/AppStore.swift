@@ -254,6 +254,7 @@ public final class AppStore {
                                           splitFocused: session.hasSplit ? session.splitFocused : nil,
                                           overlay: session.overlayActive,
                                           overlaySizePercent: session.overlayActive ? session.overlaySizePercent : nil,
+                                          paneOverlays: paneOverlays(session),
                                           scratch: session.scratchActive, flagged: session.flagged,
                                           commandWait: (session.initialCommand != nil && session.commandWait) ? true : nil,
                                           fileTreeVisible: session.fileTreeVisible ? true : nil,
@@ -301,6 +302,12 @@ public final class AppStore {
                            dashboardHighlighted: dashboardHighlighted(),
                            dashboardFontSize: dashboardFontSize(),
                            dashboardFontMode: dashboardFontMode())
+    }
+
+    /// The tree's `paneOverlays`: the panes covered by their own overlay, omitted when neither is.
+    private func paneOverlays(_ session: Session) -> [String]? {
+        let panes = session.openPaneOverlays.map(\.rawValue)
+        return panes.isEmpty ? nil : panes
     }
 
     /// Creates a workspace and appends it. When `revealNewWorkspace` (the default) and the focus filter is
@@ -508,6 +515,7 @@ public final class AppStore {
         removed.surface?.teardown()
         removed.splitSurface?.teardown()
         removed.overlaySurface?.teardown()
+        removed.teardownPaneOverlays()
         removed.scratchSurface?.teardown()
         WatermarkStorage.removeRenderedText(sessionID: sessionID) // drop any rendered .text PNG; the session is gone
         sessionRecency.remove(sessionID)
@@ -545,6 +553,7 @@ public final class AppStore {
             session.surface?.teardown()
             session.splitSurface?.teardown()
             session.overlaySurface?.teardown()
+            session.teardownPaneOverlays()
             session.scratchSurface?.teardown()
             WatermarkStorage.removeRenderedText(sessionID: session.id) // drop any rendered .text PNG; the session is gone
             sessionRecency.remove(session.id)

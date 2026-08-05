@@ -71,10 +71,10 @@ extension AppActions {
         // window owns its own quick terminal, so this gate's per-window answer was already available and
         // simply wasn't being asked.
         if quickTerminalActive(for: session) { return }
-        let target: (any TerminalSurface)? = (session.overlayActive || session.scratchActive)
-            ? session.topmostSurface
-            : (wantSplit ? session.splitSurface : session.surface)
-        if let view = target as? GhosttySurfaceView, let window = view.window {
+        // `Session.focusTarget(wantSplit:)` owns the cover routing: a full-coverage scratch/overlay keeps
+        // focus on the visible `topmostSurface`, and a PANE overlay takes it for the pane it covers. Either
+        // way the caller's `splitFocused` stands, so the right pane shows once the cover is gone.
+        if let view = session.focusTarget(wantSplit: wantSplit) as? GhosttySurfaceView, let window = view.window {
             window.makeFirstResponder(view)
         }
         guard attempt < 12 else { return }

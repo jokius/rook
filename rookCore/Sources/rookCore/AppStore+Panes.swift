@@ -2,6 +2,14 @@ import Foundation
 
 // MARK: - Split, overlay, and scratch panes
 
+/// Why `openPaneOverlay` refused. Typed rather than a bare `false` so the control arm maps each case to
+/// its own error string instead of guessing which rejection fired.
+public enum PaneOverlayOpenFailure: Equatable, Sendable {
+    case unknownSession
+    case alreadyOpen
+    case paneNotVisible
+}
+
 extension AppStore {
     /// Toggles the one-level split for a session. The second pane's surface is created
     /// lazily by the detail pane on first show and kept alive when hidden, so this only
@@ -19,6 +27,9 @@ extension AppStore {
             session.hasSplit = true
             if isNewSplit { session.splitFocused = true }
         }
+        // hiding the split un-renders a pane, so an overlay opened on it that has not realized yet would sit
+        // active with no surface and no program forever.
+        session.dropUnrealizedPaneOverlays()
         save()
     }
 
@@ -60,6 +71,8 @@ extension AppStore {
         session.splitTitle = nil
         session.initialSplitCwd = nil
         session.splitRatio = nil // tearing down the split clears its geometry too, so a fresh split opens even
+        // the right pane is gone, so its overlay has nothing left to cover and nobody left to read its status.
+        session.teardownPaneOverlay(.right)
         // a search bar pinned to the torn-down split surface would otherwise stay stuck (the weak
         // `searchSurface` zeroes but `searchActive` stays true), so reset search on the surviving session.
         session.clearSearch()
@@ -116,6 +129,10 @@ extension AppStore {
         session.initialSplitCwd = nil
         session.splitForegroundCommand = nil
         session.splitAgentSession = nil
+        // the pane overlays follow their panes: the exiting primary's dies with it, the survivor's moves into
+        // the left slot WITH its exit code, so `session.overlay.result --pane left` still answers afterwards.
+        session.teardownPaneOverlay(.left)
+        session.promotePaneOverlay()
         // reset search only if the torn-down primary owned the bar (or the weak ref already dangled), so a
         // search owned by the SURVIVING pane stays valid across promotion — matching closeScratch's
         // identity guard rather than clearing unconditionally and dropping a still-valid search.
@@ -213,6 +230,42 @@ extension AppStore {
         session.overlayWait = false
         session.overlaySizePercent = nil
         session.overlayBackgroundColor = nil
+        return true
+    }
+
+    /// Opens a pane-scoped overlay covering `pane` only, leaving the sibling pane live and interactive.
+    /// Behaves like `openOverlay` in every respect but geometry and scope: the surface is created lazily by
+    /// the pane, `wait` holds it after the command exits, and `backgroundColor`/`cwd` are per-overlay, so
+    /// two open at once carry their own. Always full-pane — no size percent. Returns nil on success, else
+    /// the reason, so the control arm can pick its error string. NOT persisted.
+    public func openPaneOverlay(_ sessionID: UUID, pane: OverlayPane, command: String, cwd: String? = nil,
+                                wait: Bool = false,
+                                backgroundColor: String? = nil) -> PaneOverlayOpenFailure? {
+        guard let session = session(withID: sessionID) else { return .unknownSession }
+        guard session.paneOverlay(pane) == nil else { return .alreadyOpen }
+        // an unrendered pane never gets a nonzero backing size, so its surface would never be created and
+        // the slot would sit active with no program — reject instead of opening a dead overlay.
+        guard session.rendersPane(pane) else { return .paneNotVisible }
+        session.setPaneOverlayExitCode(nil, pane: pane)
+        session.setPaneOverlay(PaneOverlay(command: command, cwd: cwd, backgroundColor: backgroundColor,
+                                           wait: wait), pane: pane)
+        return nil
+    }
+
+    /// Records a pane overlay program's exit status so `session.overlay.result --pane` can report it after
+    /// the overlay closes. No-op for an unknown id.
+    public func recordPaneOverlayExit(_ sessionID: UUID, pane: OverlayPane, code: Int) {
+        session(withID: sessionID)?.setPaneOverlayExitCode(code, pane: pane)
+    }
+
+    /// Closes a pane overlay: clears the slot AND tears down its surface — ephemeral like the session-wide
+    /// overlay, never kept alive. The exit code SURVIVES, cleared only by the next open on that pane. Used
+    /// on explicit close and when the program exits. No-op (false) with no overlay on that pane.
+    @discardableResult public func closePaneOverlay(_ sessionID: UUID, pane: OverlayPane) -> Bool {
+        guard let session = session(withID: sessionID), session.paneOverlay(pane) != nil else { return false }
+        session.setPaneOverlay(nil, pane: pane)
+        session.paneOverlaySurface(pane)?.teardown()
+        session.setPaneOverlaySurface(nil, pane: pane)
         return true
     }
 

@@ -294,6 +294,14 @@ extension ControlDispatcher {
             if let color = request.args?.color, !WatermarkConfig.isValidColorHex(color) {
                 return ControlResponse(ok: false, error: "invalid color: \(color) (#rrggbb)")
             }
+            let pane: OverlayPane?
+            switch parseOverlayPane(request.args?.pane) {
+            case .rejected(let response): return response
+            case .accepted(let parsed): pane = parsed
+            }
+            if pane != nil, request.args?.sizePercent != nil {
+                return ControlResponse(ok: false, error: PaneOverlayError.sizePercentConflict)
+            }
             return actions.openSessionOverlay(request.target, window: request.args?.window,
                                               options: ControlSessionOverlayOpenOptions(
                                                 command: command,
@@ -301,11 +309,20 @@ extension ControlDispatcher {
                                                 wait: request.args?.wait ?? false,
                                                 sizePercent: request.args?.sizePercent,
                                                 backgroundColor: request.args?.color,
-                                                follow: request.args?.follow ?? false
+                                                follow: request.args?.follow ?? false,
+                                                pane: pane
                                               ))
         case .sessionOverlayClose:
-            return actions.closeSessionOverlay(request.target, window: request.args?.window)
+            switch parseOverlayPane(request.args?.pane) {
+            case .rejected(let response): return response
+            case .accepted(let pane):
+                return actions.closeSessionOverlay(request.target, window: request.args?.window, pane: pane)
+            }
         case .sessionOverlayResize:
+            // pane overlays are always full, so ANY `--pane` is refused here, valid spelling or not.
+            if request.args?.pane != nil {
+                return ControlResponse(ok: false, error: PaneOverlayError.resizeUnsupported)
+            }
             let wantsFull = request.args?.full == true
             let percent = request.args?.sizePercent
             if wantsFull, percent != nil {
@@ -320,7 +337,11 @@ extension ControlDispatcher {
             return actions.resizeSessionOverlay(request.target, window: request.args?.window,
                                                 sizePercent: wantsFull ? nil : percent)
         case .sessionOverlayResult:
-            return actions.sessionOverlayResult(request.target, window: request.args?.window)
+            switch parseOverlayPane(request.args?.pane) {
+            case .rejected(let response): return response
+            case .accepted(let pane):
+                return actions.sessionOverlayResult(request.target, window: request.args?.window, pane: pane)
+            }
         case .sessionBackground:
             return dispatchSessionBackground(request)
         case .sessionText:
@@ -447,5 +468,25 @@ extension ControlDispatcher {
                                        options: ControlSessionTextOptions(pane: request.args?.pane,
                                                                           all: all,
                                                                           lines: lines))
+    }
+
+    /// The outcome of parsing the overlay `--pane` selector: the pane (nil when the selector was absent),
+    /// or the rejection the arm returns as-is. Its own type rather than a generic widening of the shared
+    /// `PaneSelection` (which parses `StatusPane`, whose `scratch` has no overlay to cover) — a deliberate
+    /// divergence from upstream, which made that selector generic instead.
+    enum OverlayPaneSelection {
+        case accepted(OverlayPane?)
+        case rejected(ControlResponse)
+    }
+
+    /// The `session.overlay.open`/`.close`/`.result` selector: absent keeps the session-wide overlay,
+    /// `left`/`right` (and their `primary`/`split` aliases) scope to one pane, `scratch` is rejected —
+    /// there being no scratch pane to cover. No live session needed either way.
+    func parseOverlayPane(_ raw: String?) -> OverlayPaneSelection {
+        guard let raw else { return .accepted(nil) }
+        guard let parsed = OverlayPane(controlName: raw) else {
+            return .rejected(ControlResponse(ok: false, error: PaneOverlayError.invalidPane))
+        }
+        return .accepted(parsed)
     }
 }

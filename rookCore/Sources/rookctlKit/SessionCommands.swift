@@ -764,6 +764,15 @@ struct Session: ParsableCommand {
             subcommands: [Open.self, Close.self, Resize.self, Result.self]
         )
 
+        /// `--pane` validation for the overlay commands: `left|right` only, deliberately NOT the shared
+        /// `validatePaneArgument`, which also accepts `scratch` — there is no scratch pane to cover, and
+        /// reusing it would send `scratch` to the socket instead of failing as a usage error.
+        static func validatePane(_ pane: String?) throws {
+            if let pane, OverlayPane(controlName: pane) == nil {
+                throw ValidationError("--pane must be left or right")
+            }
+        }
+
         struct Open: RequestCommand {
             static let configuration = CommandConfiguration(abstract: "Open an overlay running COMMAND; it closes when COMMAND exits.")
             @Argument(help: "Program to run in the overlay (e.g. revdiff).") var command: String
@@ -773,15 +782,25 @@ struct Session: ParsableCommand {
             @Flag(name: .long, help: "Select (switch to) the target session after opening the overlay (default: open without switching).") var follow = false
             @Option(name: .long, help: "Render a floating, framed panel at PERCENT (1-100) of the pane instead of full-size.") var sizePercent: Int?
             @Option(name: .long, help: "Solid background color (#rrggbb) for the overlay pane, independent of the session's own.") var backgroundColor: String?
+            @Option(name: .long, help: """
+                Scope the overlay to ONE split pane (left or right), leaving the sibling pane live and \
+                visible; omit for the session-wide overlay. A pane overlay is always full-pane, so this \
+                cannot be combined with --size-percent.
+                """)
+            var pane: String?
             @OptionGroup var target: TargetOptions
             @OptionGroup var options: ClientOptions
 
-            // reject the mutually-exclusive combo + a malformed color at parse time (before any connection),
+            // reject the mutually-exclusive combos + a malformed color at parse time (before any connection),
             // so it's a clean usage error and is unit-testable without a socket.
             func validate() throws {
                 if block && wait { throw ValidationError("--block cannot be combined with --wait") }
                 if let backgroundColor, !WatermarkConfig.isValidColorHex(backgroundColor) {
                     throw ValidationError("background-color must be a #rrggbb hex value")
+                }
+                try Overlay.validatePane(pane)
+                if pane != nil, sizePercent != nil {
+                    throw ValidationError("--pane cannot be combined with --size-percent (pane overlays are always full)")
                 }
             }
 
@@ -789,7 +808,15 @@ struct Session: ParsableCommand {
                 ControlRequest(cmd: .sessionOverlayOpen, target: target.target,
                                args: options.withWindow(ControlArgs(cwd: cwd, command: command, wait: wait ? true : nil,
                                                                      sizePercent: sizePercent, follow: follow ? true : nil,
-                                                                     color: backgroundColor)))
+                                                                     pane: pane, color: backgroundColor)))
+            }
+
+            /// The `--block` poll request. Extracted from `run()` so the `--pane` forwarding is assertable
+            /// without a live socket: polling a pane overlay with no pane reads the session-wide slot and
+            /// blocks forever. No window scope — the returned id is globally unique and resolves cross-window,
+            /// so a frontmost-window change during the run cannot make the poll miss the session.
+            func resultRequest(id: String) -> ControlRequest {
+                ControlRequest(cmd: .sessionOverlayResult, target: id, args: pane.map { ControlArgs(pane: $0) })
             }
 
             func run() throws {
@@ -803,11 +830,8 @@ struct Session: ParsableCommand {
                     SocketClient.printResponse(opened, json: options.json)
                     throw ExitCode.failure
                 }
-                // poll session.overlay.result until the program exits. target the returned id with NO
-                // window scope: the id is globally unique and resolves cross-window, so a frontmost-window
-                // change during the run can't make the poll miss the session.
                 while true {
-                    let res = try client.send(ControlRequest(cmd: .sessionOverlayResult, target: id))
+                    let res = try client.send(resultRequest(id: id))
                     if res.ok {
                         if options.json { SocketClient.printResponse(res, json: true) }
                         // a successful result must carry the status; its absence is a protocol violation, not success.
@@ -829,11 +853,16 @@ struct Session: ParsableCommand {
 
         struct Close: RequestCommand {
             static let configuration = CommandConfiguration(abstract: "Close the overlay terminal (destroys it).")
+            @Option(name: .long, help: "Close that split pane's overlay (left or right); omit for the session-wide overlay.")
+            var pane: String?
             @OptionGroup var target: TargetOptions
             @OptionGroup var options: ClientOptions
 
+            func validate() throws { try Overlay.validatePane(pane) }
+
             func makeRequest() throws -> ControlRequest {
-                ControlRequest(cmd: .sessionOverlayClose, target: target.target, args: options.withWindow())
+                ControlRequest(cmd: .sessionOverlayClose, target: target.target,
+                               args: options.withWindow(pane.map { ControlArgs(pane: $0) }))
             }
         }
 
@@ -862,11 +891,16 @@ struct Session: ParsableCommand {
 
         struct Result: RequestCommand {
             static let configuration = CommandConfiguration(abstract: "Print the overlay program's exit status (errors if it is still running or never ran).")
+            @Option(name: .long, help: "Read that split pane's overlay status (left or right); omit for the session-wide overlay.")
+            var pane: String?
             @OptionGroup var target: TargetOptions
             @OptionGroup var options: ClientOptions
 
+            func validate() throws { try Overlay.validatePane(pane) }
+
             func makeRequest() throws -> ControlRequest {
-                ControlRequest(cmd: .sessionOverlayResult, target: target.target, args: options.withWindow())
+                ControlRequest(cmd: .sessionOverlayResult, target: target.target,
+                               args: options.withWindow(pane.map { ControlArgs(pane: $0) }))
             }
         }
     }

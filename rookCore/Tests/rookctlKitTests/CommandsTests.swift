@@ -888,6 +888,61 @@ struct CommandsTests {
             == ControlRequest(cmd: .sessionOverlayResult, target: "9f3c"))
     }
 
+    // MARK: - session overlay --pane
+
+    @Test func sessionOverlayOpenCloseAndResultCarryThePane() throws {
+        #expect(try request(["session", "overlay", "open", "htop", "--pane", "right"])
+            == ControlRequest(cmd: .sessionOverlayOpen, target: "active",
+                              args: ControlArgs(command: "htop", pane: "right")))
+        #expect(try request(["session", "overlay", "close", "--pane", "left"])
+            == ControlRequest(cmd: .sessionOverlayClose, target: "active", args: ControlArgs(pane: "left")))
+        #expect(try request(["session", "overlay", "result", "--pane", "right"])
+            == ControlRequest(cmd: .sessionOverlayResult, target: "active", args: ControlArgs(pane: "right")))
+    }
+
+    /// `left|right` only — deliberately NOT the shared pane validator, which also takes `scratch`; there is
+    /// no scratch pane to cover, so it must fail as a usage error instead of reaching the socket.
+    @Test func sessionOverlayRejectsScratchAndGarbagePanes() {
+        for raw in ["scratch", "middle"] {
+            for verb in ["close", "result"] {
+                #expect(throws: (any Error).self) {
+                    try Rookctl.parseAsRoot(["session", "overlay", verb, "--pane", raw])
+                }
+            }
+            #expect(throws: (any Error).self) {
+                try Rookctl.parseAsRoot(["session", "overlay", "open", "cmd", "--pane", raw])
+            }
+        }
+    }
+
+    /// A pane overlay is always full-pane, so the combination is a parse error before any connection.
+    @Test func sessionOverlayOpenRejectsPaneWithSizePercent() {
+        #expect(throws: (any Error).self) {
+            try Rookctl.parseAsRoot(["session", "overlay", "open", "htop", "--pane", "left", "--size-percent", "70"])
+        }
+    }
+
+    /// The `--block` poll must carry `--pane` too: polling a pane overlay with no pane reads the
+    /// session-wide slot, which is never running, so `--block` would return the wrong status (or hang).
+    @Test func sessionOverlayBlockPollForwardsThePane() throws {
+        let paned = try Rookctl.parseAsRoot(["session", "overlay", "open", "htop", "--pane", "right", "--block"])
+        guard let open = paned as? rookctlKit.Session.Overlay.Open else {
+            Issue.record("expected the overlay open subcommand, got \(type(of: paned))")
+            return
+        }
+        #expect(open.resultRequest(id: "sid")
+            == ControlRequest(cmd: .sessionOverlayResult, target: "sid", args: ControlArgs(pane: "right")))
+
+        let plain = try Rookctl.parseAsRoot(["session", "overlay", "open", "htop", "--block"])
+        guard let sessionWide = plain as? rookctlKit.Session.Overlay.Open else {
+            Issue.record("expected the overlay open subcommand, got \(type(of: plain))")
+            return
+        }
+        // no pane = no args at all, so a pre-pane server sees the request it always saw.
+        #expect(sessionWide.resultRequest(id: "sid")
+            == ControlRequest(cmd: .sessionOverlayResult, target: "sid"))
+    }
+
     @Test func sessionOverlayResizeWithSizePercent() throws {
         let expected = ControlRequest(cmd: .sessionOverlayResize, target: "9f3c", args: ControlArgs(sizePercent: 40))
         #expect(try request(["session", "overlay", "resize", "--size-percent", "40", "--target", "9f3c"]) == expected)
@@ -1013,6 +1068,13 @@ struct CommandsTests {
 
     @Test func dashboardRejectsCloseWithAutoSize() {
         #expect(validationMessage(["dashboard", "--close", "--auto-size"]) == "--close takes no ids, --mru, or font options")
+    }
+
+    /// A `:left`/`:right` suffix rides through as part of the positional id — the CLI does NOT parse or
+    /// pre-validate the pane grammar (that is dispatcher-owned), so the raw token must reach the wire intact.
+    @Test func dashboardForwardsPaneSuffixedIdsVerbatim() throws {
+        let expected = ControlRequest(cmd: .dashboard, args: ControlArgs(targets: ["s1:left", "s2:right", "s3"]))
+        #expect(try request(["dashboard", "s1:left", "s2:right", "s3"]) == expected)
     }
 
     @Test func dashboardRejectsEmptyIdsWithoutClose() {

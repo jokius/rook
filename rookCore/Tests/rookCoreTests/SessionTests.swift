@@ -459,11 +459,114 @@ struct SessionTests {
         #expect(session.paneRole(forToken: "agent-tok") == .left)
         #expect(session.paneRole(forToken: "helper-tok") == .right)
     }
+
+    // MARK: - pane-overlay predicates
+
+    /// The single predicate every pane-scoped cover, zoom and focus decision derives from. `.right` needs
+    /// `splitFocused` AND a right pane that exists, or a promoted survivor that momentarily re-raised
+    /// `splitFocused` resolves `.right` with nothing there.
+    @Test func focusedPaneNeedsSplitFocusAndARightPaneThatExists() {
+        let session = Session(initialCwd: "/a")
+        #expect(session.focusedPane == .left)
+
+        session.splitFocused = true
+        #expect(session.focusedPane == .left) // no split shown, no split surface: nothing to focus
+
+        session.isSplit = true
+        #expect(session.focusedPane == .right) // shown split, surface may still be unrealized
+
+        session.isSplit = false
+        session.splitSurface = FakeSurface()
+        #expect(session.focusedPane == .right) // hidden-maximized right pane
+    }
+
+    /// `rendersPane` is the LAYOUT question — which panes the deck lays out — not which is focused.
+    @Test func rendersPaneCoversBothSidesOfAShownSplitAndTheFocusedOneOtherwise() {
+        let session = Session(initialCwd: "/a")
+        #expect(session.renderedPanes == [.left])
+
+        session.isSplit = true
+        #expect(session.renderedPanes == [.left, .right])
+
+        session.isSplit = false
+        session.splitFocused = true
+        session.splitSurface = FakeSurface()
+        #expect(session.renderedPanes == [.right]) // hidden split, right shown maximized
+    }
+
+    /// A pane overlay is the LAST cover: below the session-wide overlay and the scratch, above the pane.
+    @Test func topmostSurfacePrefersTheFocusedPanesOwnOverlay() {
+        let session = Session(initialCwd: "/a")
+        let pane = FakeSurface()
+        let paneOverlay = FakeSurface()
+        let scratch = FakeSurface()
+        session.surface = pane
+        #expect(session.topmostSurface === pane)
+
+        session.setPaneOverlay(PaneOverlay(command: "a"), pane: .left)
+        session.setPaneOverlaySurface(paneOverlay, pane: .left)
+        #expect(session.topmostSurface === paneOverlay)
+
+        session.scratchActive = true
+        session.scratchSurface = scratch
+        #expect(session.topmostSurface === scratch) // the scratch covers the pane overlays too
+    }
+
+    /// An overlay on the OTHER pane is not in front of the user, so it must not claim `topmostSurface`.
+    @Test func topmostSurfaceIgnoresAnOverlayOnTheUnfocusedPane() {
+        let session = Session(initialCwd: "/a")
+        session.isSplit = true
+        session.surface = FakeSurface()
+        session.splitSurface = FakeSurface()
+        session.setPaneOverlay(PaneOverlay(command: "a"), pane: .right)
+        session.setPaneOverlaySurface(FakeSurface(), pane: .right)
+
+        #expect(session.focusedPane == .left)
+        #expect(session.topmostSurface === session.surface)
+        #expect(session.focusedOverlayPane == nil)
+    }
+
+    /// `session.focus right` must not make a COVERED pane first responder — the pane's own overlay takes it.
+    @Test func focusTargetRoutesThroughACoveringPaneOverlay() {
+        let session = Session(initialCwd: "/a")
+        session.isSplit = true
+        let left = FakeSurface()
+        let right = FakeSurface()
+        let rightOverlay = FakeSurface()
+        session.surface = left
+        session.splitSurface = right
+        #expect(session.focusTarget(wantSplit: true) === right)
+
+        session.setPaneOverlay(PaneOverlay(command: "a"), pane: .right)
+        session.setPaneOverlaySurface(rightOverlay, pane: .right)
+        #expect(session.focusTarget(wantSplit: true) === rightOverlay)
+        #expect(session.focusTarget(wantSplit: false) === left) // the sibling is untouched
+    }
+
+    /// Under a SESSION-WIDE cover the requested pane is hidden either way, so focus stays on the cover.
+    @Test func focusTargetStaysOnASessionWideCover() {
+        let session = Session(initialCwd: "/a")
+        session.isSplit = true
+        session.surface = FakeSurface()
+        session.splitSurface = FakeSurface()
+        let overlay = FakeSurface()
+        session.overlayActive = true
+        session.overlaySurface = overlay
+        #expect(session.focusTarget(wantSplit: true) === overlay)
+        #expect(session.focusTarget(wantSplit: false) === overlay)
+    }
 }
 
 private final class FakeSurface: TerminalSurface {
     var paneToken: String
-    init(paneToken: String = "") { self.paneToken = paneToken }
-    func teardown() {}
+    /// Defaults TRUE, like `SpySurface`: a fixture stands in for a live terminal unless a test says
+    /// otherwise (`Session.dropUnrealizedPaneOverlays` is the only reader that cares).
+    var isRealized: Bool
+    var teardownCount = 0
+    init(paneToken: String = "", isRealized: Bool = true) {
+        self.paneToken = paneToken
+        self.isRealized = isRealized
+    }
+    func teardown() { teardownCount += 1 }
     func promoteToPrimaryPane() {}
 }

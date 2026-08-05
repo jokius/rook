@@ -21,6 +21,15 @@ public protocol TerminalSurface: AnyObject {
     /// reassign here, so a future surface fails to compile rather than silently mis-reporting.
     func promoteToPrimaryPane()
 
+    /// Whether the terminal itself EXISTS — the underlying libghostty surface created and its program
+    /// spawned — as opposed to this object merely occupying a session's surface slot. The two differ:
+    /// `TerminalView.makeNSView` parks the view in the slot BEFORE `createSurface()` runs, and creation
+    /// defers until the view gets a nonzero backing size, so an occupied slot proves nothing about a running
+    /// program. `Session.dropUnrealizedPaneOverlays` keys on this to tell a stranded pane overlay from a live
+    /// one. A hard requirement (no default) like `teardown()`, because either default silently misbehaves:
+    /// `true` strands a slot that never started a program, `false` retires an overlay whose program is running.
+    var isRealized: Bool { get }
+
     /// A stable per-surface identity assigned when the surface spawns, distinct from the pane ROLE
     /// (`left|right|scratch`), which is NOT stable: a promoted split survivor keeps its baked `right`
     /// role but moves into the main slot. Baked into the shell's env as `ROOK_PANE_ID` and forwarded by

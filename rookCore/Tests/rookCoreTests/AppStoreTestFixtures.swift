@@ -22,7 +22,13 @@ final class SpySurface: TerminalSurface {
     var teardownCount = 0
     var promotedCount = 0
     var paneToken: String
-    init(paneToken: String = "") { self.paneToken = paneToken }
+    /// Defaults TRUE so every existing fixture keeps standing in for a live terminal; the pane-overlay
+    /// retirement tests set it false to model a slot filled before `createSurface` ran.
+    var isRealized: Bool
+    init(paneToken: String = "", isRealized: Bool = true) {
+        self.paneToken = paneToken
+        self.isRealized = isRealized
+    }
     func teardown() { teardownCount += 1 }
     func promoteToPrimaryPane() { promotedCount += 1 }
 }

@@ -157,8 +157,8 @@ extension MockControlActions {
         return nextOverlayOpenResponse
     }
 
-    func closeSessionOverlay(_ target: String?, window: String?) -> ControlResponse {
-        calls.append(.overlayClose(target: target, window: window))
+    func closeSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse {
+        calls.append(.overlayClose(target: target, window: window, pane: pane))
         return nextOverlayCloseResponse
     }
 
@@ -167,8 +167,8 @@ extension MockControlActions {
         return nextOverlayResizeResponse
     }
 
-    func sessionOverlayResult(_ target: String?, window: String?) -> ControlResponse {
-        calls.append(.overlayResult(target: target, window: window))
+    func sessionOverlayResult(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse {
+        calls.append(.overlayResult(target: target, window: window, pane: pane))
         return nextOverlayResultResponse
     }
 

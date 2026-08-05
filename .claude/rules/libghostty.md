@@ -373,6 +373,40 @@ paths:
   Neither `backgroundWatermark` (`@ObservationIgnored`) nor a live OSC 11 color is observed, so the color is
   whatever it was when the wash was last drawn — narrow and self-healing, since every path that PUTS a wash
   on screen re-reads it.
+- **A pane-scoped overlay covers ONE split pane; the constant-shape rule applies per-PANE.**
+  `session.overlay.open --pane left|right` mounts a full-pane, chromeless overlay over that pane alone,
+  leaving the sibling live and interactive.
+  `WindowContentView+Detail.deckPane` is the arranged subview of a shown split, and `paneOverlayPanel` is an
+  ALWAYS-PRESENT sibling INSIDE that pane's ZStack with its content gated in the `GeometryReader` — the same
+  shape discipline `overlayPanel` follows at session scope, applied one level down.
+  The boundary is the arranged subview: INSIDE one a constant-shape ZStack may swap children and vary
+  modifier values freely; ABOVE one even a value flip is suspect (the `allowsHitTesting` case).
+  The covered pane is hidden by `PaneOverlayCover` (`opacity 0` + `allowsHitTesting(false)`) applied INSIDE
+  the arranged subview, never on a wrapper, and its `deckVisible`/`isActive` both drop — a pane under its own
+  overlay registers no drag types, writes no cursor, and never takes first responder.
+- **Anything that HIDES a pane in place takes the mute wash with it, so the cover must carry `paneDim`
+  itself.**
+  `paneOverlayPanel` washes an overlay opened on the UNFOCUSED pane, or the split focus cue stops reading —
+  both sides look live.
+  Wash a cover against ITS OWN background, not `washColor(for:)`: an overlay surface is sessionless and never
+  inherits the session background (only the scratch does, via `watermarkSession`), so the session color would
+  shift the background it blends into instead of fading the text.
+  `overlayWashColor` gates on the renderer's own hex predicate so the wash tracks exactly what
+  `applyOverlayBackgroundColor` painted.
+- **A pane overlay whose pane stops being laid out before its surface REALIZES must be retired, not
+  described.**
+  `openPaneOverlay` only proves the pane renders at REQUEST time; the surface is realized later by whichever
+  host mounts it, and surfaces defer creation until they get a nonzero backing size.
+  A slot left open with no terminal would answer `session.overlay.result --pane` "overlay still running"
+  forever and hang `--block`.
+  `Session.dropUnrealizedPaneOverlays` keys on `TerminalSurface.isRealized` — NOT slot occupancy, since the
+  deck parks the view in the slot BEFORE `createSurface` runs — and spares any pane a host still claims,
+  where the host is the deck (`rendersPane`) OR a zoom target (`TerminalZoomRegistry.targets`), a claim that
+  stands from the moment the target is set.
+  It runs from `AppStore.toggleSplit`, the deck's `renderedPanes`/`terminalZoom.target` watchers, and the
+  pending-close restore paths (whose watchers are unmounted while the session sits outside the tree, and
+  `.onChange` does not fire on the remount).
+  A REALIZED overlay is left alone: unmounting its surface keeps the program running and a re-show remounts it.
 - **Non-zero backing size.**
   Create the surface only when the view has a non-zero backing size, else the Metal layer renders blank.
   `pendingSurfaceCreation` defers creation until `setFrameSize` reports a real size.

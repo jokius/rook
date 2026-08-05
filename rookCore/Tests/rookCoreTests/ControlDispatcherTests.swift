@@ -1257,8 +1257,8 @@ struct ControlDispatcherTests {
         #expect(close == ControlResponse(ok: true, result: ControlResult(id: "session")))
         #expect(result == ControlResponse(ok: true, result: ControlResult(id: "session", exitCode: 7)))
         #expect(actions.calls == [
-            .overlayClose(target: "session", window: "win"),
-            .overlayResult(target: "session", window: "win")
+            .overlayClose(target: "session", window: "win", pane: nil),
+            .overlayResult(target: "session", window: "win", pane: nil)
         ])
     }
 
@@ -1270,7 +1270,7 @@ struct ControlDispatcherTests {
         let response = await dispatcher.dispatch(ControlRequest(cmd: .sessionOverlayResult, target: "session"))
 
         #expect(response == ControlResponse(ok: false, error: OverlayResultError.stillRunning))
-        #expect(actions.calls == [.overlayResult(target: "session", window: nil)])
+        #expect(actions.calls == [.overlayResult(target: "session", window: nil, pane: nil)])
     }
 
     @Test func sessionOverlayResizeRoutesSizePercentAndWindow() async {

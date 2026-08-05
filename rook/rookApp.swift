@@ -92,7 +92,9 @@ struct rookApp: App {
                 library: library,
                 makeSurface: { Self.makeSurface(for: $0, store: $1, env: surfaceEnv(for: $0, pane: .left), library: library) },
                 makeSplitSurface: { Self.makeSplitSurface(for: $0, store: $1, env: surfaceEnv(for: $0, pane: .right), library: library) },
-                makeOverlaySurface: { Self.makeOverlaySurface(for: $0, store: $1, env: surfaceEnv(for: $0)) },
+                makeOverlaySurface: {
+                    Self.makeOverlaySurface(for: $0, store: $1, pane: $2, env: surfaceEnv(for: $0))
+                },
                 makeScratchSurface: { session, store in
                     // suppress the scratch's creation autoFocus when a full overlay OR this window's quick
                     // terminal is already up — each renders above the scratch and owns focus.
@@ -454,7 +456,7 @@ struct rookApp: App {
         let sessionID = session.id
         view.onExit = { [weak view] in
             guard let view else { return }
-            Self.handlePaneExit(view, store: store, sessionID: sessionID)
+            Self.handlePaneExit(view, store: store, sessionID: sessionID, library: library)
         }
         view.onFocusChange = { [weak view] focused in
             guard focused else { return }
@@ -486,33 +488,76 @@ struct rookApp: App {
     /// wired to the session (no `view.session`), so its PWD reports don't clobber the session's
     /// cwd. When the command exits, the surface's process-exit fires `onExit` → `closeOverlay`,
     /// which tears the surface down and hides the overlay — so the program's exit makes it vanish.
+    ///
+    /// `pane` picks WHICH slot supplies the command/cwd/wait/color and receives the exit status: nil is the
+    /// session-wide overlay, `left`/`right` the pane-scoped one covering that split pane alone. The temp
+    /// exit-code file is minted per call, so two pane overlays open at once never share one.
     @MainActor
-    private static func makeOverlaySurface(for session: Session, store: AppStore, env: [String: String]) -> GhosttySurfaceView {
+    private static func makeOverlaySurface(for session: Session, store: AppStore, pane: OverlayPane?,
+                                           env: [String: String]) -> GhosttySurfaceView {
         let sessionID = session.id
+        let spec = Self.overlaySpec(for: session, pane: pane)
         // wrap the command so its exit status lands in a per-surface temp file. No stdout/stderr
         // redirect — the program renders in the overlay as usual.
         let codeFile = (NSTemporaryDirectory() as NSString).appendingPathComponent("rook-ovl-\(UUID().uuidString).code")
         var overlayEnv = env
-        overlayEnv[OverlayCapture.cmdEnvKey] = session.overlayCommand ?? ""
+        overlayEnv[OverlayCapture.cmdEnvKey] = spec.command
         overlayEnv[OverlayCapture.codeEnvKey] = codeFile
-        let view = GhosttySurfaceView(workingDirectory: session.overlayCwd ?? session.effectiveCwd,
+        let view = GhosttySurfaceView(workingDirectory: spec.cwd ?? session.effectiveCwd,
                                       fontSize: session.fontSize.map(Float.init), command: overlayExitWrapper,
-                                      waitAfterCommand: session.overlayWait, autoFocus: true, env: overlayEnv)
+                                      waitAfterCommand: spec.wait, autoFocus: true, env: overlayEnv)
         view.overlayCodeFile = codeFile
         // the overlay's own background color (session.overlay.open --background-color), applied to the
         // surface in createSurface — the overlay is sessionless, so it can't read it off the session there.
-        view.overlayBackgroundColorHex = session.overlayBackgroundColor
+        view.overlayBackgroundColorHex = spec.backgroundColor
         // record the exit status on teardown (the surface always tears down through destroySurface), so
         // it survives an explicit session.overlay.close that bypasses onExit. a session/window force-close
         // removes the session first, so this no-ops there — but the result is unqueryable after that anyway.
-        view.onExitCodeCaptured = { store.recordOverlayExit(sessionID, code: $0) }
-        view.onExit = { store.closeOverlay(sessionID) }
+        //
+        // the pane arm's callbacks re-resolve their pane from the slot the surface CURRENTLY occupies, never
+        // the captured `pane`: `closePrimaryPane` MOVES a right-pane overlay into the left slot without
+        // rebuilding the view (`TerminalView.makeNSView` reuses a non-nil slot), so a captured `.right` would
+        // close nothing, record the status where `session.overlay.result --pane left` can't read it, and leave
+        // the promoted pane under a dead overlay forever. The captured value is the pre-realization fallback,
+        // for the window between the open and the slot holding this surface.
+        if let pane {
+            let livePane: @MainActor () -> OverlayPane = { [weak view] in
+                guard let view else { return pane }
+                return store.session(withID: sessionID)?.paneOverlayRole(of: view) ?? pane
+            }
+            view.onExitCodeCaptured = { store.recordPaneOverlayExit(sessionID, pane: livePane(), code: $0) }
+            view.onExit = { store.closePaneOverlay(sessionID, pane: livePane()) }
+            // a PANE overlay tracks its pane's focus like the pane itself does: clicking it moves
+            // `splitFocused`, so the deck's per-pane focus gate keeps it active instead of resigning first
+            // responder on the next update, and `focusedOverlayPane` (⌘W rung, search, `topmostSurface`)
+            // agrees with what the user sees.
+            view.onFocusChange = { focused in
+                guard focused else { return }
+                store.session(withID: sessionID)?.splitFocused = livePane() == .right
+            }
+        } else {
+            view.onExitCodeCaptured = { store.recordOverlayExit(sessionID, code: $0) }
+            view.onExit = { store.closeOverlay(sessionID) }
+        }
         // typing in the cover counts as user activity: reset the window's auto-follow idle timer so an
         // idle fire can't change the underlying selection (vanishing the overlay) while you type in it.
         // destroySurface nils this, breaking the store -> surface -> closure retain cycle.
         view.onUserInput = { store.noteUserActivity() }
         view.onPreviewMarkdown = { store.openMarkdown($0, forSession: sessionID) }
         return view
+    }
+
+    /// The four fields the overlay factory reads, from the session-wide slot (`pane == nil`) or that pane's
+    /// slot. `PaneOverlay` carries them for both kinds; the session-wide slot has no such value type and its
+    /// extra `overlaySizePercent` is geometry the factory never reads. The empty pane fallback is unreachable
+    /// — every mount site tests the same slot in the pass that reaches this factory — but keeps it total.
+    @MainActor
+    private static func overlaySpec(for session: Session, pane: OverlayPane?) -> PaneOverlay {
+        guard let pane else {
+            return PaneOverlay(command: session.overlayCommand ?? "", cwd: session.overlayCwd,
+                               backgroundColor: session.overlayBackgroundColor, wait: session.overlayWait)
+        }
+        return session.paneOverlay(pane) ?? PaneOverlay(command: "")
     }
 
     /// Scratch-terminal surface factory: a third per-session shell, full-overlay rendered. Like the

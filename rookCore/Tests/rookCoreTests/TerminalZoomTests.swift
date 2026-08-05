@@ -12,7 +12,13 @@ struct TerminalZoomTests {
         #expect(TerminalZoomController.resolveTarget(store: store, quickTerminalVisible: true) == .quick)
         #expect(TerminalZoomController.resolveTarget(store: store, quickTerminalVisible: false) == .session(session.id, .primary))
 
+        // `splitFocused` alone describes no pane: with neither a shown split nor a split surface the focused
+        // pane is still the primary, matching `rendersPane`/`focusedOverlayPane` and `.split`'s isAvailable.
         session.splitFocused = true
+        #expect(TerminalZoomController.resolveTarget(store: store, quickTerminalVisible: false) == .session(session.id, .primary))
+
+        store.toggleSplit(session.id)
+        session.splitSurface = SpySurface()
         #expect(TerminalZoomController.resolveTarget(store: store, quickTerminalVisible: false) == .session(session.id, .split))
 
         session.scratchActive = true
@@ -135,5 +141,61 @@ struct TerminalZoomTests {
         #expect(controller.target == right)
         controller.set(.off, target: nil)
         #expect(controller.target == nil)
+    }
+
+    // MARK: - pane-overlay surfaces
+
+    @Test func paneOverlaySurfacesAreAvailableOnlyWhileTheirSlotIsFilled() {
+        let session = Session(initialCwd: "/a")
+        session.isSplit = true
+        #expect(TerminalZoomSurface.overlayLeft.isAvailable(in: session) == false)
+        #expect(TerminalZoomSurface.overlayRight.isAvailable(in: session) == false)
+
+        session.setPaneOverlay(PaneOverlay(command: "a"), pane: .right)
+        #expect(TerminalZoomSurface.overlayRight.isAvailable(in: session) == true)
+        #expect(TerminalZoomSurface.overlayLeft.isAvailable(in: session) == false)
+    }
+
+    /// `resolveTarget` takes the FIRST active case, so exactly one may ever be active. A pane and its own
+    /// overlay are separated by that pane's slot alone — widening one without narrowing the other silently
+    /// picks the wrong zoom target.
+    @Test func exactlyOneSurfaceIsActiveWithAPaneOverlayUp() {
+        let session = Session(initialCwd: "/a")
+        session.isSplit = true
+        #expect(TerminalZoomSurface.allCases.filter { $0.isActive(in: session) } == [.primary])
+
+        session.setPaneOverlay(PaneOverlay(command: "a"), pane: .left)
+        #expect(TerminalZoomSurface.allCases.filter { $0.isActive(in: session) } == [.overlayLeft])
+
+        session.splitFocused = true
+        // focus moved to the uncovered right pane; the left overlay is still up but no longer in front.
+        #expect(TerminalZoomSurface.allCases.filter { $0.isActive(in: session) } == [.split])
+
+        // a session-wide cover outranks both panes and their overlays.
+        session.overlayActive = true
+        #expect(TerminalZoomSurface.allCases.filter { $0.isActive(in: session) } == [.overlay])
+    }
+
+    /// Visibility is the LAYOUT question, so BOTH sides of a shown split report visible — but a pane
+    /// renders at opacity 0 under its own overlay, so the overlay takes that pane's visibility.
+    @Test func aPaneOverlayTakesItsPanesVisibility() {
+        let session = Session(initialCwd: "/a")
+        session.isSplit = true
+        #expect(TerminalZoomSurface.allCases.filter { $0.isVisible(in: session) } == [.primary, .split])
+
+        session.setPaneOverlay(PaneOverlay(command: "a"), pane: .left)
+        #expect(TerminalZoomSurface.allCases.filter { $0.isVisible(in: session) } == [.split, .overlayLeft])
+
+        // a session-wide cover hides both panes AND their overlays.
+        session.scratchActive = true
+        #expect(TerminalZoomSurface.allCases.filter { $0.isVisible(in: session) } == [.scratch])
+    }
+
+    @Test func paneOverlaySurfacesRoundTripTheirControlNames() {
+        #expect(TerminalZoomSurface(controlName: "overlay-left") == .overlayLeft)
+        #expect(TerminalZoomSurface(controlName: "overlay-right") == .overlayRight)
+        #expect(TerminalZoomSurface.overlayLeft.rawValue == "overlay-left")
+        #expect(OverlayPane.left.zoomSurface == .overlayLeft)
+        #expect(OverlayPane.right.paneZoomSurface == .split)
     }
 }

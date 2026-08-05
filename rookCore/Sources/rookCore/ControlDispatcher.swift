@@ -110,9 +110,9 @@ public protocol ControlActions {
                        text: String?, to: String?) async -> ControlResponse
     func openSessionOverlay(_ target: String?, window: String?,
                             options: ControlSessionOverlayOpenOptions) -> ControlResponse
-    func closeSessionOverlay(_ target: String?, window: String?) -> ControlResponse
+    func closeSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse
     func resizeSessionOverlay(_ target: String?, window: String?, sizePercent: Int?) -> ControlResponse
-    func sessionOverlayResult(_ target: String?, window: String?) -> ControlResponse
+    func sessionOverlayResult(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse
     func setSessionBackground(_ target: String?, window: String?,
                               options: ControlSessionBackgroundOptions) -> ControlResponse
     func readSessionText(_ target: String?, window: String?, options: ControlSessionTextOptions) -> ControlResponse
@@ -149,15 +149,19 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
     public let sizePercent: Int?
     public let backgroundColor: String?
     public let follow: Bool
+    /// The pane to cover, nil for the session-wide overlay. A pane overlay is always full, so this and
+    /// `sizePercent` are mutually exclusive (rejected in the dispatcher).
+    public let pane: OverlayPane?
 
     public init(command: String, cwd: String?, wait: Bool, sizePercent: Int?, backgroundColor: String?,
-                follow: Bool = false) {
+                follow: Bool = false, pane: OverlayPane? = nil) {
         self.command = command
         self.cwd = cwd
         self.wait = wait
         self.sizePercent = sizePercent
         self.backgroundColor = backgroundColor
         self.follow = follow
+        self.pane = pane
     }
 }
 
