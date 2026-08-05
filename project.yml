@@ -153,9 +153,36 @@ targets:
           # can't be clobbered by Xcode's own final code-sign, which also adds the required timestamp).
           codesign --force --options runtime --sign - "$dest"
           # re-seal the whole app: this phase can run AFTER Xcode's own code-sign on incremental
-          # builds, so adding the helper would otherwise break the seal. --deep re-signs every nested
-          # Mach-O too (the Debug rook.debug.dylib, the helper).
-          codesign --force --deep --options runtime --entitlements "$SRCROOT/rook/rook.entitlements" --sign - "$CODESIGNING_FOLDER_PATH"
+          # builds, so adding the helper would otherwise break the seal.
+          #
+          # A hosted unit-test bundle (rookTests) is copied into Contents/PlugIns, and during
+          # `build-for-testing` this phase runs while that wrapper is still EMPTY (its Contents/MacOS
+          # has no binary yet). Sealing the app validates every nested BUNDLE — that is not a --deep
+          # behavior, dropping --deep does not avoid it — and an empty wrapper is rejected outright:
+          # "bundle format unrecognized, invalid, or unsuitable". So remove the empty wrapper first,
+          # exactly like the loose AppIcon.icon above; the rookTests target builds after the host and
+          # lays down (and signs) its own bundle. Only EMPTY wrappers go: an already-built xctest is
+          # left alone, so an incremental test build doesn't lose a bundle Xcode considers up to date.
+          for plugin in "$CODESIGNING_FOLDER_PATH/Contents/PlugIns/"*.xctest; do
+            if [ -d "$plugin" ] && [ -z "$(ls -A "$plugin/Contents/MacOS" 2>/dev/null)" ]; then
+              rm -rf "$plugin"
+            fi
+          done
+          # NOT --deep, for a second and independent reason: it would also descend into a POPULATED
+          # xctest, which signs itself.
+          # Signing each nested code object explicitly is what --deep was here for. That means every
+          # file beside the executable, not just the Mach-O ones: the Debug rook.debug.dylib and
+          # __preview.dylib (a shallow re-seal chokes on an unsigned dylib) AND the `ghostty` shell
+          # shim — a shallow seal rejects it with "code object is not signed at all", even though a
+          # script needs no signature of its own to RUN.
+          # `if`, not `[ -e … ] && …`: under `set -e` the && form exits the whole phase the moment a
+          # glob matches nothing.
+          for nested in "$CODESIGNING_FOLDER_PATH/Contents/MacOS/"*; do
+            if [ -f "$nested" ] && [ "$(basename "$nested")" != "$EXECUTABLE_NAME" ]; then
+              codesign --force --options runtime --sign - "$nested"
+            fi
+          done
+          codesign --force --options runtime --entitlements "$SRCROOT/rook/rook.entitlements" --sign - "$CODESIGNING_FOLDER_PATH"
     dependencies:
       - framework: GhosttyKit.xcframework
         embed: false
@@ -171,6 +198,32 @@ targets:
       - sdk: Metal.framework
       - sdk: MetalKit.framework
       - sdk: QuartzCore.framework
+
+  # In-process unit tests for app-target code that rookCore structurally cannot reach: anything needing
+  # a real AppKit object graph (an NSSplitView's divider band, a tracking area's mouseMoved, the
+  # process-global NSCursor) or a named NSPasteboard. Host-free logic still belongs in rookCore, where
+  # `swift test` runs with no app host — this target is for what genuinely needs the host, not a second
+  # home for logic that could have been hoisted.
+  rookTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - rookTests
+    dependencies:
+      - target: rook
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rook.app.Tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/rook.app/Contents/MacOS/rook"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        CODE_SIGN_IDENTITY: "-"
+        GENERATE_INFOPLIST_FILE: YES
+        # as in the UI test bundle: XCTest APIs aren't Sendable-clean, and the strict checking the
+        # app/rookCore use isn't needed here.
+        SWIFT_STRICT_CONCURRENCY: minimal
+        # ad-hoc signed like the UI runner; hardened runtime on a test bundle loaded into the host
+        # trips a Team-ID mismatch.
+        ENABLE_HARDENED_RUNTIME: NO
 
   rookUITests:
     type: bundle.ui-testing
@@ -197,12 +250,14 @@ schemes:
     build:
       targets:
         rook: all
+        rookTests: [test]
         rookUITests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
+        - rookTests
         - rookUITests
     archive:
       config: Release

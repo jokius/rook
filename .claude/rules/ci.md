@@ -29,9 +29,19 @@ paths:
   (only the `test` job's `swift test` gates the build).
   The flip side: a masked failure shows green — verify the actual Coveralls build/API after changing
   anything here, never trust the check color alone.
-- **CI does NOT run the XCUITests** — it builds the app but never test-runs the app target;
+- **CI does NOT run EITHER app-target test bundle** — it builds the app but never test-runs it;
   only the host-free `swift test` runs in CI.
+  That covers the XCUITests (`rookUITests`) and, since it was added, the host-loaded unit-test bundle
+  (`rookTests`): both need a built `rook.app` plus `GhosttyKit`, which is the `build` job's work, not the
+  `test` job's.
   So the Coveralls badge reflects `rookCore` coverage ONLY — the app target
   (SwiftUI/AppKit/libghostty) is manually tested and excluded, not "the whole app is N% covered".
+  **`rookTests` therefore only runs when someone runs it**, locally and DELIBERATELY:
+  `xcodebuild test -project rook.xcodeproj -scheme rook -only-testing:rookTests`.
+  The `-only-testing:` is not optional — the scheme lists both bundles, so a bare `xcodebuild test` also
+  fires the XCUITests, which synthesize keyboard/mouse input and take over the machine.
+  It exists for what STRUCTURALLY needs the host (a real `NSSplitView` divider band, a tracking area's
+  `mouseMoved`, the process-global `NSCursor`, a named `NSPasteboard`) — host-free logic still belongs in
+  `rookCore`, so adding a case here should always be a deliberate "this cannot be hoisted" call.
 - **The `lint` job is `--strict`**, so any swiftlint warning fails the build (see the `make lint` note in
   the root `CLAUDE.md`).
