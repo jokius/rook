@@ -87,6 +87,9 @@ final class MockControlActions: ControlActions {
         case pickOpen(PendingPick, window: String?, follow: Bool)
         case pickResult(target: String, window: String?)
         case pickCancel(target: String, window: String?)
+        case hudOpen(target: String?, window: String?, HudSpec)
+        case hudUpdate(target: String?, window: String?, HudSpec)
+        case hudClose(target: String?, window: String?)
         case restoreClear
     }
 
@@ -148,5 +151,8 @@ final class MockControlActions: ControlActions {
     var nextPickOpenResponse = ControlResponse(ok: true)
     var nextPickResultResponse = ControlResponse(ok: true)
     var nextPickCancelResponse = ControlResponse(ok: true)
+    var nextHudOpenResponse = ControlResponse(ok: true)
+    var nextHudUpdateResponse = ControlResponse(ok: true)
+    var nextHudCloseResponse = ControlResponse(ok: true)
     var nextRestoreClearResponse = ControlResponse(ok: true)
 }

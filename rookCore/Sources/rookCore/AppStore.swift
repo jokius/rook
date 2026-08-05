@@ -253,9 +253,11 @@ public final class AppStore {
                                           split: session.isSplit,
                                           splitRatio: session.hasSplit ? session.splitRatio : nil,
                                           splitFocused: session.hasSplit ? session.splitFocused : nil,
-                                          overlay: session.overlayActive,
-                                          overlaySizePercent: session.overlayActive ? session.overlaySizePercent : nil,
+                                          overlay: session.programOverlayActive,
+                                          overlaySizePercent: session.programOverlayActive
+                                              ? session.overlaySizePercent : nil,
                                           paneOverlays: paneOverlays(session),
+                                          hud: hudNode(session),
                                           scratch: session.scratchActive, flagged: session.flagged,
                                           commandWait: (session.initialCommand != nil && session.commandWait) ? true : nil,
                                           fileTreeVisible: session.fileTreeVisible ? true : nil,
@@ -309,6 +311,16 @@ public final class AppStore {
     private func paneOverlays(_ session: Session) -> [String]? {
         let panes = session.openPaneOverlays.map(\.rawValue)
         return panes.isEmpty ? nil : panes
+    }
+
+    /// The tree's `hud`: the live panel's spec carrying the slot's EFFECTIVE size on BOTH axes and the
+    /// effective position, omitted when no HUD occupies the slot.
+    private func hudNode(_ session: Session) -> ControlHudNode? {
+        guard session.hudActive, let spec = session.hudSpec else { return nil }
+        return ControlHudNode(message: spec.message, detail: spec.detail,
+                              spinner: spec.spinner?.rawValue ?? HudSpinner.noneName,
+                              backgroundColor: spec.backgroundColor, sizePercent: session.overlaySizePercent,
+                              heightPercent: session.hudHeightPercent, position: spec.position.rawValue)
     }
 
     /// Creates a workspace and appends it. When `revealNewWorkspace` (the default) and the focus filter is
@@ -518,6 +530,7 @@ public final class AppStore {
         removed.overlaySurface?.teardown()
         removed.teardownPaneOverlays()
         removed.scratchSurface?.teardown()
+        removed.discardHudBody() // a HUD whose surface never realized has no teardown to delete its body file
         WatermarkStorage.removeRenderedText(sessionID: sessionID) // drop any rendered .text PNG; the session is gone
         sessionRecency.remove(sessionID)
         if wasActive {
@@ -556,6 +569,7 @@ public final class AppStore {
             session.overlaySurface?.teardown()
             session.teardownPaneOverlays()
             session.scratchSurface?.teardown()
+            session.discardHudBody() // a HUD whose surface never realized has no teardown to delete its body file
             WatermarkStorage.removeRenderedText(sessionID: session.id) // drop any rendered .text PNG; the session is gone
             sessionRecency.remove(session.id)
         }

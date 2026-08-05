@@ -94,6 +94,9 @@ paths:
   `session.markdown`/`markdownPath` (the open file IS the panel's visibility, so one field covers both),
   `session.focus`/`splitFocused`, `session.resize`/`splitRatio`,
   `session.overlay.resize`/`overlaySizePercent`, `session.overlay.open --pane`/`paneOverlays`,
+  `session.hud.open`+`session.hud.update`/`hud` (a `ControlHudNode` carrying the whole spec plus the
+  EFFECTIVE size on BOTH axes — the slot's own `overlay`/`overlaySizePercent` deliberately read
+  false/omitted beside it, since a message is not a running program),
   `sidebar`/`sidebarVisible` (top-level),
   `sidebar.mode`/`sidebarMode`, `workspace.focus`/`marked` + `focused` (workspace node),
   `workspace.filter`/`workspaceFilter` (top-level, `tree`-only) — THREE fields for the focus state, not
@@ -255,7 +258,7 @@ paths:
   The skill is a REFERENCE/knowledge skill (both user-invocable via `/rook` and model-triggered,
   `allowed-tools: Bash(rookctl *)`; the agent-neutral `description` carries the trigger nouns since
   Codex may ignore the extra `when_to_use` field — unknown frontmatter is harmless),
-  authored at `rook/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + 72-command
+  authored at `rook/Resources/agent-skill/` (`SKILL.md` overview + model + addressing + the command
   summary + the image-display helper + a troubleshooting/reporting pointer;
   `reference.md` full per-command detail + keymap format; `examples.md` rookctl recipes;
   `troubleshooting.md` diagnosing the common problems (keymap editor, custom actions,
@@ -333,10 +336,10 @@ paths:
   rules, then remaining targets resolve inside that same store so one command never mutates multiple windows.
   The top-level `target` also carries the first explicit batch target so a new CLI talking to a still-running
   pre-batch server degrades to a named session instead of accidentally acting on `active`.
-- **Command catalog (77 commands):**
+- **Command catalog (80 commands):**
   The count is every `Command` case MINUS `debug.appearance` (the UI-test-only seam below, which has no
   `rookctl` subcommand and is not in the skill) — `awk '/^public enum Command/,/^}/' rookCore/Sources/rookCore/ControlProtocol.swift | grep -cE '^\s+case '`
-  minus one (78 cases → 77).
+  minus one (81 cases → 80).
   Re-RUN that command rather than trusting the number in front of you: it went stale once already, when
   `session.restore` landed and every count surface kept saying 73.
   The same number must appear in `README.md`, `site/docs.html`, `site/commands.html` (four places there:
@@ -347,7 +350,7 @@ paths:
   - `events.read` — its own family, NOT part of `tree`: the ring is app-wide and the command is a
     cursor-paged read of what HAPPENED, while `tree` is a snapshot of what IS
   - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.filter`/`workspace.color`/`workspace.icon`/`workspace.root`/`workspace.collapse`/`workspace.expand`
-  - `session.new`/`session.close`/`session.select`/`session.rename`/`session.duplicate`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.agent`/`session.flag`/`session.seen`/`session.background`/`session.restore`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
+  - `session.new`/`session.close`/`session.select`/`session.rename`/`session.duplicate`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.agent`/`session.flag`/`session.seen`/`session.background`/`session.restore`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`/`session.hud.open`/`session.hud.update`/`session.hud.close`
   - `surface.zoom`
   - `dashboard`
   - `pick.open`/`pick.result`/`pick.cancel` — the native picker (see its own section below)
@@ -373,7 +376,7 @@ paths:
   Setting echoes the resulting effective side in `result.text`; the BARE form (no name) reads the side
   the last config feed applied (`SettingsModel.lastAppliedIsDark`), which the test polls to prove the
   flip actually drove the reload.
-  `AppearanceFlipUITests` is its only consumer; the public command count stays 77.
+  `AppearanceFlipUITests` is its only consumer; the public command count stays 80.
 
   **`events.read` — the READ leg of a bounded event ring, control-NATIVE (no GUI surface at all).**
   It exists because polling `tree --json` and diffing a ~31-field-per-session snapshot cannot see a
@@ -1109,6 +1112,138 @@ paths:
   fields below) — populated in `AppStore.controlTree`, round-tripped by `treeSessionNodeRoundTripsWithOverlaySizePercent`/`…OmitsOverlaySizePercentWhenNil`
   and `AppStorePaneTests.controlTreeReportsOverlaySizePercent`, and mirrored in the agent-skill `reference.md`
   tree schema — so a script can record an overlay's size before zooming to `--full` and restore it exactly.
+
+  **`session.hud.open`/`.update`/`.close` — the SECOND occupant of the session-wide overlay slot: a PASSIVE
+  message panel, not a program.**
+  It is control-NATIVE — no menu item, chord, or palette entry — a deliberate exemption from the
+  shared-action-seam rule, because there is nothing here for a human to invoke by hand.
+  Sharing the slot rather than adding a third one is what keeps the ⌘W ladder, `coverHidesActiveSession`,
+  `searchTarget`, and session-close teardown unchanged.
+  - **Passivity is ONE predicate, `Session.programOverlayActive` (`overlayActive && !hudActive`), read at
+    every site that used to read the raw slot.**
+    `overlayActive` now answers only "occupied"; asking it where the answer decides focus, coverage, or
+    input hands first responder to the painter.
+    The sites: the deck's `DeckPaneGates.coverActive`, the floating click-catcher and `backdropWashActive`
+    (through `OverlayPanelStyle.backdrop`), the scratch's `isActive` gate, `TerminalView(viewOnly:)` on the
+    panel, the `.onChange` key for the overlay-close refocus, `Session.topmostSurface`/`focusTarget(wantSplit:)`/`onScreenSurface`,
+    `AppActions.searchTarget`'s scratch rung, the scratch factory's `suppressAutoFocus`, and all five
+    `TerminalZoomSurface` terms.
+    `viewOnly` owns the NSView layer, where `mouseDown` makes a surface first responder; the ancestor's
+    `.allowsHitTesting(false)` blocks the click before that, so the two are belt and braces (the dashboard
+    learned that `allowsHitTesting` alone is not what stops AppKit routing a click) — neither is the place
+    to economise.
+    Keying the refocus on the raw slot instead YANKS focus out of an open ⌘F field or an in-progress rename
+    on every HUD close.
+    Never spell the predicate inline; two spellings will disagree.
+  - **Zoom must widen `uncovered` and narrow the `.overlay` arm TOGETHER.**
+    Narrowing `.overlay` alone leaves NO case active with a HUD up and falls through to the
+    documented-unreachable `?? .primary` fallback.
+    A HUD is NOT addressable: `surface:<id>:overlay` is refused (`isAvailable` false), matching the same
+    response's `overlay: false`.
+  - **Constant shape, one host, one style value type.**
+    `OverlayPanelStyle.resolve(session)` produces every per-occupant parameter (geometry, chrome, backdrop,
+    interactivity, vertical placement), so `overlayPanel`'s modifier chain stays IDENTICAL across full,
+    floating, and HUD — the NSSplitView-overrun invariant above, taken to a third occupant.
+    `overlayPanel`'s `.id` carries `Session.overlaySlotGeneration` (bumped on every slot OPEN): a
+    replacement keeps `overlayActive` true across the swap, so without a changing identity `makeNSView`
+    never re-runs and `updateNSView` hits a torn-down view with `overlaySurface` nil.
+  - **Two axes, measured separately (`HudLayout.panelSize` → one `HudPanelSize` store-to-deck).**
+    Width from the box's columns, height from its rows.
+    One percent across both made every panel as tall as it was wide — a square box around two lines of text
+    — so `OverlayPanelStyle` carries `widthFraction`/`heightFraction` and only a PROGRAM overlay sets them
+    equal.
+    `--size-percent` reaches the WIDTH alone, on open and on `overlay.resize` (the text wraps at
+    `HudLayout.maxColumns`, not at the panel, so a resize changes no rows), and the height takes no caller
+    override at all — a set height can only strand the message in an empty box.
+    Every HUD width passes `HudLayout.clampSizePercent` (10...80), the caller's included, so the `--full`
+    refusal and the never-cover invariant cannot disagree; the height shares the 80 cap but takes NO minimum
+    floor (the box already carries `verticalPadding`, and flooring it is the square again).
+    That 80 cap is also what makes `top`/`bottom` always fit their `HudPosition.edgeMarginPercent`, the
+    height being what decides how far the panel travels; `OverlayPanelStyle.verticalOffset`'s centering
+    fallback is defensive only.
+    An unmeasured pane splits the fallback: width takes `maxSizePercent` (nothing is known to fit), height
+    takes `minSizePercent` (80% of a pane is a cover, not a message).
+  - **One slot, ASYMMETRIC replacement.**
+    A second `hud.open` replaces the first, `overlay.open` closes a HUD and proceeds, and a HUD over a
+    RUNNING program is refused `overlay already open` — a message is replaceable, a program is not.
+    `overlay.close`, ⌘W, and session close tear a HUD down as a courtesy.
+    `overlay.result` refuses with `OverlayHudError.noResult` (the raw slot would answer the misleading
+    "overlay still running" for a painter that will never report a status), and `overlay.resize` takes a
+    percent but refuses `--full` (`OverlayHudError.fullResize`).
+    **KNOWN GAP: those two `overlay.resize` arms have no automated coverage at any level** — the `--full`
+    refusal and the rollback that restores the previous size when the body write fails
+    (`OverlayHudError.writeFailed`).
+    Upstream covers them in an app-target `ControlServer` test harness we do not have (ours is
+    `rookTests`, which hosts no `ControlServer` fixture), so building one is its own piece of work rather
+    than part of this feature.
+    Both are one CLI call away from a user, so if that harness ever lands, these are the first two cases
+    to write.
+  - **`HudSpinner` owns the spinner — one case per style, each carrying its own FRAMES and tick interval.**
+    Both ride the body header, so the helper holds no glyph table, a new style is one edit, and `hud.update`
+    switches style with no re-spawn.
+    Frames must be single Unicode scalars that render ONE column and contain no space: the header is
+    word-split, and `HudLayout.spinnerWidth` reserves exactly two cells.
+    `dot`'s blank half is U+00A0 for that reason.
+    The CLI keeps `--spinner` as the on switch for `HudSpinner.defaultStyle` and adds `--spinner-style`,
+    which implies it; both resolve client-side, so `ControlArgs.spinner` always carries a style name or
+    nothing and the dispatcher validates one thing.
+    `HudSpinner.noneName` is ACCEPTED by both the socket AND the CLI — refusing it locally would fail a
+    value `tree` had just handed the caller — and beats a bare `--spinner` beside it.
+    Rejection messages list it through `acceptedNamesList`, never the styles alone.
+  - **READ-BACK: `ControlSessionNode.hud` (`ControlHudNode`), with `overlay` FALSE and `overlaySizePercent`
+    omitted beside it.**
+    It carries BOTH shares (`sizePercent` = width, `heightPercent`), and `position` + `spinner` always
+    report the EFFECTIVE value, defaults included — `spinner` names the STYLE and spells a static panel
+    `noneName`, which the dispatcher takes back as "no spinner", so a caller round-trips what `tree` gave
+    it.
+    An update carries the OPEN's background color forward (the factory reads it once at creation), so
+    `hud.backgroundColor` never names a color the panel will not paint.
+    HUD state is poll-only: `openOverlay`/`closeOverlay` emit no `scheduleTreeChanged()` and neither does a
+    HUD, so there is no event to document.
+  - **The panel is a pty running the bundled `rook/Resources/hud/hud.sh`**, spawned `autoFocus: false` with
+    `ROOK_HUD_FILE` as its only HUD-SPECIFIC variable (the surface still inherits the session environment
+    and the overlay wrapper's `ROOK_OVL_*` pair) and capturing NO exit code.
+    Grid, spinner (flag, interval and frames) and the APP'S PID ride that file's HEADER line and are
+    re-read every tick, so `hud.update` repaints in place with no re-spawn; write it ATOMICALLY (the helper
+    re-reads with no locking, so a partial write paints half a message).
+    The file is per SESSION, so an update rewrites the path the running helper already opened.
+    `Session.discardHudBody` is the ONLY deleter and every store teardown runs it — close, ⌘W,
+    session/workspace/window teardown — so a HUD closed before its surface realized cannot strand the
+    message text in a world-readable `/tmp` path.
+  - **The header's grid is `HudLayout.paintGrid` — the PANEL's own cells (`panelGrid`), NOT `HudLayout.box`,
+    which only decides the SIZE.**
+    Both measure the same message, so they usually agree, but the panel is whole CELLS of a rounded percent
+    and the box is not, and a `--size-percent` width detaches them outright; `box` is the fallback when
+    nothing is measured.
+    Every path that changes the panel's size — open, update, `overlay.resize` — must rewrite the header
+    through `ControlServer.writeHudBody`, which reads the size the STORE resolved.
+    A window resize is the one skew left, until the next update.
+  - **The helper forces `LC_CTYPE=UTF-8` on itself**: `${#line}` counts BYTES otherwise, and a
+    Dock-launched app inherits launchd's locale-less environment.
+    Under it `${#line}` counts CODE POINTS, so the app measures in `HudLayout.cellCount` (Unicode scalars,
+    precomposed first) rather than `String.count`, whose grapheme clusters disagree on every combining mark
+    and ZWJ emoji.
+    Neither side counts DISPLAY columns, so a double-width glyph overflows the frame — accepted, not fixed.
+    It skips a repaint whose frame is byte-identical to the last, so a spinner-less panel writes once and
+    stops waking the renderer (the demand-driven-rendering rule), and traps WINCH to invalidate that cache —
+    a cache, not a measurement; the box still comes only from the body file.
+  - **The helper needs a stop condition of its OWN: the app's pid, checked with a builtin `kill -0`.**
+    A hard-killed app (crash, `kill -9`, XCUITest `terminate()`) runs no `destroySurface`, so the body file
+    survives, and no SIGHUP arrives because the pty's session leader is the surviving `login` — without the
+    pid every such exit leaves a 2–10 Hz repaint loop running forever.
+    A header naming no owner (or a non-numeric one) keeps painting, leaving the file the only stop.
+  - Four-point keep-in-sync audit for `session.hud.*`: (1) `case sessionHudOpen/Update/Close` +
+    `ControlArgs.message`/`detail`/`spinner` + `ControlHudNode` + `OverlayHudError` in `rookCore`,
+    (2) `ControlDispatcher+Hud.dispatchHudCommand` (all text/color/percent/position/spinner validation and
+    the response shape) → the `ControlActions` witnesses `openHud`/`updateHud`/`closeHud`, implemented
+    app-side in `rook/Control/ControlServer+HUD.swift` (helper path, font cell metrics, pane geometry, the
+    body file) — a NEW family file, never `ControlServer+SessionActions.swift`,
+    (3) the `session hud open|update|close` subcommand in `rookCore/Sources/rookctlKit/SessionOverlayCommands.swift`
+    (`Open` is the default subcommand),
+    (4) `HudTests` + `HudHelperTests` (the shipped `hud.sh` run for real) + `ControlDispatcherHudTests` +
+    `AppStoreHudTests` + `ControlProtocolHudTests` + `HudCommandsTests` + the app-target `HudDeckGatesTests`
+    + the e2e `ControlHudUITests`.
+
   `surface.zoom` (mode `show`|`hide`|`toggle`) fills the target window with ONE terminal surface,
   hiding the sidebar and collapsing the title bar to a slim strip (traffic lights + an exit button;
   the zoomed terminal is inset below `titlebarHeight`, NOT borderless) — the control half of

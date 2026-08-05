@@ -445,7 +445,7 @@ struct AppStorePaneTests {
         #expect(session.overlaySizePercent == nil)
         #expect(store.resizeOverlay(session.id, sizePercent: 60) == true)
         #expect(session.overlaySizePercent == 60)
-        #expect(session.floatingOverlayActive)
+        #expect(session.programOverlayActive)
         // resize back to full (nil).
         #expect(store.resizeOverlay(session.id, sizePercent: nil) == true)
         #expect(session.overlaySizePercent == nil)

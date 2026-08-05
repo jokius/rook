@@ -132,6 +132,29 @@ final class PersistenceTests {
         #expect(restored.snapshot() == snapshot)
     }
 
+    @Test func hudStateNeverReachesTheSnapshot() throws {
+        let app = AppStore(persistence: store)
+        let ws = app.addWorkspace(name: "work")
+        let session = try #require(app.addSession(toWorkspace: ws.id, cwd: "/a"))
+        session.overlayActive = true
+        session.overlaySizePercent = 30
+        session.hudSpec = HudSpec(message: "gathering options", detail: "scanning /a", spinner: .bar)
+        session.hudFile = "/tmp/rook-hud-test.txt"
+
+        let snap = app.snapshot()
+        let json = String(decoding: try JSONEncoder().encode(snap), as: UTF8.self)
+        #expect(!json.contains("hud"))
+        #expect(!json.contains("gathering options"))
+
+        let restored = AppStore(persistence: store)
+        restored.restore(from: snap)
+        let r = restored.workspaces[0].sessions[0]
+        #expect(r.hudSpec == nil)
+        #expect(r.hudFile == nil)
+        #expect(r.hudActive == false)
+        #expect(r.overlayActive == false)
+    }
+
     @Test func legacyFileWithRemovedKeysLoadsAndKeepsWorkspaces() throws {
         // a workspaces.json written by an older build carries removed keys (statusBarHidden,
         // titleBarHidden). they must be ignored, not fail the load and wipe the tree.

@@ -50,6 +50,9 @@ public enum Command: String, Codable, Sendable {
     case sessionOverlayClose = "session.overlay.close"
     case sessionOverlayResize = "session.overlay.resize"
     case sessionOverlayResult = "session.overlay.result"
+    case sessionHudOpen = "session.hud.open"
+    case sessionHudUpdate = "session.hud.update"
+    case sessionHudClose = "session.hud.close"
     case quick
     case quickType = "quick.type"
     case quickText = "quick.text"
@@ -156,7 +159,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// override for `session.status` (rides the ephemeral indicator, so it lasts only until the next
     /// `session.status` without a color); nil = the Settings-configured status color. And the sidebar icon
     /// tint for `workspace.color` — PERSISTED there (unlike the ephemeral status tint), with the literal
-    /// `clear` resetting it to the theme default.
+    /// `clear` resetting it to the theme default. And `session.hud.open`'s panel background (same rules as
+    /// the overlay's); `session.hud.update` CANNOT change it — the surface reads it once at creation, so an
+    /// update ignores this field and the live panel's color survives into the read-back.
     public var color: String?
     /// The per-call glyph-SILHOUETTE override for `session.status` (a `StatusShape` raw value —
     /// `circle|square|triangle|diamond|capsule|star`, parsed and validated in the dispatcher). Rides the
@@ -172,7 +177,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var opacity: Double?
     /// The `background-image-fit` for `session.background` (`contain|cover|stretch|none`); nil = `contain`.
     public var fit: String?
-    /// The `background-image-position` for `session.background` (`center` + 8 anchors); nil = `center`.
+    /// The `background-image-position` for `session.background` (`center` + 8 anchors); nil = `center`. Also
+    /// the HUD panel's VERTICAL placement in the pane for `session.hud.open`/`.update` — a `HudPosition` raw
+    /// value (`top|center|bottom`), nil = `center`, which the read-back reports either way.
     public var position: String?
     /// The `background-image-repeat` flag for `session.background`; nil = false.
     public var repeats: Bool?
@@ -241,7 +248,10 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var wait: Bool?
     /// For `session.overlay.open`, the percent of the pane (1...100) a *floating* overlay panel
     /// occupies in both dimensions; omitted gives the default full-pane overlay. Also carries the new
-    /// size for `session.overlay.resize` (mutually exclusive with `full`).
+    /// size for `session.overlay.resize` (mutually exclusive with `full`), and the caller's OVERRIDE of the
+    /// HUD panel's app-measured WIDTH for `session.hud.open`/`.update` — a HUD is always floating, so
+    /// omitting it sizes the panel from the message rather than covering the pane, and its height is
+    /// measured either way.
     public var sizePercent: Int?
     /// For `session.overlay.resize`, requests the full-pane (translucent, session-hidden) overlay —
     /// the way to switch a floating overlay back to full. Mutually exclusive with `sizePercent`.
@@ -250,6 +260,21 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// opens in the background without changing the active session (the default for both full and
     /// floating overlays).
     public var follow: Bool?
+    /// The HUD panel's headline for `session.hud.open`/`.update` — required and non-empty on both, since an
+    /// update with nothing to say is a close. Wrapped app-side; control characters are rejected.
+    ///
+    /// Separate from `title`/`body`, which `notify` owns: those two are a desktop notification's fields,
+    /// where the title is OPTIONAL and defaults to the session name and the body is the required one.
+    /// A HUD inverts that, so sharing them would make each field's contract read "required here, optional
+    /// there" — unlike `color`, `position` and `sizePercent`, whose contracts a HUD takes unchanged.
+    public var message: String?
+    /// The HUD panel's dim second line, wrapped below the message; nil/omitted leaves the panel one block.
+    public var detail: String?
+    /// The HUD panel's spinner STYLE, a `HudSpinner` raw value; nil/omitted = static, no glyph. The CLI's
+    /// bare `--spinner` resolves to `HudSpinner.defaultStyle` before it gets here, so this always names a
+    /// style or nothing and the dispatcher has one thing to validate. The box reserves the glyph's cells
+    /// either way, so toggling it cannot rewrap the message.
+    public var spinner: String?
     /// The finished caller-provided choices for `pick.open`.
     public var items: [ControlPickItem]?
     /// Optional placeholder text for `pick.open`'s query field.
@@ -321,7 +346,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 noSelect: Bool? = nil, text: String? = nil, select: Bool? = nil, flagged: Bool? = nil,
                 mode: String? = nil,
                 command: String? = nil, wait: Bool? = nil, sizePercent: Int? = nil, full: Bool? = nil,
-                follow: Bool? = nil, items: [ControlPickItem]? = nil, prompt: String? = nil,
+                follow: Bool? = nil, message: String? = nil, detail: String? = nil, spinner: String? = nil,
+                items: [ControlPickItem]? = nil, prompt: String? = nil,
                 query: String? = nil, allowCustom: Bool? = nil, window: String? = nil,
                 pane: String? = nil, paneID: String? = nil, to: String? = nil,
                 after: String? = nil, before: String? = nil, run: String? = nil,
@@ -355,6 +381,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.sizePercent = sizePercent
         self.full = full
         self.follow = follow
+        self.message = message
+        self.detail = detail
+        self.spinner = spinner
         self.items = items
         self.prompt = prompt
         self.query = query
@@ -525,6 +554,22 @@ public struct ControlResult: Codable, Sendable, Equatable {
 public enum OverlayResultError {
     public static let stillRunning = "overlay still running"
     public static let noResult = "no overlay result"
+}
+
+/// Error strings for `session.overlay.*` aimed at a session whose overlay slot holds a HUD. The slot is
+/// shared, so these rejections need the live session and fire in `ControlServer`, not the dispatcher.
+/// `session.overlay.close` is deliberately absent: closing a HUD is a courtesy the shared teardown gives.
+public enum OverlayHudError {
+    /// A HUD runs the app's painter, not the caller's program, so there is no status to report — and
+    /// `overlayActive` alone would otherwise answer the misleading "overlay still running".
+    public static let noResult = "no overlay result: the slot holds a hud"
+    /// A HUD is always floating (`AppStore.openHud`): it must never cover the session it is a message about.
+    /// A percent is accepted but bounded by `HudLayout.clampSizePercent`, which states the same invariant.
+    public static let fullResize = "a hud is always floating: pass --size-percent, not --full"
+    /// `session.hud.update`/`.close` against a slot that holds no HUD — empty, or running a caller's program.
+    public static let noHud = "no hud"
+    /// The body file the helper reads could not be written, so the panel would paint nothing or stale text.
+    public static let writeFailed = "could not write the hud message"
 }
 
 /// Error strings for the pane-scoped (`--pane`) arm of `session.overlay.*`. Shared because the rejections

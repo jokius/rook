@@ -396,6 +396,8 @@ final class ControlServer {
             return setDebugAppearance(args: request.args)
         case .pickOpen, .pickResult, .pickCancel:
             preconditionFailure("pick command returned nil from ControlDispatcher")
+        case .sessionHudOpen, .sessionHudUpdate, .sessionHudClose:
+            preconditionFailure("hud command returned nil from ControlDispatcher")
         }
     }
 

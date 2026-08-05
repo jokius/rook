@@ -712,6 +712,45 @@ Notes that save a debugging round:
 - The wait always ends: Esc, ⌘W, closing the window, and quitting Rook all answer `cancelled` (exit 2).
   Never treat a non-zero exit as "the user said yes".
 
+## Say what you are doing while the user waits
+
+`session hud` posts a passive panel over a session. The session keeps focus and stays typable under it, so
+it is safe to leave up while you compute something. Cover the gap before a picker, then take it down:
+
+```bash
+me="$ROOK_SESSION_ID"
+
+rookctl session hud "gathering options…" --spinner --detail "scanning branches" --target "$me"
+
+branches=$(git for-each-ref --format='%(refname:short)' refs/heads)
+
+rookctl session hud update "ready" --detail "pick a branch" --target "$me"
+choice=$(printf '%s\n' "$branches" | rookctl pick --prompt "Check out which branch?")
+
+rookctl session hud close --target "$me"
+```
+
+`hud update` repaints in place, no re-spawn and no blink, and it replaces the whole spec: `--detail` and
+the spinner are dropped unless repeated. `--spinner-style bar|braille|circle|blocks|dot` picks the look and
+turns the spinner on by itself (`dot` blinks instead of animating, for a panel up for minutes), and an
+update may switch style mid-flight; `--spinner-style none` stops it, which is also what a read-back's
+`none` echoes back to. `--position top|center|bottom` moves the panel (default `center`;
+`top`/`bottom` keep a fixed margin off the pane edge on their own), and `--size-percent N` overrides the
+panel's WIDTH; its height always follows the message.
+
+Read it back from the session node, and note the panel does NOT set `overlay` — one slot, and whichever
+occupant holds it is the one that reports:
+
+```bash
+rookctl tree --json | jq -r --arg s "$me" '
+  .result.tree.workspaces[].sessions[] | select(.id == $s) | .hud.message // "no hud"'
+```
+
+Nothing announces a HUD as an event, so poll `tree` when another process owns the lifecycle. The slot is
+shared with `session overlay open`, which means a second `hud` replaces the first, an `overlay open`
+replaces a HUD, and `overlay result` over one errors `no overlay result: the slot holds a hud`. A HUD over
+a RUNNING program is refused instead: a message is replaceable, a program is not.
+
 ## Agent status glyph
 
 ```bash

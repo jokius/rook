@@ -24,6 +24,48 @@ public struct ControlSurfaceNode: Codable, Sendable, Equatable {
     }
 }
 
+/// The HUD panel occupying a session's overlay slot, as projected into the `tree` response. Present only
+/// while a HUD is up, and the session node's `overlay` reads FALSE beside it, so a script polling "is a
+/// program covering this session" can never mistake a message for a running program. The read side of
+/// `session.hud.open`/`.update`; HUD state is poll-only, no event announces it.
+public struct ControlHudNode: Codable, Sendable, Equatable {
+    public let message: String
+    /// The dim second line; nil/omitted when the caller set none.
+    public let detail: String?
+    /// The EFFECTIVE spinner style, a `HudSpinner` raw value or `HudSpinner.noneName`. Always present, the
+    /// static case included, so a caller reads one field rather than inferring absence.
+    public let spinner: String
+    /// The panel's own `#rrggbb` background; nil/omitted when it keeps the session's terminal background. The
+    /// color the open set, which survives every `session.hud.update` — the surface reads it once at creation,
+    /// so this always names what the panel paints.
+    public let backgroundColor: String?
+    /// The EFFECTIVE share of the pane's WIDTH the panel occupies — the app's measurement, or the caller's
+    /// `sizePercent` override, either way bounded by `HudLayout.clampSizePercent`, so a requested 100 reads
+    /// back as the maximum a HUD may take. Reported here because the node's `overlaySizePercent` stays
+    /// omitted for a HUD. Optional because it projects the slot's optional percent, but no supported path
+    /// leaves a live HUD sizeless: `openHud` always sets one and `overlay.resize --full` is refused.
+    public let sizePercent: Int?
+    /// The EFFECTIVE share of the pane's HEIGHT, always measured from the message (`HudLayout.heightPercent`)
+    /// because no command sets it. Reported beside `sizePercent` so a caller polling the panel's geometry
+    /// reads both axes rather than assuming one square.
+    public let heightPercent: Int?
+    /// The EFFECTIVE vertical placement, a `HudPosition` raw value (`top`|`center`|`bottom`). Always present,
+    /// including the `center` default, so a caller who omitted it never has to know what the default is.
+    public let position: String
+
+    public init(message: String, detail: String? = nil, spinner: String = HudSpinner.noneName,
+                backgroundColor: String? = nil,
+                sizePercent: Int? = nil, heightPercent: Int? = nil, position: String) {
+        self.message = message
+        self.detail = detail
+        self.spinner = spinner
+        self.backgroundColor = backgroundColor
+        self.sizePercent = sizePercent
+        self.heightPercent = heightPercent
+        self.position = position
+    }
+}
+
 /// A session as projected into the `tree` response.
 public struct ControlSessionNode: Codable, Sendable, Equatable {
     public let id: String
@@ -47,9 +89,12 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// the JSON). The read side of `session.focus` — record which pane was focused so a script can restore
     /// it via `session.focus --pane left|right`.
     public let splitFocused: Bool?
+    /// Whether a caller's PROGRAM occupies the session-wide overlay slot. False while a HUD holds it — the
+    /// HUD is a message, not a running program, and it reports itself in `hud` instead.
     public let overlay: Bool
     /// For an OPEN overlay (`overlay == true`), its size: nil/omitted = the FULL-pane overlay, else the
-    /// floating panel's percent of the pane (1...100). Absent when no overlay is open. The read side of
+    /// floating panel's percent of the pane (1...100). Absent when no overlay is open AND while a HUD holds
+    /// the slot, whose size is `hud`'s. The read side of
     /// `session.overlay.resize` — record the current size before resizing so a script can restore it exactly.
     public let overlaySizePercent: Int?
     /// The panes covered by their OWN overlay, ordered left then right (`["left"]`, `["right"]`,
@@ -57,6 +102,10 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// one — both kinds can be up at once. The read side of `session.overlay.open --pane`; those overlays
     /// are always full-pane, so there is no per-pane size to report.
     public let paneOverlays: [String]?
+    /// The HUD panel occupying the session-wide overlay slot; nil/omitted when none is up. Mutually exclusive
+    /// with `overlay` — one slot, and whichever holds it is the one that reports. The read side of
+    /// `session.hud.open`/`.update`.
+    public let hud: ControlHudNode?
     public let scratch: Bool
     public let flagged: Bool
     /// For a `--command` session, whether it was created to HOLD its surface after the command exits
@@ -151,7 +200,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public init(id: String, name: String, cwd: String, title: String? = nil, active: Bool, split: Bool,
                 splitRatio: Double? = nil, splitFocused: Bool? = nil,
                 overlay: Bool = false, overlaySizePercent: Int? = nil, paneOverlays: [String]? = nil,
-                scratch: Bool = false, flagged: Bool = false,
+                hud: ControlHudNode? = nil, scratch: Bool = false, flagged: Bool = false,
                 commandWait: Bool? = nil,
                 fileTreeVisible: Bool? = nil, fileTreeRoot: String? = nil, markdownPath: String? = nil,
                 foreground: [String]? = nil, splitForeground: [String]? = nil,
@@ -174,6 +223,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.overlay = overlay
         self.overlaySizePercent = overlaySizePercent
         self.paneOverlays = paneOverlays
+        self.hud = hud
         self.scratch = scratch
         self.flagged = flagged
         self.commandWait = commandWait

@@ -113,6 +113,72 @@ struct TerminalZoomTests {
         #expect(!TerminalZoomController.isTargetValid(.session(session.id, .overlay), in: store, quickTerminalVisible: false))
     }
 
+    @Test func aHudLeavesThePaneActiveAndIsNotAddressableAsTheOverlaySurface() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+
+        #expect(store.openHud(session.id, command: "/bin/sh /hud.sh", spec: HudSpec(message: "gathering options"),
+                              file: "/tmp/rook-hud.txt", size: HudPanelSize(widthPercent: 30, heightPercent: 9)))
+
+        #expect(TerminalZoomSurface.allCases.filter { $0.isActive(in: session) } == [.primary])
+        #expect(TerminalZoomSurface.primary.isVisible(in: session))
+        #expect(TerminalZoomController.resolveTarget(store: store, quickTerminalVisible: false)
+            == .session(session.id, .primary))
+
+        #expect(!TerminalZoomSurface.overlay.isAvailable(in: session))
+        #expect(!TerminalZoomSurface.overlay.isVisible(in: session))
+        #expect(!TerminalZoomController.isTargetValid(.session(session.id, .overlay), in: store,
+                                                     quickTerminalVisible: false))
+
+        // the refusal is about the HUD, not the slot: a program taking the same slot is addressable again.
+        #expect(store.openOverlay(session.id, command: "top"))
+        #expect(TerminalZoomSurface.overlay.isAvailable(in: session))
+        #expect(TerminalZoomSurface.allCases.filter { $0.isActive(in: session) } == [.overlay])
+        #expect(TerminalZoomController.isTargetValid(.session(session.id, .overlay), in: store,
+                                                    quickTerminalVisible: false))
+    }
+
+    @Test func aHudLeavesTheScratchAndPaneOverlayTargetsIntact() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.surface = SpySurface()
+
+        #expect(store.openHud(session.id, command: "/bin/sh /hud.sh", spec: HudSpec(message: "working"),
+                              file: "/tmp/rook-hud.txt", size: HudPanelSize(widthPercent: 30, heightPercent: 9)))
+
+        store.toggleScratch(session.id)
+        #expect(TerminalZoomSurface.allCases.filter { $0.isActive(in: session) } == [.scratch])
+        #expect(TerminalZoomSurface.scratch.isVisible(in: session))
+        #expect(TerminalZoomController.resolveTarget(store: store, quickTerminalVisible: false)
+            == .session(session.id, .scratch))
+        store.toggleScratch(session.id)
+
+        #expect(store.openPaneOverlay(session.id, pane: .left, command: "top") == nil)
+        #expect(TerminalZoomSurface.allCases.filter { $0.isActive(in: session) } == [.overlayLeft])
+        #expect(TerminalZoomSurface.overlayLeft.isVisible(in: session))
+        #expect(TerminalZoomController.resolveTarget(store: store, quickTerminalVisible: false)
+            == .session(session.id, .overlayLeft))
+    }
+
+    @Test func closingAHudRestoresTheOverlaySurfaceAddressForTheNextProgram() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+
+        #expect(store.openHud(session.id, command: "/bin/sh /hud.sh", spec: HudSpec(message: "working"),
+                              file: "/tmp/rook-hud.txt", size: HudPanelSize(widthPercent: 30, heightPercent: 9)))
+        // ⌘W's cover ladder takes the HUD through the ordinary overlay teardown.
+        #expect(store.closeOverlay(session.id))
+        #expect(session.hudSpec == nil)
+        #expect(!TerminalZoomSurface.overlay.isAvailable(in: session))
+
+        #expect(store.openOverlay(session.id, command: "top", sizePercent: 40))
+        #expect(TerminalZoomSurface.overlay.isAvailable(in: session))
+        #expect(TerminalZoomSurface.allCases.filter { $0.isActive(in: session) } == [.overlay])
+    }
+
     @Test func surfaceIDsRoundTripControlNames() throws {
         let sessionID = try #require(UUID(uuidString: "5E5B1C5B-75C5-49E6-8806-2C61D8D6BBA9"))
         let surfaceID = TerminalSurfaceID(sessionID: sessionID, surface: .split)

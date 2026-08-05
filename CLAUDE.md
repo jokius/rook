@@ -341,6 +341,15 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   The C callbacks never use `assumeIsolated`; every `@MainActor` touch hops through `DispatchQueue.main.async`.
 - `close_surface_cb` only recovers the view and dispatches to the main actor;
   it never frees synchronously.
+- **The session-wide overlay slot holds EITHER a caller's program OR a HUD message panel.**
+  Raw `Session.overlayActive` answers only "the slot is occupied".
+  Every layer asking "is a program COVERING this session" reads `Session.programOverlayActive` instead —
+  deck gates, focus routing, terminal zoom, and scratch focus all turn on that distinction.
+  Never spell the predicate inline; `.claude/rules/control-api.md` lists every site.
+- **A long-lived process spawned into a surface needs a stop condition of its OWN.**
+  A hard-killed app runs no teardown, and no SIGHUP reaches the process because the pty's session leader is
+  the surviving `login`, so it outlives the app in whatever loop it was in.
+  `rook/Resources/hud/hud.sh` takes the app's pid through its input file and exits on a builtin `kill -0`.
 
 ## Keep-in-sync conventions (HARD)
 

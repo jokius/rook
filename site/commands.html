@@ -6,7 +6,7 @@
     <title>Command reference — rook | rookctl control API</title>
     <meta
       name="description"
-      content="Complete rookctl reference: all 77 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, events, themes, and keymaps, with arguments and return values."
+      content="Complete rookctl reference: all 80 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, events, themes, and keymaps, with arguments and return values."
     />
     <meta
       name="keywords"
@@ -18,7 +18,7 @@
     <meta property="og:title" content="Command reference — rook" />
     <meta
       property="og:description"
-      content="All 77 rookctl control commands with arguments, return values, and errors."
+      content="All 80 rookctl control commands with arguments, return values, and errors."
     />
     <meta property="og:url" content="https://rook.app/commands" />
     <meta property="og:image" content="https://rook.app/assets/rook-og.png" />
@@ -30,7 +30,7 @@
     <meta name="twitter:title" content="Command reference — rook" />
     <meta
       name="twitter:description"
-      content="All 77 rookctl control commands with arguments, return values, and errors."
+      content="All 80 rookctl control commands with arguments, return values, and errors."
     />
     <meta name="twitter:image" content="https://rook.app/assets/rook-og.png" />
     <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
@@ -194,7 +194,7 @@
             Command reference
           </h1>
           <p style="font-size: 19px; line-height: 1.6; color: #bfbab0; margin: 0 0 8px">
-            All 77 commands of the rook control API, with arguments and return values. Every one is reachable from the
+            All 80 commands of the rook control API, with arguments and return values. Every one is reachable from the
             <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl</span> CLI and from the local
             control socket.
           </p>
@@ -393,6 +393,9 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">splitFocused</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">overlay</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">overlaySizePercent</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">hud</span> (the message panel in the same slot, with
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">message</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">detail</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">spinner</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">backgroundColor</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">sizePercent</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">heightPercent</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">position</span>;
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">overlay</span> reads false beside it),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">scratch</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">flagged</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">status</span>,
@@ -1429,6 +1432,9 @@
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 Record the node's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">overlaySizePercent</span> first to
                 restore the exact size after a zoom to <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--full</span>.
+                Against a HUD in the same slot a percent is accepted (bounded to 10–80, the width only) but
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--full</span> is refused — it would cover the session the
+                message is about.
               </p>
             </div>
 
@@ -1450,6 +1456,74 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.exitCode</span> once the overlay has closed.
                 Errors <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">still running</span> while it is up, and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">no result</span> if none ran.
+                A HUD in the same slot is refused by name
+                (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">no overlay result: the slot holds a hud</span>):
+                the app's painter is not the caller's program, so there is no status to report.
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl session hud [open] MESSAGE [--detail D] [--spinner] [--spinner-style S] [--position P] [--background-color #rrggbb]
+                [--size-percent N] [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.hud.open</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Post a passive message panel in the session's overlay slot.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">open</span> is the default subcommand. The session
+                keeps focus and stays typable under the panel — nothing is dimmed, click-blocked, or waiting for an answer.
+                <strong style="color: #bfbab0">Returns</strong>
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.id</span>, the session's id.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--detail</span> adds a dim second line.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--position top|center|bottom</span> places the panel
+                vertically (default <span style="font-family: &quot;JetBrains Mono&quot;, monospace">center</span>).
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--spinner</span> animates a glyph in the default
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">bar</span> style;
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">--spinner-style bar|braille|circle|blocks|dot|none</span>
+                picks another and turns it on by itself (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">dot</span>
+                blinks rather than animating; <span style="font-family: &quot;JetBrains Mono&quot;, monospace">none</span> is static).
+                The panel is measured from the message on both axes;
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--size-percent</span> overrides the WIDTH only and is
+                bounded to 10–80% of the pane, so a message never covers the session it is about.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                One slot, asymmetric replacement: a second hud replaces the first,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session overlay open</span> replaces a hud,
+                and a hud over a <em>running</em> program errors
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">overlay already open</span>.
+                Message and detail cap at 256 characters each and reject control characters.
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl session hud update MESSAGE [--detail D] [--spinner] [--spinner-style S] [--position P] [--size-percent N]
+                [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.hud.update</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Repaint the live panel in place — no re-spawn, no blink. An update replaces the WHOLE message, so
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--detail</span>, the spinner, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--position</span> must be repeated to survive it.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--background-color</span> is deliberately absent: the
+                surface reads it once at creation, so only a fresh hud changes it. Errors
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">no hud</span> when the slot is empty or
+                holds a program.
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl session hud close [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.hud.close</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Take the message panel down. A program overlay in the same slot is left alone — this errors
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">no hud</span> rather than killing it.
+                ⌘W and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session overlay close</span> also
+                take a hud down, as a courtesy of the shared slot.
               </p>
             </div>
           </section>

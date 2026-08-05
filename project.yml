@@ -49,6 +49,7 @@ targets:
           - "Resources/terminfo"
           - "Resources/agent-status"
           - "Resources/agent-skill"
+          - "Resources/hud"
           # the `ghostty +ssh-cache` shim: the post-build phase installs it at
           # Contents/MacOS/ghostty (where libghostty's GHOSTTY_BIN_DIR points), so it must
           # not ALSO land in Contents/Resources as a stray copy.
@@ -80,6 +81,12 @@ targets:
       # Lands at Contents/Resources/agent-status — the installer copies it from
       # there to ~/.config/rook/agent-status.
       - path: rook/Resources/agent-status
+        type: folder
+        buildPhase: resources
+      # The session.hud panel painter. Folder reference (not the default "group") so hud.sh keeps its
+      # exec bit. Lands at Contents/Resources/hud — ControlServer.helperCommand() resolves it there and
+      # shell-escapes it into the overlay command.
+      - path: rook/Resources/hud
         type: folder
         buildPhase: resources
       # Claude Code skill package (SKILL.md + reference.md + examples.md). Folder reference so the

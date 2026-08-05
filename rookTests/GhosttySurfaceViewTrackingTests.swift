@@ -109,4 +109,42 @@ final class GhosttySurfaceViewTrackingTests: XCTestCase {
         XCTAssertTrue(detached.ownsPointer(at: NSPoint(x: 10, y: 100)))
         XCTAssertTrue(detached.ownsPointer())
     }
+
+    // MARK: - view-only
+
+    /// The HUD panel's passivity and the dashboard cell's both rest on THIS, not on `.allowsHitTesting`,
+    /// which AppKit routes clicks past: a hit reaching `mouseDown` makes the surface first responder and
+    /// takes every keystroke with it.
+    func testViewOnlyRefusesBothHitsAndFirstResponder() {
+        // detached and sized: `hitTest` needs a real frame, and no window means no libghostty surface
+        let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        view.frame = NSRect(x: 0, y: 0, width: 120, height: 80)
+        let inside = NSPoint(x: 40, y: 30)
+
+        XCTAssertTrue(view.acceptsFirstResponder)
+        XCTAssertNotNil(view.hitTest(inside))
+
+        view.viewOnly = true
+
+        XCTAssertFalse(view.acceptsFirstResponder)
+        XCTAssertNil(view.hitTest(inside), "a view-only surface must let the click through instead of taking it")
+    }
+
+    // MARK: - teardown
+
+    /// The HUD's body file has no status to read, so deleting it IS the teardown — and it is also how a
+    /// helper whose app never ran teardown learns to stop. Every path through `destroySurface` owes it.
+    func testTeardownRemovesTheHudBodyFile() throws {
+        let body = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("rook-hud-teardown-\(UUID().uuidString).txt")
+        try "40 3 0 0\nworking\n".write(to: body, atomically: true, encoding: .utf8)
+        let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        view.hudBodyFile = body.path
+
+        view.destroySurface()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: body.path),
+                       "a torn-down hud surface must not leave its painter a file to keep reading")
+        XCTAssertNil(view.hudBodyFile)
+    }
 }
