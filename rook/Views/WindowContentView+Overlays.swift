@@ -4,12 +4,14 @@ import SwiftUI
 // The window-level overlays (quick terminal, palettes, Ctrl-Tab switcher) and the sidebar bottom bar.
 extension WindowContentView {
     /// The quick-terminal overlay: the scratch terminal centered at 90% of the window, framed by a
-    /// hairline border and shadow so it reads as a distinct floating window over the (undimmed)
-    /// content. libghostty renders only the terminal content, so the frame is drawn here. The margin
-    /// is a transparent tap-catcher that dismisses on click — no darkening, because the overlay
-    /// can't cover the AppKit title bar, so a dim would shade the body but not the chrome. Rendered
-    /// only while visible; the surface it hosts is owned by the controller, so hiding keeps the
-    /// shell alive.
+    /// hairline border and shadow so it reads as a distinct floating window over the content.
+    /// libghostty renders only the terminal content, so the frame is drawn here. The margin is a
+    /// tap-catcher that dismisses on click and carries the same backdrop mute as a floating overlay.
+    /// A dark SCRIM was rejected here and stays rejected: this layer is inset below the AppKit title
+    /// bar, so anything painted over the body raises its opacity against unchanged chrome. The mute
+    /// wash is neutral at full window opacity and `muteWashOpacity` scales it down under translucency,
+    /// which shrinks that seam without closing it. Rendered only while visible; the surface it hosts is
+    /// owned by the controller, so hiding keeps the shell alive.
     /// The window-level overlays (quick terminal, command palettes, Ctrl-Tab switcher) as one layer,
     /// rendered as a ZStack sibling INSIDE the body's root ZStack rather than as body-level `.overlay`s —
     /// so it can be inset below the titlebar and ordered BELOW `customTitlebar` (which a body-level
@@ -33,10 +35,12 @@ extension WindowContentView {
         if quickTerminal.isVisible {
             GeometryReader { geo in
                 ZStack {
-                    // the transparent tap-catcher also carries the `quick-terminal` accessibility id:
-                    // a SwiftUI view is exposed in the accessibility tree (the Metal-backed
-                    // `QuickTerminalPane` is not), so this is the element control-API tests query for.
-                    Color.clear
+                    // the tap-catcher also carries the `quick-terminal` accessibility id: a SwiftUI view is
+                    // exposed in the accessibility tree (the Metal-backed `QuickTerminalPane` is not), so
+                    // this is the element control-API tests query for. It spans the sidebar too, unlike the
+                    // overlay's pane-scoped backdrop.
+                    (store.activeSession.map { washColor(for: $0) } ?? terminalColor)
+                        .opacity(muteWashOpacity)
                         .contentShape(Rectangle())
                         .onTapGesture { quickTerminal.hide() }
                         .accessibilityElement()

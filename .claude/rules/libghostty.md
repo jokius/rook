@@ -347,6 +347,32 @@ paths:
   a `deckVisible` gate (so a covered scratch is also not a file-drop target).
   The FLOATING (sized) overlay and the quick terminal need none of this — both draw an opaque
   `terminalColor`-backed panel, so nothing shows through them.
+- **Because those two leave a LIVE terminal around the panel, their tap-catcher also paints the mute wash.**
+  A floating overlay and the quick terminal used to leave the session fully lit around them, so the panel
+  read as part of the terminal rather than over it; both catchers now carry the same wash `paneDim` puts on
+  an inactive split pane, at the `inactivePaneMuteStrength` already in Settings
+  (`WindowContentView.muteWashOpacity`).
+  The FULL overlay and the scratch hide their panes outright, so they take none — and a wash there would
+  tint the bare window backing.
+  **Fill the EXISTING catcher; never add a sibling scrim** — the catcher is an always-present node inside
+  `overlayPanel`, so painting it is a VALUE change and the NSSplitView-overrun rule above still holds.
+  Suppress `paneDim` while a backdrop wash is up (`backdropWashActive`), or the covered inactive pane takes
+  both and mutes harder than the pane beside it.
+  **The wash is neutral only at FULL window opacity.**
+  Below it the wash color is opaque while the backing is not, so the body rises to `m + p(1-m)` against a
+  title bar left at `p` — the seam the old dark scrim was rejected for.
+  Scaling by the rendered opacity shrinks that gap in step with the window's own transparency; no fill
+  closes it.
+  Scale by what the window ACTUALLY renders at, not the saved setting: native fullscreen and Reduce
+  Transparency force it opaque (`WindowAppearance.sync`), and scaling there under-mutes — to nothing at a
+  saved opacity of 0 while Settings still reads 5.
+  Fullscreen is per-window, so it rides `NSWindow.didEnterFullScreen`/`didExitFullScreen` (re-reading this
+  window's own `WindowRegistry.windowFlags`) rather than an app-global `GhosttyApp` mirror.
+  Take the covered session's OWN solid background when it set one, else the theme color, so the wash blends
+  background→background and fades text alone.
+  Neither `backgroundWatermark` (`@ObservationIgnored`) nor a live OSC 11 color is observed, so the color is
+  whatever it was when the wash was last drawn — narrow and self-healing, since every path that PUTS a wash
+  on screen re-reads it.
 - **Non-zero backing size.**
   Create the surface only when the view has a non-zero backing size, else the Metal layer renders blank.
   `pendingSurfaceCreation` defers creation until `setFrameSize` reports a real size.
@@ -420,6 +446,9 @@ paths:
   The divider writer is not: `rookTests/SplitRatioAccessorTests` drives `mouseMoved` against a real
   `NSSplitView` and asserts `NSCursor.current`, and `rookTests/GhosttySurfaceViewTrackingTests` pins
   `ownsPointer`'s chrome/self/descendant/sibling/no-hit/detached/divider cases — keep them that way.
+  `dividerOwns` is ALSO the target of the divider's double-click even-split reset, so its gates
+  (`deckVisible`, `suspended`, the chrome hit test) decide which probe answers a CLICK as well as which one
+  paints ↔ — see [[menu-actions]] for that gesture.
 - **Cursor shape is a config default, not set in code.**
   `rook/Resources/ghostty-defaults.conf` (loaded first in `GhosttyApp.loadConfig`,
   so a user's `~/.config/ghostty/config` still overrides it) pins a steady block cursor with `cursor-style = block`
