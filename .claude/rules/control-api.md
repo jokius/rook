@@ -1910,10 +1910,26 @@ paths:
   + dispatcher routing in `ControlDispatcherTests` + `PersistenceTests` (disk round-trip + legacy snapshot
   without the key) + `AppStoreAppearanceTests` (tree read-back) + the deferred e2e (XCUITest).
   `tree` now also surfaces, on each `ControlSessionNode`, `foreground`/`splitForeground` — the LIVE foreground-process
-  argv of the main + split panes (nil/omitted at the shell prompt), the SAME `ForegroundProcess.command(for:shellBasename:)`
-  capture the restore-running-command feature uses (`ghostty_surface_foreground_pid` → `sysctl(KERN_PROCARGS2)`
-  → host-free `CommandRestore`), populated in the tree builder per session so a script can read "what
-  is each pane running".
+  argv of the main + split panes (nil/omitted at the shell prompt), read through
+  `ForegroundProcess.running(for:shellBasename:)` (`ghostty_surface_foreground_pid` → `sysctl(KERN_PROCARGS2)`
+  → host-free `CommandRestore`/`ForegroundGroup`), populated in the tree builder per session so a script
+  can read "what is each pane running".
+  **`running` is NOT the restore capture, and the two must not be merged.**
+  libghostty's foreground pid is `tcgetpgrp`, a process GROUP id: an interactive shell puts each job in
+  its own group, so the leader IS the program — but a pane started with `--command` has no job-control
+  shell, so its program sits in the group led by setuid-root `login`, whose argv `KERN_PROCARGS2` refuses
+  for a non-root caller, and every such pane used to read as idle.
+  `running` therefore DESCENDS the group to the first readable member (`ForegroundGroup.descentCandidates`,
+  host-free + unit-tested) and strips the login dash from argv[0], while the restore capture
+  (`ForegroundProcess.command`, `AppDelegate`'s save path) deliberately does NOT: a non-nil capture sets
+  `hadForeground`, which preempts `initialCommand` in `CommandRestore.restorePlan`, so a descending
+  capture would restore a `--command` session by TYPING its command into a login shell instead of taking
+  the exec path — losing the `--wait` hold and close-on-exit.
+  Known limit, deliberately left alone: our OWN two extra callers — `AgentMonitor` (the sidebar agent
+  logo) and `ControlServer+Agent.isForeignAgent` — still call `command`, so a `--command` pane reads as
+  idle for those two.
+  Upstream has no such call sites, so switching them is NEW behavior rather than a port; decide it on its
+  own merits.
   It ALSO surfaces `agent` on each node — the coding agent (`claude`/`codex`) detected in the session's
   FOCUSED pane, omitted when it runs anything else.
   This one is a READ-ONLY DERIVED field with NO write command, and that is a deliberate keep-in-sync
