@@ -24,8 +24,8 @@ extension WorkspaceSidebar.Coordinator {
     }
 
     /// A row's visible content: its label (workspace name or session `displayName`), whether the
-    /// session has a split (the split-rectangle icon), the unseen-badge count, and the GATED
-    /// agent-status indicator (after the frontmost-selected hide). A delta reloads just that one row.
+    /// session has a split (the split-rectangle icon), the unseen-badge count, and the agent-status
+    /// indicator (a session's own, a workspace's andon roll-up). A delta reloads just that one row.
     /// Uses `hasSplit` (not `isSplit`) so the icon persists while a split is hidden.
     struct RowContent: Equatable {
         let label: String

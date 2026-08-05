@@ -37,9 +37,12 @@ extension WorkspaceSidebar.Coordinator {
         field.isEditable = false
         field.isBordered = false
         field.drawsBackground = false
-        // a recycled cell may carry the prior row's badge/status/icon tint/hover state; reset before use
+        // a recycled cell may carry the prior row's badge/icon tint/hover state; reset before use. NOT the
+        // status glyph: BOTH branches below assign it in full (the roll-up for a workspace, the session's
+        // own indicator for a session), and an idle round-trip here stops the blink and starts a FRESH
+        // animation, so the 0.5s fade restarts at full opacity on every per-row reload — a session whose
+        // terminal title animates (Codex CLI rewrites it every ~100ms) reloads that fast and strobes.
         applyBadge(toCell: cell, count: 0)
-        cell.statusIcon.apply(AgentIndicator())
         cell.setAddButtonVisible(false)
         cell.iconTint = nil
         cell.statusTint = nil
