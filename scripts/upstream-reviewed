@@ -3,4 +3,4 @@
 # 'scripts/upstream.sh list' shows only commits AFTER this SHA.
 # Advance with: scripts/upstream.sh mark [<sha>]  (default: upstream/master tip).
 # Per-commit take/have/skip decisions live in the sync ledger (~/.claude/plans/rook/).
-9f648388cd20e5f57012bfa8d42c3752855d41a5  # 9f64838 docs: update changelog for v0.18.0
+6b74787ad095d37c6cd395618ab1b7fded0d5442  # 6b74787 feat(settings): add a palette and switcher font size, and center them over the terminal (#367)
