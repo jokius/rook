@@ -23,7 +23,10 @@ let package = Package(
             ]
         ),
         .executableTarget(name: "rookctl", dependencies: ["rookctlKit"]),
-        .testTarget(name: "rookctlKitTests", dependencies: ["rookctlKit"]),
+        // rookCore is declared even though rookctlKit already links it: the tests import it DIRECTLY
+        // (the shared `ControlWire` request cap), and leaning on a transitive import is what SourceKit
+        // reports as "cannot find 'ControlWire' in scope".
+        .testTarget(name: "rookctlKitTests", dependencies: ["rookctlKit", "rookCore"]),
     ],
     swiftLanguageModes: [.v6]
 )

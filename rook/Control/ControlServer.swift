@@ -82,10 +82,12 @@ final class ControlServer {
         }
     }
 
-    /// 1 MiB cap on a single request line — far above any realistic `session.type` payload. A line that
-    /// exceeds it is rejected and the connection closed, so a bad client can never grow the buffer
+    /// Cap on a single request line, shared with the client through `ControlWire` so the two sides can't
+    /// drift — `rookctl` checks the encoded request against the same number BEFORE connecting, which is
+    /// what turns an oversized request into a readable error instead of a mid-write disconnect. Over the
+    /// cap the line is rejected and the connection closed, so a bad client can never grow the buffer
     /// unbounded.
-    nonisolated private static let maxLineBytes = 1 << 20
+    nonisolated private static let maxLineBytes = ControlWire.maxRequestLineBytes
 
     /// Seconds a blocking client read may stall before it times out (EAGAIN → connection closed), so a
     /// stalled client can't park the serial accept loop forever.
