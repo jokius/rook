@@ -71,7 +71,8 @@ extension WindowContentView {
             }
         }
         .padding(6)
-        .frame(width: 320)
+        // scaled, because the SessionSwitcherRows inside scale with the interface font size.
+        .frame(width: InterfaceMetrics.current.scaled(320))
         .background(terminalColor)
         .presentationBackground(terminalColor)
     }
@@ -166,7 +167,8 @@ extension WindowContentView {
             }
         }
         .padding(6)
-        .frame(width: 320)
+        // scaled, because the SessionSwitcherRows inside scale with the interface font size.
+        .frame(width: InterfaceMetrics.current.scaled(320))
         .background(terminalColor)
         .presentationBackground(terminalColor)
     }

@@ -103,6 +103,28 @@ final class SettingsUITests: XCTestCase {
                       "turning confirm-before-closing on should persist confirmCloseSession=true")
     }
 
+    func testWorkspaceRowClickExpandsTogglePersists() throws {
+        let toggle = settingsControl(tab: "General", control: "settings-workspace-row-click-expands")
+        toggle.click() // turn it off (default on)
+
+        XCTAssertTrue(poll { self.settingsBool("workspaceRowClickExpands") == false },
+                      "turning row-click expansion off should persist workspaceRowClickExpands=false")
+    }
+
+    /// The Appearance ▸ Window palette/switcher stepper defaults to 13 (nil); incrementing it persists a
+    /// >13 value and must leave the SIDEBAR's separate size alone — neither knob falls back to the other.
+    func testInterfaceFontSizeStepperPersistsAndLeavesTheSidebarSizeAlone() throws {
+        let stepper = settingsControl(tab: "Appearance", control: "settings-interface-font-size")
+        let increment = stepper.descendants(matching: .incrementArrow).firstMatch
+        XCTAssertTrue(increment.waitForExistence(timeout: 5), "the interface-font-size stepper should expose an increment arrow")
+        increment.click() // 13 (default/nil) → 14
+
+        XCTAssertTrue(poll { (self.settingsDouble("interfaceFontSize") ?? 13) > 13 },
+                      "incrementing the palette font size should persist a >13 interfaceFontSize")
+        XCTAssertNil(settingsDouble("sidebarFontSize"),
+                     "the palette stepper must not write the sidebar's own font size")
+    }
+
     func testNewSessionDirectoryPickerPersists() throws {
         let picker = settingsControl(tab: "General", control: "settings-new-session-directory")
         picker.click()

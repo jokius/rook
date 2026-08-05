@@ -77,11 +77,13 @@ final class SettingsModel {
         applyInactivePaneMute()
         applySidebarBackgroundShift()
         applySidebarFontSize()
+        applyInterfaceFontSize()
         applyBaseFontSize()
         applyAgentStatusColors()
         applyAgentStatusShapes()
         applyStatusRowHighlight()
         applyRestoreRunningCommand()
+        applyWorkspaceRowClickExpands()
         applyAttentionButtonEnabled()
         applyInterfaceElements()
         // create the commented starter keymap on first launch, then load + parse it.
@@ -237,9 +239,13 @@ final class SettingsModel {
     func setMouseScrollMultiplier(_ value: Double?) { settings.mouseScrollMultiplier = value; persistAndApply() }
     // ghostty key (right-click-action): persistAndApply() rewrites the conf and reloads surfaces live.
     func setRightClickPaste(_ value: Bool?) { settings.rightClickPaste = value; persistAndApply() }
+    // sidebar behavior, not a ghostty key; the Coordinator reads the mirror on the next click.
+    func setWorkspaceRowClickExpands(_ value: Bool?) { settings.workspaceRowClickExpands = value; persistAndApply() }
     func setInactivePaneMuteStrength(_ value: Int?) { settings.inactivePaneMuteStrength = value; persistAndApply() }
     func setSidebarBackgroundShift(_ value: Int?) { settings.sidebarBackgroundShift = value; persistAndApply() }
     func setSidebarFontSize(_ value: Double?) { settings.sidebarFontSize = value; persistAndApply() }
+    // panel chrome size, not a ghostty key; the palette/switcher read the mirror when they next mount.
+    func setInterfaceFontSize(_ value: Double?) { settings.interfaceFontSize = value; persistAndApply() }
     // not a ghostty key, so persistAndApply()'s writeGhosttyConfig() no-ops and no surface reload fires.
     func setRestoreRunningCommand(_ value: Bool?) { settings.restoreRunningCommand = value; persistAndApply() }
     // rides restoreRunningCommand (the re-run is what types the resume line); also not a ghostty key.
@@ -686,11 +692,13 @@ final class SettingsModel {
         applyInactivePaneMute()
         applySidebarBackgroundShift()
         applySidebarFontSize()
+        applyInterfaceFontSize()
         applyBaseFontSize()
         applyAgentStatusColors()
         applyAgentStatusShapes()
         applyStatusRowHighlight()
         applyRestoreRunningCommand()
+        applyWorkspaceRowClickExpands()
         applyAttentionButtonEnabled()
         applyInterfaceElements()
         // refresh the app chrome (title bar + sidebar + quick terminal) with the new terminal color,
@@ -728,6 +736,10 @@ final class SettingsModel {
     private func applyRestoreRunningCommand() {
         GhosttyApp.shared.setRestoreRunningCommand(settings.restoreRunningCommand ?? false)
         GhosttyApp.shared.setResumeAgentSessions(settings.resumeAgentSessions ?? false)
+    }
+
+    private func applyWorkspaceRowClickExpands() {
+        GhosttyApp.shared.setWorkspaceRowClickExpands(settings.workspaceRowClickExpands ?? true)
     }
 
     private func applyAttentionButtonEnabled() {
@@ -768,7 +780,11 @@ final class SettingsModel {
     }
 
     private func applySidebarFontSize() {
-        GhosttyApp.shared.setSidebarFontSize(settings.sidebarFontSize ?? AppSettings.defaultSidebarFontSize)
+        GhosttyApp.shared.setSidebarFontSize(settings.effectiveSidebarFontSize)
+    }
+
+    private func applyInterfaceFontSize() {
+        GhosttyApp.shared.setInterfaceFontSize(settings.effectiveInterfaceFontSize)
     }
 
     private func applyBaseFontSize() {

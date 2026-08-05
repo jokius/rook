@@ -40,7 +40,11 @@ paths:
   the row height scales with it via `AppSettings.sidebarRowHeight(fontSize:)` [clamped point size + 15pt
   padding, so 13 → the historical 28pt row], the row icons/status glyphs keep their fixed sizes;
   clamped to `AppSettings.sidebarFontSizeRange` [9...20], NOT a ghostty key)
+  + `interfaceFontSize` (the command-palette / Ctrl-Tab-switcher / title-bar-popover text point size,
+  nil = default 13, clamped to `AppSettings.interfaceFontSizeRange` [9...20], NOT a ghostty key)
   + `rightClickPaste` (ghostty `right-click-action`, nil = on)
+  + `workspaceRowClickExpands` (whether a whole-row click toggles a sidebar workspace's expansion,
+  nil = on, NOT a ghostty key — see the Sidebar rule for the click routing it gates)
   + `newSessionDirectory`/`newSessionCustomDirectory` (where a new ⌘T session opens: nil = home default,
   else the current session's cwd or a fixed custom dir; NOT ghostty keys)
   + `autoFollowAttention`/`autoFollowStayOnActive` (the per-window idle auto-follow-to-oldest-blocked policy:
@@ -183,12 +187,14 @@ paths:
   `ContentView` mirrors the color into `terminalColor` view state (the quick terminal's opaque backing
   re-renders with the new color) and `TitleProbeView` re-applies the window appearance.
   Without this the chrome only refreshed when the window next re-keyed.
-  UI is the standard SwiftUI `Settings` scene (Cmd+,) with a 6-tab `TabView` (frame 540×590 — widened from
-  480 when the Interface tab's toggles overflowed).
+  UI is the standard SwiftUI `Settings` scene (Cmd+,) with a 6-tab `TabView` (frame 540×640 — widened from
+  480 when the Interface tab's toggles overflowed, and again from 590 when the palette-font stepper and the
+  workspace-row-click toggle made Appearance ▸ Window and General ▸ Mouse scroll).
   An explicit `TabView(selection:)` binding (`@State` default `.general`) suppresses SwiftUI's
   `com_apple_SwiftUI_Settings_selectedTabIndex` auto-persistence, so the window always opens on General
   instead of restoring the last-used tab.
-  **General** (a **Mouse** section with the scroll-speed slider + the right-click-pastes toggle,
+  **General** (a **Mouse** section with the scroll-speed slider + the right-click-pastes toggle + the
+  workspace-row-click toggle,
   a **Sessions** section with the new-session-directory picker (home / current session's directory / a
   fixed custom folder, the last with a `Choose…` panel) + the restore-running-commands toggle + the
   confirm-before-closing-a-session toggle,
@@ -198,9 +204,10 @@ paths:
   toolbar-mode dropdown Picker (`settings-toolbar-mode`, bound to `effectiveToolbarMode` via `model.setToolbarMode`,
   `.compact` mapping back to nil) + background opacity/blur sliders + the Sidebar Tint slider + the Sidebar
   Font Size stepper (`settings-sidebar-font-size`, 9...20, `AppSettings.defaultSidebarFontSize` 13 mapping
-  back to nil, matching the terminal font-size stepper's style) + the inactive-pane-mute slider.
-  The formerly-separate **Panes** section was folded into **Window** so the tab still fits 480×590 without
-  scrolling after adding the font-size stepper).
+  back to nil, matching the terminal font-size stepper's style) + the Palette-and-switcher Font Size stepper
+  (`settings-interface-font-size`, the same 9...20/13-maps-to-nil shape) + the inactive-pane-mute slider.
+  The formerly-separate **Panes** section was folded into **Window** so the tab still fits without
+  scrolling after adding the font-size steppers).
   **Interface** (a new tab, `SettingsView.Tab.interface`, BETWEEN Appearance and Notifications) hides/shows
   INDIVIDUAL title-bar + sidebar-footer chrome elements over the host-free `InterfaceElement` enum
   (title bar: `recentSessions`/`sidebarToggle`/`sessionName`/`windowName`/`scratch`/`split`/`quickTerminal`; sidebar footer:
@@ -253,7 +260,7 @@ paths:
   `Reduce Transparency is on; saved opacity and blur apply when it is off.`, because the blur dependency
   is no longer the reason the window looks opaque.
   The sliders keep working and keep SAVING either way; only the presentation is overridden.
-  This keeps the busiest tab short enough that the 480×590 window fits every tab without scrolling.
+  This keeps the busiest tab short enough that the 540×640 window fits every tab without scrolling.
   The notification toggle (`AppSettings.notificationsEnabled`, nil = on) is mirrored to `NotificationManager.bannersEnabled`
   by `SettingsModel`; it gates only the OS banner, never the badge, and is NOT a ghostty config key (no
   reload).
@@ -502,6 +509,56 @@ paths:
   must never prompt), like the quit-confirm.
   Default-off + round-trip covered host-free in `AppSettingsTests`; the confirm itself is app-target
   (manually/build verified, no app unit-test host, like `confirmDelete`/`confirmClearFlags`).
+- **`workspaceRowClickExpands` (whole-row click expands a sidebar workspace, default ON, General ▸ Mouse).**
+  `AppSettings.workspaceRowClickExpands: Bool?` (nil = ON, the default-on binding shape — get `?? true`,
+  set `$0 ? nil : false`, like `rightClickPaste`) gates ONLY the whole-row hit target;
+  the disclosure triangle keeps toggling either way, because AppKit drives that natively.
+  NOT a ghostty key (`writeGhosttyConfig` no-ops, no surface reload).
+  It is the non-observable chrome-mirror pattern: `SettingsModel.setWorkspaceRowClickExpands` saves +
+  `applyWorkspaceRowClickExpands` pushes `?? true` into `GhosttyApp.workspaceRowClickExpands`, which the
+  sidebar Coordinator reads PER CLICK — so a flip applies with no relaunch and needs no
+  `.rookAppearanceChanged` re-render at all (nothing is drawn from it).
+  See the Sidebar rule for the deferred-toggle re-read that makes a flip INSIDE the double-click interval
+  cancel an already-scheduled toggle.
+  GUI-only and keep-in-sync EXEMPT: the row click is pure click routing over `expandItem`/`collapseItem`,
+  already exempt itself, and `workspace.expand`/`collapse` + `sidebar.expand`/`collapse` are the control
+  surface for the underlying state.
+- **`interfaceFontSize` + `InterfaceMetrics` (the palette/switcher size, default 13, Appearance ▸ Window).**
+  `AppSettings.interfaceFontSize: Double?` (nil = `defaultInterfaceFontSize` 13, clamped to
+  `interfaceFontSizeRange` 9...20) sizes the command palette, the Ctrl-Tab switcher, and the two title-bar
+  popovers that share `SessionSwitcherRow`.
+  It is deliberately SEPARATE from `sidebarFontSize` and **neither falls back to the other** — the sidebar
+  is a density knob, the palette a readability one; both resolve through their own single read point
+  (`effectiveSidebarFontSize` / `effectiveInterfaceFontSize`), so no caller re-spells the nil default.
+  NOT a ghostty key.
+  The derivation is the host-free `rookCore/InterfaceMetrics.swift` (unit-tested): `base`/`secondary`/`shortcut`
+  text sizes plus a `scale`, anchored so 13 reproduces exactly what the views hardcoded before
+  (`.caption`/`.caption2` 10pt, `.callout` 12pt, a 520×320 palette, a 460pt switcher, 320pt popovers),
+  with derived text floored at `minimumTextSize` 8 — a strict proportion puts a subtitle at 7pt on a 9pt base.
+  Mirrored into the non-observable `GhosttyApp.interfaceMetrics` by `SettingsModel.applyInterfaceFontSize`;
+  each surface reads `InterfaceMetrics.current` (the app-target extension in `Palette.swift`) ONCE when it
+  mounts, which is safe because all of them mount fresh on every open — a size change never reaches an
+  already-open panel, and does not need to.
+  **The panels are FITTED, not merely scaled, and that is a correctness fix rather than polish.**
+  The scaled width and the terminal-centering offset each grow without bound AND compound, so the panel's
+  right edge ran past the window: at the 13pt default a 220pt sidebar clips the 520pt palette in any window
+  under 741pt, which the 640pt window minimum allows.
+  `fittedPanelWidth` shrinks the ideal to what the terminal area leaves (floor `minimumPanelWidth` 280, then
+  a hard window ceiling), and `panelOffset` caps the shift at `(W - width) / 2` — exactly the condition that
+  keeps the right edge inside, so a cramped window degrades to whole-window centering rather than to a
+  clipped panel.
+  **TRAP, and it cost two follow-up commits upstream: never hand a height CAP to `.frame(maxHeight:)`.**
+  Around a `ScrollView` the cap becomes the height (a scroll view renders at whatever it is offered instead
+  of sizing to its content), so three switcher rows drew a window-tall panel of empty material; around a
+  plain stack the same modifier CENTERS the content and drops the panel down the window.
+  The switcher therefore MEASURES its row stack through a `PreferenceKey` and renders at
+  `InterfaceMetrics.measuredPanelHeight` (content height, capped, nil until the measurement lands so the
+  first layout pass stays unconstrained), and the palette keeps its cap but adds `alignment: .top`.
+  Both rendered results have NO harness — hosted tests do not render SwiftUI and XCUITest cannot hold Ctrl
+  for the switcher (see the UI-tests rule) — so the CHOICE is covered host-free in `InterfaceMetricsTests`
+  and the RESULT is verified by eye.
+  GUI-only and keep-in-sync EXEMPT, like `sidebarFontSize` (only `theme.set`/`config.reload` touch settings
+  over the socket).
 - **A Settings toggle's DESCRIPTION stays single-line short-form** — a terse hint, not a manual.
   No detailed multi-line explanation of what the toggle does and no cross-refs to other toggles;
   keep the minimal style (see also the flag-description convention).

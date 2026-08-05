@@ -57,6 +57,11 @@ final class GhosttyApp {
     /// sidebar Coordinator reads it (gating the count to 0 when off), `SettingsModel` writes it. The
     /// re-render rides the `.rookAppearanceChanged` notification, like `toolbarMode`.
     private(set) var notificationBadgeEnabled: Bool = true
+    /// Whether a click anywhere on a sidebar WORKSPACE row toggles its expansion; on by default. NOT
+    /// ghostty-resolved: the sidebar Coordinator reads it per click in `handleSingleClick` (and again when
+    /// the deferred toggle fires), `SettingsModel` writes it. The disclosure triangle ignores it — AppKit
+    /// toggles that natively — so no re-render notification is needed either.
+    private(set) var workspaceRowClickExpands: Bool = true
     /// Whether a restored pane re-runs the command it had in the foreground at the last clean quit
     /// (`AppSettings.restoreRunningCommand`). The surface factories read it to decide whether to feed the
     /// captured command as `initial_input`; `SettingsModel` writes it. Not ghostty-resolved, and it only
@@ -95,6 +100,11 @@ final class GhosttyApp {
     /// `SettingsModel` writes it. The re-render rides the `.rookAppearanceChanged` notification, like
     /// `toolbarMode`.
     private(set) var sidebarFontSize: CGFloat = CGFloat(AppSettings.defaultSidebarFontSize)
+    /// The text sizes and panel scale the command palette and the Ctrl-Tab switcher draw at, derived from
+    /// the separate `AppSettings.interfaceFontSize` — resolved ONCE per settings change here rather than
+    /// per row. NOT ghostty-resolved: those panels mount fresh on every open and read this then,
+    /// `SettingsModel` writes it, so no re-render notification is needed.
+    private(set) var interfaceMetrics = InterfaceMetrics(fontSize: AppSettings.defaultInterfaceFontSize)
     /// The base terminal font size in points (the Settings default; nil → the ghostty built-in). NOT a
     /// value the renderer reads — it is the size a session whose `session.fontSize` is nil reverts to,
     /// which the dashboard font-override clear needs to recognize its own async CELL_SIZE report (see
@@ -186,6 +196,12 @@ final class GhosttyApp {
         notificationBadgeEnabled = enabled
     }
 
+    /// Set whether a whole-row click toggles a sidebar workspace's expansion. Called by `SettingsModel` at
+    /// launch and on every change; read per click by the sidebar Coordinator, so a flip needs no relaunch.
+    func setWorkspaceRowClickExpands(_ enabled: Bool) {
+        workspaceRowClickExpands = enabled
+    }
+
     /// Set whether restored panes re-run their captured foreground command. Called by `SettingsModel` at
     /// launch and on every change; read by the surface factories at restore time.
     func setRestoreRunningCommand(_ enabled: Bool) {
@@ -242,6 +258,13 @@ final class GhosttyApp {
         // stepper already bounds 9...20, but a hand-edited or future-range settings.json must not render a
         // giant font inside the clamped row (sidebarRowHeight clamps its own copy for the height).
         sidebarFontSize = CGFloat(AppSettings.clampSidebarFontSize(size))
+    }
+
+    /// Set the palette/switcher point size, re-deriving the metrics. Called by `SettingsModel` at launch
+    /// and on every change; `InterfaceMetrics` clamps its own input, so a hand-edited out-of-range value
+    /// lands in range here too.
+    func setInterfaceFontSize(_ size: Double) {
+        interfaceMetrics = InterfaceMetrics(fontSize: size)
     }
 
     /// Set the agent-status glyph colors from the user's hex settings (nil/malformed → the system

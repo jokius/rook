@@ -70,18 +70,32 @@ extension WindowContentView {
     /// the first `didBecomeKey` sets `frontmostWindowID`. Reactive: `frontmostWindowID` is observed.
     private var isFrontmost: Bool { library.activeWindowID == windowID }
 
+    /// Where the terminal area starts ON SCREEN: the sidebar column plus its 1pt divider, or 0 whenever no
+    /// sidebar is showing. The palette and the switcher center their panel over THAT area rather than over
+    /// the whole window, which otherwise reads as off-center whenever the sidebar is up. The palette's
+    /// scrim stays full width and dismisses on a click anywhere; the switcher's is click-through by design
+    /// and ends on Ctrl release.
+    ///
+    /// Zoom and the dashboard are why `store.sidebarVisible` alone is not the answer: both leave that flag
+    /// set while COVERING the sidebar (zoom drops the deck to opacity 0, the dashboard paints over it), so
+    /// reading the flag alone would shift a panel by half a sidebar that is not on screen.
+    private var terminalAreaInset: Double {
+        guard store.sidebarVisible, terminalZoom.target == nil, !dashboard.isOpen else { return 0 }
+        return store.sidebarWidth + 1
+    }
+
     /// The command-palette overlay, mounted only while a palette is open in the frontmost window. Its
     /// content (search field + result list) is rebuilt from `palette.mode`.
     @ViewBuilder private var commandPaletteOverlay: some View {
         if isFrontmost, palette.mode != nil {
-            CommandPalette(controller: palette, actions: actions)
+            CommandPalette(controller: palette, actions: actions, terminalAreaInset: terminalAreaInset)
         }
     }
 
     /// The Ctrl-Tab session switcher overlay, mounted only while cycling in the frontmost window.
     @ViewBuilder private var sessionSwitcherOverlay: some View {
         if isFrontmost, sessionSwitcher.isActive {
-            SessionSwitcherOverlay(switcher: sessionSwitcher, store: store)
+            SessionSwitcherOverlay(switcher: sessionSwitcher, store: store, terminalAreaInset: terminalAreaInset)
         }
     }
 

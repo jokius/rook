@@ -79,12 +79,34 @@ final class PaletteController {
     func close() { mode = nil }
 }
 
+/// The app-target read point for the host-free metrics: `InterfaceMetrics` lives in `rookCore` and can't
+/// reach `GhosttyApp`, and the three surfaces that scale together (this palette, the Ctrl-Tab switcher,
+/// and the title-bar popover rows) would otherwise each carry their own copy of this lookup.
+extension InterfaceMetrics {
+    @MainActor static var current: InterfaceMetrics { GhosttyApp.shared.interfaceMetrics }
+}
+
 /// The palette overlay: a dimmed scrim (click to dismiss) with a top-centered search field and a
 /// fuzzy-filtered result list. Type to filter, ↑/↓ to move, Enter to run, Esc to close. Mounted by
 /// `ContentView` only while a palette is open; the item source switches on `controller.mode`.
 struct CommandPalette: View {
     let controller: PaletteController
     let actions: AppActions
+    /// Where the terminal area starts inside the window (the sidebar plus its 1pt divider, 0 when no
+    /// sidebar is on screen). The panel shifts by half of it so it centers over the TERMINAL rather than
+    /// the whole window; the scrim stays full width, so a click on the sidebar still dismisses.
+    let terminalAreaInset: Double
+
+    /// The chrome text sizes and the panel's scale, read from the non-observable `GhosttyApp` — a palette
+    /// mounts fresh on every open, so it can never render a stale size.
+    private let metrics = InterfaceMetrics.current
+
+    /// The panel width and results height at the 13pt default; `metrics` scales them so a larger font
+    /// shows the same rows and truncates no more titles, then the window fits them.
+    private static let panelWidthAtDefaultFontSize: Double = 520
+    private static let resultsHeightAtDefaultFontSize: Double = 320
+    /// How far down the window the panel starts.
+    private static let topInsetFraction: Double = 0.12
 
     @State private var query = ""
     @State private var selection = 0
@@ -148,13 +170,23 @@ struct CommandPalette: View {
 
     var body: some View {
         GeometryReader { geo in
+            let width = metrics.fittedPanelWidth(idealAtDefault: Self.panelWidthAtDefaultFontSize,
+                                                 windowWidth: geo.size.width,
+                                                 terminalAreaInset: terminalAreaInset)
             ZStack(alignment: .top) {
                 Color.black.opacity(0.2)
                     .contentShape(Rectangle())
                     .onTapGesture { controller.close() }
                 panel
-                    .frame(width: 520)
-                    .padding(.top, geo.size.height * 0.12)
+                    .frame(width: width)
+                    // `.top`, or the panel centers inside a frame taller than itself and drops down the
+                    // window: the cap is a ceiling on how far it may grow, not a height to fill.
+                    .frame(maxHeight: metrics.fittedPanelHeight(windowHeight: geo.size.height,
+                                                                topFraction: Self.topInsetFraction),
+                           alignment: .top)
+                    .padding(.top, geo.size.height * Self.topInsetFraction)
+                    .offset(x: metrics.panelOffset(width: width, windowWidth: geo.size.width,
+                                                   terminalAreaInset: terminalAreaInset))
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
@@ -163,17 +195,20 @@ struct CommandPalette: View {
     private var panel: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: metrics.base))
+                    .foregroundStyle(.secondary)
                 TextField(placeholder, text: $query)
                     .textFieldStyle(.plain)
                     .focused($fieldFocused)
+                    .font(.system(size: metrics.base))
                     .onSubmit { runSelected() }
                     .onChange(of: query) { selection = 0; updateFiltered(); previewSelected() }
                     .onKeyPress(.downArrow) { move(1); return .handled }
                     .onKeyPress(.upArrow) { move(-1); return .handled }
                     .onKeyPress(.escape) { controller.close(); return .handled }
             }
-            .padding(12)
+            .padding(metrics.scaled(12))
             Divider()
             results
         }
@@ -204,13 +239,13 @@ struct CommandPalette: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(filtered.enumerated()), id: \.element.id) { index, item in
-                        PaletteRow(item: item, isSelected: index == selection)
+                        PaletteRow(item: item, isSelected: index == selection, metrics: metrics)
                             .id(item.id)
                             .onTapGesture { runItem(item) }
                     }
                 }
             }
-            .frame(maxHeight: 320)
+            .frame(maxHeight: metrics.scaled(Self.resultsHeightAtDefaultFontSize))
             .onChange(of: selection) { _, sel in
                 guard filtered.indices.contains(sel) else { return }
                 // live theme preview: navigating a row applies it (no-op for non-theme palettes,
@@ -271,6 +306,9 @@ private struct PalettePanelBackground: View {
 private struct PaletteRow: View {
     let item: PaletteItem
     let isSelected: Bool
+    /// Passed IN rather than read from `GhosttyApp` here: a row is rebuilt on every selection change, and
+    /// the palette that owns it already resolved the metrics once when it mounted.
+    let metrics: InterfaceMetrics
 
     var body: some View {
         HStack {
@@ -278,9 +316,9 @@ private struct PaletteRow: View {
                 StatusGlyph(status: status, colorHex: item.statusColor, shape: item.statusShape)
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.title)
+                Text(item.title).font(.system(size: metrics.base))
                 if let subtitle = item.subtitle {
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                    Text(subtitle).font(.system(size: metrics.secondary)).foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.middle)
                         .accessibilityIdentifier("palette-subtitle")
                         .accessibilityValue(subtitle)
@@ -289,7 +327,7 @@ private struct PaletteRow: View {
             Spacer(minLength: 8)
             if let badge = item.badge {
                 Text(badge)
-                    .font(.caption2)
+                    .font(.system(size: metrics.secondary))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -299,12 +337,12 @@ private struct PaletteRow: View {
             }
             if let shortcut = item.shortcut {
                 Text(shortcut)
-                    .font(.callout)
+                    .font(.system(size: metrics.shortcut))
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, metrics.scaled(12))
+        .padding(.vertical, metrics.scaled(6))
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(isSelected ? Color.accentColor.opacity(0.25) : Color.clear)
         .contentShape(Rectangle())

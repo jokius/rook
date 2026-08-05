@@ -465,6 +465,50 @@ struct AppSettingsTests {
         #expect(AppSettings.sidebarRowHeight(fontSize: 99) == AppSettings.sidebarFontSizeRange.upperBound.rounded() + 15)
     }
 
+    @Test func interfaceFontSizeRoundTripsDefaultsNilAndIsNotAConfigLine() throws {
+        #expect(AppSettings().interfaceFontSize == nil)
+        let json = String(decoding: try JSONEncoder().encode(AppSettings()), as: UTF8.self)
+        #expect(!json.contains("interfaceFontSize"))
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(AppSettings(interfaceFontSize: 16)))
+        #expect(decoded.interfaceFontSize == 16)
+        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{ "fontSize": 16 }"#.utf8))
+        #expect(legacy.interfaceFontSize == nil)
+        // a SwiftUI-level panel font applied in the app target, never a ghostty config key.
+        #expect(AppSettings(interfaceFontSize: 16).ghosttyConfigLines() == AppSettings().ghosttyConfigLines())
+    }
+
+    @Test func interfaceFontSizeClampsToRange() {
+        #expect(AppSettings.defaultInterfaceFontSize == 13)
+        #expect(AppSettings.clampInterfaceFontSize(13) == 13)
+        #expect(AppSettings.clampInterfaceFontSize(2) == AppSettings.interfaceFontSizeRange.lowerBound)
+        #expect(AppSettings.clampInterfaceFontSize(99) == AppSettings.interfaceFontSizeRange.upperBound)
+    }
+
+    /// The two size knobs are INDEPENDENT: neither falls back to the other, so setting one leaves the
+    /// other on its own default (the sidebar is a density knob, the palette a readability one).
+    @Test func effectiveFontSizesResolveSeparately() {
+        #expect(AppSettings().effectiveSidebarFontSize == AppSettings.defaultSidebarFontSize)
+        #expect(AppSettings().effectiveInterfaceFontSize == AppSettings.defaultInterfaceFontSize)
+        #expect(AppSettings(sidebarFontSize: 18).effectiveInterfaceFontSize == AppSettings.defaultInterfaceFontSize)
+        #expect(AppSettings(interfaceFontSize: 18).effectiveSidebarFontSize == AppSettings.defaultSidebarFontSize)
+        // a hand-edited out-of-range value resolves inside the range rather than reaching a view.
+        #expect(AppSettings(sidebarFontSize: 99).effectiveSidebarFontSize == AppSettings.sidebarFontSizeRange.upperBound)
+        #expect(AppSettings(interfaceFontSize: 2).effectiveInterfaceFontSize == AppSettings.interfaceFontSizeRange.lowerBound)
+    }
+
+    @Test func workspaceRowClickExpandsDefaultsOnAndIsNotAGhosttyKey() throws {
+        // default (nil) = on; a sidebar behavior flag, so it adds NO ghostty config line.
+        #expect(AppSettings().workspaceRowClickExpands == nil)
+        #expect(AppSettings(workspaceRowClickExpands: false).ghosttyConfigLines() == AppSettings().ghosttyConfigLines())
+        // round-trips each state; a legacy settings.json without the key decodes to nil (on).
+        for value: Bool? in [nil, true, false] {
+            let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(AppSettings(workspaceRowClickExpands: value)))
+            #expect(decoded.workspaceRowClickExpands == value)
+        }
+        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{ "fontSize": 16 }"#.utf8))
+        #expect(legacy.workspaceRowClickExpands == nil)
+    }
+
     @Test func defaultThemeIsRookButNotBakedIntoAppSettings() {
         #expect(AppSettings.defaultTheme == "rook")
         // the seed lives in SettingsStore.load, NOT the memberwise default — AppSettings() stays

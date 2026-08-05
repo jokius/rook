@@ -41,7 +41,10 @@ struct SettingsView: View {
                 .tabItem { Label("Key Mapping", systemImage: "keyboard") }
                 .tag(Tab.keyMapping)
         }
-        .frame(width: 540, height: 590)
+        // 640, not the historical 590: the palette/switcher stepper is an eighth row in Appearance ▸ Window
+        // and the workspace-row-click toggle a fourth in General ▸ Mouse, which together overflowed the
+        // fixed frame and made those two tabs scroll.
+        .frame(width: 540, height: 640)
         // keep macOS from saving/restoring the Settings window across launches. Otherwise a
         // process-launch reopen (see rookApp's FB11763863 workaround) resurrects a stale Settings
         // window on whatever tab it was last on, which steals key focus from the real launch window.
@@ -76,9 +79,9 @@ private struct SettingHint: View {
     }
 }
 
-/// General tab: a Mouse section (scroll speed + right-click-pastes toggle), a Sessions section (the
-/// new-session directory picker + restore-running-commands toggle), and the inherit-global-ghostty-config
-/// toggle. The visual and notification settings live on their own tabs.
+/// General tab: a Mouse section (scroll speed, right-click-pastes, workspace-row click), a Sessions
+/// section (the new-session directory picker + restore-running-commands toggle), and the
+/// inherit-global-ghostty-config toggle. The visual and notification settings live on their own tabs.
 private struct GeneralSettingsView: View {
     let model: SettingsModel
 
@@ -95,6 +98,9 @@ private struct GeneralSettingsView: View {
                 }
                 Toggle("Right-click pastes", isOn: rightClickPaste)
                     .accessibilityIdentifier("settings-right-click-paste")
+                Toggle("Click a workspace row to expand or collapse", isOn: workspaceRowClickExpands)
+                    .accessibilityIdentifier("settings-workspace-row-click-expands")
+                SettingHint("The disclosure triangle always toggles, whichever way this is set.")
             }
 
             Section("Sessions") {
@@ -209,6 +215,13 @@ private struct GeneralSettingsView: View {
     private var rightClickPaste: Binding<Bool> {
         Binding(get: { model.settings.rightClickPaste ?? true },
                 set: { model.setRightClickPaste($0 ? nil : false) })
+    }
+
+    /// nil (the default) reads as ON; turning it off stores false and leaves only the disclosure triangle
+    /// as the workspace row's expand/collapse hit target.
+    private var workspaceRowClickExpands: Binding<Bool> {
+        Binding(get: { model.settings.workspaceRowClickExpands ?? true },
+                set: { model.setWorkspaceRowClickExpands($0 ? nil : false) })
     }
 
     /// nil (the default) reads as 3; stepping back to 3 stores nil so settings.json stays minimal. The
@@ -361,9 +374,14 @@ private struct AppearanceSettingsView: View {
                 }
 
                 Stepper(value: sidebarFontSize, in: AppSettings.sidebarFontSizeRange, step: 1) {
-                    Text("Sidebar font size: \(Int(model.settings.sidebarFontSize ?? AppSettings.defaultSidebarFontSize))")
+                    Text("Sidebar font size: \(Int(model.settings.effectiveSidebarFontSize))")
                 }
                 .accessibilityIdentifier("settings-sidebar-font-size")
+
+                Stepper(value: interfaceFontSize, in: AppSettings.interfaceFontSizeRange, step: 1) {
+                    Text("Palette and switcher font size: \(Int(model.settings.effectiveInterfaceFontSize))")
+                }
+                .accessibilityIdentifier("settings-interface-font-size")
 
                 HStack {
                     Text("Inactive pane mute")
@@ -389,8 +407,15 @@ private struct AppearanceSettingsView: View {
 
     /// The sidebar row-text size; the default maps back to nil so `settings.json` stays minimal.
     private var sidebarFontSize: Binding<Double> {
-        Binding(get: { model.settings.sidebarFontSize ?? AppSettings.defaultSidebarFontSize },
+        Binding(get: { model.settings.effectiveSidebarFontSize },
                 set: { model.setSidebarFontSize($0 == AppSettings.defaultSidebarFontSize ? nil : $0) })
+    }
+
+    /// The command-palette / session-switcher text size, on its own knob: the sidebar's stepper above is a
+    /// density control, this one readability, so neither falls back to the other.
+    private var interfaceFontSize: Binding<Double> {
+        Binding(get: { model.settings.effectiveInterfaceFontSize },
+                set: { model.setInterfaceFontSize($0 == AppSettings.defaultInterfaceFontSize ? nil : $0) })
     }
 
     /// Whether the terminal follows the macOS appearance — reveals the alternate picker.
@@ -467,7 +492,7 @@ private struct AppearanceSettingsView: View {
 
 /// Interface tab: per-element visibility of the window's title-bar and sidebar chrome, grouped by
 /// surface (Title Bar / Sidebar) and laid out two toggles per row so the tab keeps fitting the fixed
-/// 540×590 Settings window without scrolling as the element set grows. Every element is shown by default;
+/// 540×640 Settings window without scrolling as the element set grows. Every element is shown by default;
 /// a toggle off adds it to `AppSettings.hiddenInterfaceElements`. Each toggle live-applies through
 /// `SettingsModel`; the title-bar and footer elements re-gate in every open window via
 /// `.rookAppearanceChanged`, while the hover-only workspace add-session "+" re-gates on its next hover.

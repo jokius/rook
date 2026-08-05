@@ -97,6 +97,15 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// fixed-size row icons and status glyphs stay visually balanced against the text at either end.
     public static let sidebarFontSizeRange: ClosedRange<Double> = 9 ... 20
 
+    /// The out-of-the-box palette/switcher text point size, used when `interfaceFontSize` is nil. Matches
+    /// the macOS `.body` style (13pt) those surfaces hardcoded before the size became configurable, so a
+    /// fresh install renders exactly as it always did.
+    public static let defaultInterfaceFontSize: Double = 13
+
+    /// The allowed palette/switcher point-size range (the Settings stepper bounds). Same span as the
+    /// sidebar's, for the same reason: the fixed-size status glyphs stay balanced against the text.
+    public static let interfaceFontSizeRange: ClosedRange<Double> = 9 ... 20
+
     /// Terminal font family name (e.g. `SF Mono`), or nil for the ghostty default.
     public var fontFamily: String?
     /// Default terminal font size in points, or nil for the ghostty default.
@@ -229,6 +238,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// a `right-click-action` in the user's own `ghostty.conf`). rook has no terminal context menu, so
     /// paste-or-off is the whole meaningful choice.
     public var rightClickPaste: Bool?
+    /// Whether clicking anywhere on a sidebar workspace ROW expands or collapses it; nil means the default
+    /// (on). The disclosure triangle toggles regardless — AppKit drives it natively — so turning this off
+    /// narrows the hit target to the triangle rather than removing the affordance. A sidebar behavior flag
+    /// read per click through `GhosttyApp`, NOT a ghostty key — it never appears in `ghosttyConfigLines()`.
+    public var workspaceRowClickExpands: Bool?
     /// Which directory a new (⌘T) session opens in, as a `NewSessionDirectory` raw value; nil means the
     /// default (`home`). `currentSession` inherits the active session's focused-pane cwd, `custom` uses
     /// `newSessionCustomDirectory`. An app-level behavior value read by `AppActions.newSession()`, NOT a
@@ -270,8 +284,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// The sidebar row-text point size, or nil for the default (`defaultSidebarFontSize`). The row height
     /// scales with it (`sidebarRowHeight(fontSize:)`); the row icons and status glyphs keep their fixed
     /// sizes. Applied at the AppKit level when the sidebar draws, NOT a ghostty key — it never appears in
-    /// `ghosttyConfigLines()`.
+    /// `ghosttyConfigLines()`. Independent of `interfaceFontSize`: neither falls back to the other.
     public var sidebarFontSize: Double?
+    /// The command palette / session-switcher text point size, or nil for the default
+    /// (`defaultInterfaceFontSize`). The panel geometry scales with it (see `InterfaceMetrics`). Applied at
+    /// the SwiftUI level when those panels draw, NOT a ghostty key. Deliberately separate from
+    /// `sidebarFontSize`: the sidebar is a density knob, the palette a readability one.
+    public var interfaceFontSize: Double?
     /// The .app bundle path files from the tree open in (double-click / the Open menu); nil means the
     /// system default (`NSWorkspace.shared.open(url)`). An app-level path read on demand when opening a
     /// file, NOT a ghostty key — it never appears in `ghosttyConfigLines()`. A stale path (app deleted)
@@ -304,12 +323,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 inheritGlobalGhosttyConfig: Bool? = nil, attentionButtonEnabled: Bool? = nil,
                 dockBounce: String? = nil, notificationSoundName: String? = nil,
                 blockedStatusSoundName: String? = nil, rightClickPaste: Bool? = nil,
+                workspaceRowClickExpands: Bool? = nil,
                 newSessionDirectory: String? = nil, newSessionCustomDirectory: String? = nil,
                 confirmCloseSession: Bool? = nil, confirmCloseOnlyRunningAgent: Bool? = nil,
                 closeGraceUndoEnabled: Bool? = nil,
                 closeGraceSeconds: Double? = nil, showUndoToast: Bool? = nil,
                 autoFollowAttention: String? = nil,
                 autoFollowStayOnActive: Bool? = nil, sidebarFontSize: Double? = nil,
+                interfaceFontSize: Double? = nil,
                 editorApp: String? = nil, statusRowHighlightEnabled: Bool? = nil,
                 hiddenInterfaceElements: [String]? = nil) {
         self.fontFamily = fontFamily
@@ -341,6 +362,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.notificationSoundName = notificationSoundName
         self.blockedStatusSoundName = blockedStatusSoundName
         self.rightClickPaste = rightClickPaste
+        self.workspaceRowClickExpands = workspaceRowClickExpands
         self.newSessionDirectory = newSessionDirectory
         self.newSessionCustomDirectory = newSessionCustomDirectory
         self.confirmCloseSession = confirmCloseSession
@@ -351,6 +373,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.autoFollowAttention = autoFollowAttention
         self.autoFollowStayOnActive = autoFollowStayOnActive
         self.sidebarFontSize = sidebarFontSize
+        self.interfaceFontSize = interfaceFontSize
         self.editorApp = editorApp
         self.statusRowHighlightEnabled = statusRowHighlightEnabled
         self.hiddenInterfaceElements = hiddenInterfaceElements
@@ -445,6 +468,22 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// stray persisted or out-of-range value can't produce a degenerate row.
     public static func clampSidebarFontSize(_ size: Double) -> Double {
         min(sidebarFontSizeRange.upperBound, max(sidebarFontSizeRange.lowerBound, size))
+    }
+
+    /// The clamped palette/switcher point size for a raw value: bounded to `interfaceFontSizeRange`, the
+    /// twin of `clampSidebarFontSize` for the other size knob.
+    public static func clampInterfaceFontSize(_ size: Double) -> Double {
+        min(interfaceFontSizeRange.upperBound, max(interfaceFontSizeRange.lowerBound, size))
+    }
+
+    /// The resolved sidebar row-text size — the single read point, so no caller re-spells the nil default.
+    public var effectiveSidebarFontSize: Double {
+        Self.clampSidebarFontSize(sidebarFontSize ?? Self.defaultSidebarFontSize)
+    }
+
+    /// The resolved palette/switcher text size — the single read point, the twin of the sidebar's above.
+    public var effectiveInterfaceFontSize: Double {
+        Self.clampInterfaceFontSize(interfaceFontSize ?? Self.defaultInterfaceFontSize)
     }
 
     /// The outline row height for a given sidebar font size: the clamped point size plus a fixed 15pt of

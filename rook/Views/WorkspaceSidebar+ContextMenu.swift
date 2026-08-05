@@ -13,9 +13,12 @@ extension WorkspaceSidebar.Coordinator {
     /// interval: a double-click (`handleDoubleClick`) cancels it, so renaming a workspace no longer flips
     /// it open/closed on the way into edit mode. `action` fires on a genuine click, never during a drag,
     /// so workspace drag-reorder is unaffected.
+    /// `workspaceRowClickExpands` gates the whole-row hit target ONLY — the disclosure triangle keeps
+    /// toggling either way, since AppKit drives that natively.
     @objc func handleSingleClick(_ sender: NSOutlineView) {
         let row = sender.clickedRow
-        guard row >= 0, let node = sender.item(atRow: row) as? SidebarNode, node.kind == .workspace else { return }
+        guard row >= 0, let node = sender.item(atRow: row) as? SidebarNode, node.kind == .workspace,
+              GhosttyApp.shared.workspaceRowClickExpands else { return }
         // clicking the disclosure triangle already toggles natively — ignore that region so we don't double-toggle.
         if let event = NSApp.currentEvent {
             let point = sender.convert(event.locationInWindow, from: nil)
@@ -26,8 +29,12 @@ extension WorkspaceSidebar.Coordinator {
                btn.convert(btn.bounds, to: sender).contains(point) { return }
         }
         pendingRowToggle?.cancel()
+        // re-read the mirror when the deferred item FIRES, not when it is scheduled: the setting can be
+        // turned off inside the deferral window, and nothing else cancels an already-scheduled toggle.
         let toggle = DispatchWorkItem { [weak self, weak node] in
-            guard let self, let node, let outline = self.outlineView else { return }
+            guard let self, let node, let outline = self.outlineView,
+                  GhosttyApp.shared.workspaceRowClickExpands else { return }
+            self.pendingRowToggle = nil
             self.toggleExpansion(of: node, in: outline)
         }
         pendingRowToggle = toggle
