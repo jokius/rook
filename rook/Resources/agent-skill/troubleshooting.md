@@ -232,38 +232,48 @@ grep -c pane-id ~/.config/rook/agent-status/rook-agent-status.sh   # 0 = the old
 A shell spawned before the token existed simply falls back to `--pane`, i.e. the old behavior — nothing
 breaks, it just stays stale until that shell is restarted.
 
-### "A subagent is working but the row does not show `active`"
+### "A subagent is working and the row shows `active`"
 
-By design. Claude Code fires the status hooks INSIDE a Task subagent too, stamped with the SAME
-`session_id`, so a flock of subagents used to hold the row on `active` over the `completed` the main
-thread had already reported — i.e. the row claimed to be busy when it was the user's turn. The installed
-wrapper therefore drops a subagent's progress report, keyed on the hook payload's `agent_type` (absent on
-the main thread, the subagent's own type inside one), and the row tracks the MAIN thread only. A
-subagent's permission prompt still parks the row `blocked`, because that one really is waiting on a human.
+By design, and it is a REVERSAL of the previous behavior. Claude Code fires the status hooks INSIDE a Task
+subagent too, stamped with the SAME `session_id`, so a working subagent keeps the row on `active` exactly
+like the main thread does.
 
-If a long fan-out should show something anyway, drive it explicitly from the orchestrating agent — that is
-what `session status` is for:
+The wrapper used to DROP those reports, keyed on the hook payload's `agent_type` (absent on the main
+thread, the subagent's own type inside one), because they kept re-asserting `active` over the `completed`
+the main thread had already reported. That filter is GONE. The `background_tasks` substitution (below)
+fixes that same lie at its source — the one report that was actually wrong — while the filter's price was
+losing the signal ENTIRELY: while a swarm grinds, the subagents' hooks are the ONLY hook traffic the
+session produces, so the row fell silent exactly when the session was busiest (measured over one minute:
+45 dropped subagent reports against 8 from the main thread).
 
-```bash
-rookctl session status active --blink --target "$ROOK_SESSION_ID" --pane "$ROOK_PANE"  # before the fan-out
-```
+**Known limitation: a subagent's `active` can overwrite the main thread's `blocked`.** If the lead asks
+the human a question while its agents keep working, the next agent report pushes the row off `blocked`.
+The wrapper cannot fix this alone — it needs a "do not downgrade `blocked`" argument on `session.status`,
+which is a separate change — so for now a swarm session reads as "busy" and a question is found by looking
+at the pane.
 
-An install predating the filter still shows the old behavior (an installed hook is a copy): re-run
+**Setting `blocked` by hand does NOT work around this — do not bother.** The very next `Stop` (that is,
+the end of the turn in which you asked the question) hooks straight back into the substitution above: live
+`background_tasks` → `active --blink`, and your `blocked` is gone milliseconds later. The only reports
+that survive are the ones nothing follows, which is never the case while a swarm is running.
+
+An install predating the removal still DROPS subagent reports (an installed hook is a copy): re-run
 Rook ▸ Help ▸ Install Agent Status Hooks…, then check
-`grep -c agent_type ~/.config/rook/agent-status/rook-agent-status.sh` (0 = the old hook).
+`grep -c agent_type ~/.config/rook/agent-status/rook-agent-status.sh` (non-zero = the OLD hook, still
+filtering).
 
 ### "My nested `claude -p` does not move the status"
 
 Also by design, and by a DIFFERENT mechanism than the one above. A nested agent PROCESS — a `claude -p …`
-you spawned through Bash — is the main thread of its own session, so its payload carries no `agent_type`
-and the subagent filter waves it through. It used to report `completed` when it finished, while the
-pane's real agent was still working. So `session status` now runs the same ownership check `session agent`
-does: `rookctl` reports its nearest agent ANCESTOR's pid, and the app drops a status whose pid provably
-differs from the pane's foreground process, answering `ok` with `ignored: not the pane's agent` and
-changing nothing.
+you spawned through Bash — is the main thread of its own session, so its hook payload is indistinguishable
+from the pane's own agent's. It used to report `completed` when it finished, while the pane's real agent
+was still working. So `session status` runs the same ownership check `session agent` does: `rookctl`
+reports its nearest agent ANCESTOR's pid, and the app drops a status whose pid provably differs from the
+pane's foreground process, answering `ok` with `ignored: not the pane's agent` and changing nothing.
 
-Two checks, two holes, and neither replaces the other: a nested process has its own pid but no
-`agent_type`; an in-process subagent (Task, teammates) has an `agent_type` but shares the pane's pid.
+Two mechanisms, two holes, and neither replaces the other: a nested process reports from its own pid,
+while an in-process subagent (Task, teammates) shares the pane's — only the payload's `background_tasks`
+says anything about the latter.
 
 **The check is NARROW and fail-OPEN** — it drops a report only when all THREE of these hold, so the
 things it could plausibly break are not broken:
@@ -294,17 +304,22 @@ nothing, so passing it is always right.
 
 ### "My turn ended but the row shows `active`, not the completed checkmark"
 
-By design, and it is the THIRD mechanism on this seam (the two above being the `agent_type` filter and the
-pid ownership check). Claude Code's `Stop` event means the main thread ended its TURN, not that the work is
+By design, and it is the SECOND mechanism on this seam (the other being the pid ownership check above).
+Claude Code's `Stop` event means the main thread ended its TURN, not that the work is
 DONE: in a swarm the lead hands the turn back while its backgrounded teammates keep grinding, and the
 installed `Stop` → `completed --auto-reset` hook used to light the done-checkmark and call the user over for
-nothing. So when the `Stop` payload's `background_tasks` still holds a LIVE subagent — an entry whose `type`
-is `subagent` AND whose `status` is `running`, both on the SAME entry — the wrapper reports `active --blink`
-instead, keeping every other flag it was passed and dropping only `--auto-reset`.
+nothing. So when the `Stop` payload's `background_tasks` still holds a LIVE entry the wrapper reports
+`active --blink` instead, keeping every other flag it was passed and dropping only `--auto-reset`.
 
-A backgrounded BASH (`bun run dev`, `tail -f`) is deliberately NOT a subagent: it lives in `background_tasks`
-for hours, and treating a non-empty array as "busy" would strand the row on `active` forever. A subagent that
-has FINISHED does not hold it either — its entry DISAPPEARS from the array rather than flipping status.
+**An entry is LIVE when its `type` is `subagent` (a Task or a teammate) or `workflow` (an orchestrator),
+AND its `status` is not one of `completed`, `failed`, `cancelled`, `stopped`** — both fields on the SAME
+entry. The status test lists the TERMINAL values rather than checking for `running`, because the field also
+takes `pending` and `backgrounded`, and a finished entry usually DISAPPEARS from the array rather than
+flipping status.
+
+A backgrounded SHELL (`bun run dev`, `tail -f` — `type: "shell"`) is deliberately NOT live: it sits in
+`background_tasks` for hours, and treating a non-empty array as "busy" would strand the row on `active`
+forever. That is the one and only reason the check cannot just ask whether the array is empty.
 
 Nothing has to re-light the checkmark: Claude Code wakes the main thread when the last agent lands, and its
 next `Stop` carries an empty `background_tasks`, which reports the honest `completed --auto-reset`.

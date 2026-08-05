@@ -55,9 +55,12 @@ extension ControlServer {
     ///    judging ownership there would break every tmux user's status reporting, which works today.
     /// 3. the pids actually differ.
     ///
-    /// It does NOT catch IN-PROCESS subagents (Task, teammates): their hooks run in the pane's own
-    /// `claude`, so the pid matches. Those are filtered by `agent_type` in `rook-agent-status.sh` — two
-    /// mechanisms, two different holes.
+    /// It does NOT catch IN-PROCESS subagents (Task, teammates, Workflow): their hooks run in the pane's
+    /// own `claude`, so the pid matches — and that is now DELIBERATE. Their reports are the only sign of
+    /// life a swarming session has (the lead sits idle waiting for them), so `rook-agent-status.sh` lets
+    /// them through; what it does instead is refuse to report `completed` while the payload's
+    /// `background_tasks` still lists live work. An earlier version filtered them out by `agent_type` and
+    /// that is gone — do not resurrect it here.
     func isForeignAgent(_ claimed: Int?, session: Session?, pane: StatusPane?) -> Bool {
         guard let claimed, let session else { return false }
         let surface: (any TerminalSurface)?

@@ -2211,35 +2211,35 @@
               The status wrapper now also forwards the pane's stable surface token, so a status set from a split that was promoted
               into the main pane still lands on the right row — an older installed copy keeps the previous behavior until you
               re-run the installer, and a shell that was already open needs a fresh one.
-              Claude Code subagents no longer move the row either: it fires the same hooks inside a Task subagent under the same
-              session id, so a busy flock of them used to keep the row on active over the main thread's completed. The wrapper
-              reads the payload's
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agent_type</span> and drops a
-              subagent's progress, while still passing a subagent's permission prompt through — that one is a real question
-              waiting on you. Nor does a finished turn claim "done" while agents are still running: Claude Code's
+              Claude Code subagents move the row, on purpose: it fires the same hooks inside a Task subagent under the same
+              session id, so a working subagent keeps the row on active just as the main thread does. Rook used to drop those
+              reports, keyed on the payload's
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agent_type</span> — but while a
+              swarm is grinding, their hooks are the only signal that arrives at all, so the row fell silent exactly when the
+              session was busiest. The check below fixes the same lie more precisely. One limitation comes with it: a background
+              agent's next report can overwrite a blocked the main thread is waiting on you with.
+              Nor does a finished turn claim "done" while work is still running: Claude Code's
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">Stop</span> event means the main
               thread ended its <em>turn</em>, so when its payload's
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">background_tasks</span> still holds a
-              live subagent (an entry that is both a subagent and running — a backgrounded
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">bun run dev</span> is not one, and
-              would hold the row forever) the hook reports active with a pulse instead of the done checkmark. Nothing has to
+              live entry the hook reports active with a pulse instead of the done checkmark. Live means a subagent (a Task or a
+              teammate) or a workflow whose status is not completed, failed, cancelled or stopped — a background shell such as
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">bun run dev</span> is deliberately
+              not one, since it sits there for hours and would hold the row forever. Nothing has to
               re-light it: Claude Code wakes the main thread when the last agent lands, and its next
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">Stop</span> carries an empty list.
               The trade-off is deliberate — a lead that stops to ask <em>you</em> something while teammates run shows active
               rather than a checkmark, and being called over too early is the worse lie.
               An agent your agent <em>started</em> is a separate case with a separate fix: a nested
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">claude -p …</span> is the main thread of
-              its own session, so it carries no
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agent_type</span> and used to report
-              completed while your real agent kept working. Rook now applies to
+              its own session, so its payload is indistinguishable from your agent's and it used to report
+              completed while your real agent kept working. Rook applies to
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session status</span> the same ownership
               test <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session agent</span> already used:
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl</span> reports its nearest agent
               ancestor, and a status whose pid differs from the pane's foreground process is dropped (the call still succeeds,
-              it just changes nothing). You need both checks — a nested process has its own pid but no
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agent_type</span>, an in-process
-              subagent has an <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agent_type</span> but
-              shares the pane's pid. The check is deliberately narrow, because a false drop loses a blocked and leaves you
+              it just changes nothing). You need both checks — a nested process reports from its own pid, an in-process
+              subagent shares the pane's. The check is deliberately narrow, because a false drop loses a blocked and leaves you
               staring at a silent row: it discards a report only when the call names the caller's own session, an agent is the
               pane's foreground process, and the pids differ. Flagging another session from an orchestrator keeps working, and
               so does an agent running under tmux or ssh — there the pane's foreground process is the wrapper rather than the

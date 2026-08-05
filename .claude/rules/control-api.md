@@ -152,9 +152,11 @@ paths:
   and the gated tool's own PreToolUse fires BEFORE `blocked` is set, so the approved tool's PostToolUse
   is the first hook afterwards), and merges SIX Codex lifecycle hooks into `~/.codex/config.toml` with a
   `.bak`.
-  **Those Claude hooks also fire inside a Task SUBAGENT under the SAME `session_id`, and the wrapper drops
-  those calls** (all but `blocked`) by reading the payload's `agent_type` — see the subagent-filter bullet in
-  the Notifications rule; the args the installer writes did NOT change.
+  **Those Claude hooks also fire inside a Task SUBAGENT under the SAME `session_id`, and the wrapper lets
+  those calls THROUGH** — the `agent_type` filter that used to drop them is gone; what the wrapper does read
+  from the payload is `background_tasks`, to turn a `completed` reported over live background work into
+  `active --blink` (see the Notifications rule).
+  The args the installer writes did NOT change.
   **The Codex hooks do NOT map events to statuses — they call a SECOND installed script,
   `rook-codex-status.sh` (`AgentHooksInstall.codexWrapperName`), with an ACTION**
   (SessionStart→`session-start`, UserPromptSubmit→`user-prompt-submit`, PreToolUse→`pre-tool-use`,
@@ -1415,10 +1417,11 @@ paths:
   is worse than one stray `active`.
   The comparison uses `resolvedPane`, so a status sent with the promoted pane's `--pane-id` is checked
   against THAT pane's foreground, not the main one.
-  **This is a DIFFERENT hole from the `agent_type` subagent filter in `rook-agent-status.sh`** (see the
+  **This is a DIFFERENT hole from the `background_tasks` substitution in `rook-agent-status.sh`** (see the
   Notifications rule): the pid check catches nested agent PROCESSES, which have their own pid;
-  the `agent_type` filter catches IN-PROCESS subagents (Task, teammates), whose hooks run in the pane's own
-  `claude` and therefore MATCH the pane's foreground pid.
+  the substitution catches a main thread ending its turn over live IN-PROCESS background work (Task,
+  teammates, workflows), whose hooks run in the pane's own `claude` and therefore MATCH the pane's
+  foreground pid.
   Neither subsumes the other.
   Keep-in-sync: `ControlSessionStatusUpdate.agentPid` (LAST in `init`, so existing call sites keep
   compiling) + the `request.args?.agentPid` passthrough in `ControlDispatcher.dispatchSessionStatus`

@@ -233,45 +233,35 @@ paths:
   clear is the only signal.
   The `PostToolUse→active --blink` install hook covers the answer-then-resume case (the agent's next
   tool re-asserts `active`).
-- **A Claude Code SUBAGENT's turn is filtered OUT in the installed wrapper, not app-side.**
-  Claude Code fires the SAME status hooks INSIDE a subagent (the Task tool) as on the main thread, and stamps them with
-  the SAME `session_id`, so a flock of working subagents kept re-asserting `active` over the `completed`
-  the main thread had already reported — the row read "working" when it was actually the user's turn.
-  The ONLY discriminator is the hook payload on stdin: `agent_type` is ABSENT on the main thread
-  (it defaults to an unset `mainThreadAgentType`) and carries the subagent's own type
-  (`Explore`, `general-purpose`, `teammate`, …) inside one — verified against claude-code 2.1.207,
-  where a subagent's `PostToolUse` carries `"agent_type":"Explore"` and the main thread's carries no such key
-  (`agent_id` is likewise subagent-only).
-  So `rook-agent-status.sh` drops the call, treating an `agent_type` of `main`/`main-*` (or none at all) as the main thread.
-  **It must read the TOP-LEVEL key, which is why the parse is `/usr/bin/plutil -extract agent_type raw` and NOT a substring match.**
-  A `Stop` payload also carries `background_tasks`, and a BACKGROUNDED subagent's entry there has its OWN nested
-  `agent_type` — a `case` over the raw JSON therefore read the MAIN thread's `Stop` as a subagent's and swallowed the
-  `completed` (caught on a live dev instance: the row stayed `active+blink` after the turn ended; `AgentStatusWrapperTests.nestedAgentTypeInBackgroundTasksIsNotASubagent`
-  is that regression).
-  `plutil` is always present on macOS and the Codex adapter in the same package already parses its stdin with it, so it
-  costs no new dependency; anything it cannot parse yields an empty value, i.e. report anyway (fail open — an
-  unrecognized payload must never silence the indicator).
-  Two deliberate scopes:
-  `blocked` is NEVER dropped (a subagent's permission prompt is a real question waiting on you — and answering
-  it clears the glyph through the pane's own keystroke, not through a hook),
-  and stdin is read ONLY when `$CLAUDECODE` is set (present in a Claude hook's env, absent for the shell
-  integration, the Codex adapter — which parses the same stdin ITSELF — and the Pi extension) AND stdin is not a tty,
-  so no other caller can block on a `cat` of a pipe nobody closes.
-  The bash-3.2 `read -t` has no fractional timeout, which is why the gate is env-based rather than a timed read.
-  Tested by running the shipped wrapper with a stub `rookctl` and a payload on stdin
-  (`AgentStatusWrapperTests`, the subagent-filter section).
-  There is NO Swift/app-side leg and NO settings-json change — the filter is a policy of the BRIDGE, so an
-  existing install picks it up by re-running Help ▸ Install Agent Status Hooks… (which re-copies the script).
-  **This filter is ONE of THREE mechanisms that meet at this seam, and each closes a DIFFERENT hole:**
-  (1) this `agent_type` filter, for IN-PROCESS subagents;
-  (2) `session.status`'s app-side ownership check, for nested agent PROCESSES;
-  (3) the `completed`→`active --blink` substitution below, for a main thread that ends its turn while its
-  BACKGROUNDED subagents keep running.
-  The `agent_type` filter catches IN-PROCESS subagents: their hooks run inside the pane's OWN `claude`, so
-  no process-level test can distinguish them and only the payload can.
-  A nested agent PROCESS (a `claude -p …` the pane's agent spawned through Bash) is the opposite case: it
-  IS the main thread of its own session, so its payload carries no `agent_type` and the filter waves it
-  through, while its pid is plainly not the pane's foreground.
+- **A Claude Code SUBAGENT's turn MOVES the row again — the wrapper's `agent_type` filter is GONE.**
+  Claude Code fires the SAME status hooks INSIDE a subagent (the Task tool) as on the main thread and stamps
+  them with the SAME `session_id`; the only discriminator is the hook payload's top-level `agent_type`, ABSENT
+  on the main thread and carrying the subagent's own type (`Explore`, `general-purpose`, `teammate`, …) inside
+  one.
+  `rook-agent-status.sh` used to `exit 0` on that key, because a flock of working subagents kept re-asserting
+  `active` over the `completed` the main thread had already reported.
+  **The filter is REMOVED.**
+  It solved a real problem, but the `completed`→`active --blink` substitution below solves that SAME problem
+  more precisely — at the payload level, on the one report that was actually wrong — while the filter's price
+  was losing the signal ENTIRELY: a session running a swarm gets no other hook traffic at all while the agents
+  grind (the main thread is merely waiting on them), so the row went silent exactly when the session was
+  busiest.
+  Measured live over one minute on one session: 45 dropped `active --blink` calls from subagents against 8
+  reports from the main thread.
+  Nothing reads `agent_type` any more — the wrapper's only use of the payload is `background_tasks`.
+  **Known limitation, accepted deliberately: a subagent's `active` can overwrite the main thread's `blocked`.**
+  The main thread parks on `blocked` waiting for the user's answer, a still-running agent's next `PostToolUse`
+  fires `active --blink`, and the row stops looking like a question.
+  Closing it needs a new `session.status` argument (report `active` only when the session is not already
+  `blocked`), which is a separate change; it is also how the seam behaved before the filter ever existed.
+- **TWO mechanisms meet at this seam, and each closes a DIFFERENT hole:**
+  (1) `session.status`'s app-side ownership check, for nested agent PROCESSES;
+  (2) the `completed`→`active --blink` substitution in the wrapper, for a main thread that ends its turn while
+  BACKGROUND work keeps running.
+  Neither subsumes the other.
+  A nested agent PROCESS (a `claude -p …` the pane's agent spawned through Bash) IS the main thread of its own
+  session, so its payload is indistinguishable from the pane's own agent's, while its pid is plainly not the
+  pane's foreground.
   That one is caught app-side, by comparing `args.agentPid` (the CLI's nearest agent ANCESTOR) with the
   resolved pane's `foregroundPid()`.
   That check is deliberately NARROW — it needs the call to name the caller's OWN session AND an agent to be
@@ -279,9 +269,9 @@ paths:
   running tmux/ssh both pass untouched.
   See the `session.status` ownership-check bullet in the Control API rule for all three conditions and for
   why it is fail-OPEN.
-  **The THIRD mechanism is a SUBSTITUTION, not a drop: a `completed` reported while a BACKGROUNDED subagent
-  is still running goes out as `active --blink` instead.**
-  Neither of the first two touches it, because that `completed` is LEGITIMATE — it comes from the main
+- **The second mechanism is a SUBSTITUTION, not a drop: a `completed` reported while BACKGROUND WORK is still
+  live goes out as `active --blink` instead.**
+  The ownership check does not touch it, because that `completed` is LEGITIMATE — it comes from the main
   thread, in its own process, and Claude Code's `Stop` means "the main thread ended its TURN", not "the work
   is done".
   In a swarm the lead ends its turn constantly while teammates grind in the background ("waiting for the
@@ -289,28 +279,61 @@ paths:
   done-checkmark and calls the user over for nothing.
   Instructing the agent cannot fix it either: `Stop` fires AFTER the agent's last action and OVERWRITES
   whatever it set, and after `Stop` the agent calls nothing.
-  The signal is in the same payload the `agent_type` filter already reads: `background_tasks` carries one
-  entry per backgrounded task, and a LIVE subagent is one whose `type` is `subagent` AND whose `status` is
-  `running` (verified live against claude-code 2.1.207; when it finishes the ENTRY DISAPPEARS from the array
-  — the status never flips to a terminal value).
+  The signal is in the payload: `background_tasks` carries one entry per in-flight background task, and
+  claude-code's own field description names exactly this use — it "lets hooks distinguish 'session is done'
+  from 'session is paused waiting for background work to wake it'".
+  **An entry counts as LIVE when its `type` is `subagent` (a Task / a teammate) or `workflow` (the
+  Workflow orchestrator), AND its `status` is NOT terminal (`completed`, `failed`, `cancelled`, `stopped`).**
+  Three types are observed in the wild, and the third is the whole reason this cannot simply ask whether the
+  array is NON-EMPTY: a `shell` entry is a Bash `run_in_background` (`bun run dev`, `tail -f`) that lives for
+  HOURS and would park the row on `active` forever.
+  **Do NOT narrow the status test to `== running`.**
+  The field also takes `pending` and `backgrounded`, and a finished entry normally DISAPPEARS from the array
+  rather than flipping to a terminal value — so listing the terminal values is the safe side of that
+  asymmetry, and there is a test matrix on it.
+  (The first version of this tested `type == subagent && status == running` and went out as `completed` on a
+  `Stop` carrying `[{"type":"workflow","status":"running"}]` — a swarm's own orchestrator, reported as done.)
+  **The wrapper's gate is `state = completed`, and that is a LATENCY fix, not a tidiness one.**
+  Reading stdin at all means waiting for the writer to close the pipe, and the hook that fires on EVERY
+  tool call is `active` — which needs no payload.
+  Measured with a writer that holds stdin open for 4 s: the old gate (`state != blocked`) took 4049 ms on
+  an `active`, the narrowed one 18 ms, while `completed` still pays the wait it actually needs.
+  So the reason to keep the gate narrow is not the `plutil` fork — it is that the hot path must never
+  block on Claude Code's writer.
+  **`type` is a WHITELIST while `status` is a blacklist, and that asymmetry is a standing liability:
+  re-check the type list whenever claude-code is upgraded.**
+  The blacklist fails toward "busy", so an unknown STATUS is safe; an unknown TYPE silently reads as
+  "nothing is running" — which is exactly how `workflow` slipped through.
+  Whitelisting is still the right call (`shell` MUST stay out or the row parks forever), so the cost is
+  paid here, in a note, rather than by inverting the test.
+  Snapping the real shapes takes one throwaway `Stop` hook that appends its stdin to a file — that is how
+  all three types were found.
   Both fields must match on the SAME entry, so the wrapper walks the array BY INDEX with
   `plutil -extract background_tasks.<i>.<field> raw` (capped at 64) rather than grepping the payload: with a
   hung `bun run dev` beside a finished subagent, `"type":"subagent"` and `"status":"running"` both appear in
-  DIFFERENT objects and a substring match would park the row on `active` forever
-  (`AgentStatusWrapperTests.runningAndSubagentInDifferentEntriesIsNotALiveSubagent` is that regression).
-  A long-running background BASH is deliberately NOT a subagent — it lives in `background_tasks` for hours,
-  and an "array is non-empty" test would strand the row.
+  DIFFERENT objects and a substring match would park the row on `active` forever (there is a regression test
+  on exactly that pair).
+  `plutil` is always present on macOS and the Codex adapter in the same package already parses its stdin with
+  it, so it costs no new dependency; anything it cannot parse yields empty values, i.e. report anyway
+  (fail open — an unrecognized payload must never silence the indicator).
   The substitution keeps every other flag the caller passed and only swaps `--auto-reset` for `--blink`
-  (auto-reset is meaningless for `active`); it is gated on `state == completed` inside the SAME
-  `$CLAUDECODE` + non-tty block as the `agent_type` filter, so `active`/`blocked` and every non-Claude
-  caller are untouched.
+  (auto-reset is meaningless for `active`); it is gated on `state == completed` inside a `$CLAUDECODE` +
+  non-tty block, so `blocked`, `active`, and every non-Claude caller are untouched.
+  `blocked` is never rewritten at all (the outer gate) — a question waiting on the user outranks any
+  background work.
+  stdin is read ONLY when `$CLAUDECODE` is set (present in a Claude hook's env, absent for the shell
+  integration, the Codex adapter — which parses the same stdin ITSELF — and the Pi extension) AND stdin is not
+  a tty, so no other caller can block on a `cat` of a pipe nobody closes.
+  The bash-3.2 `read -t` has no fractional timeout, which is why the gate is env-based rather than a timed read.
   Nothing has to re-light the checkmark afterwards: Claude Code wakes the main thread when the last agent
   lands ("Agent finished"), and its next `Stop` carries an empty `background_tasks`.
   **The deliberate trade-off: a lead that ends its turn to ask the HUMAN something while teammates are still
   running shows `active` instead of the checkmark.**
   Accepted knowingly — today the row lies in the OTHER direction (it calls you when it is far too early), and
   a person pulled over for nothing costs more than a question noticed a minute late.
-  None of the three subsumes another; a change to one is not a reason to drop the others.
+  There is NO Swift/app-side leg and NO settings-json change — this is a policy of the BRIDGE, so an existing
+  install picks it up by re-running Help ▸ Install Agent Status Hooks… (which re-copies the script).
+  Tested by running the shipped wrapper with a stub `rookctl` and a payload on stdin (`AgentStatusWrapperTests`).
   Peer terminals get the decline case for free by different means rook avoids:
   cmux owns the permission decision UI (a blocking hook round-trip captures accept/deny),
   herdr scrapes the PTY (the prompt chrome leaving the screen clears it).

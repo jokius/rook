@@ -30,78 +30,74 @@ set -u
 state=$1
 shift
 
-# a SUBAGENT's turn is not the session's turn state. Claude Code fires the SAME status hooks INSIDE a
-# subagent (the Task tool) as on the main thread, and stamps them with the SAME session_id — so a flock
-# of working subagents keeps re-asserting `active` over the `completed` the main thread already
-# reported, and the sidebar row lies about whose turn it is. The only discriminator is the hook's JSON
-# payload on stdin: `agent_type` is ABSENT on the main thread (it defaults to an unset
-# mainThreadAgentType) and carries the subagent's own type — `Explore`, `general-purpose`, `teammate` —
-# inside one. So drop a subagent's report.
+# `Stop` means the main thread ended its TURN, not that the work is DONE. In a swarm the lead hands the
+# turn back while its backgrounded teammates keep grinding ("waiting for reports, then the gate") — and a
+# `completed --auto-reset` there lights the sidebar's done-checkmark and calls you over for nothing. The
+# hook's JSON payload on stdin lists that work in `background_tasks`, so when at least one entry is still
+# LIVE we report `active --blink` instead. Nothing has to re-light the checkmark afterwards: Claude Code
+# wakes the main thread when the last agent lands, and its next `Stop` carries an empty `background_tasks`.
 #
-# It must be the TOP-LEVEL `agent_type` and nothing else: a `Stop` payload also lists the session's
-# `background_tasks`, and a BACKGROUNDED subagent's entry there carries its own nested `agent_type` — so
-# a substring match on the raw payload reads the MAIN thread's Stop as a subagent's and swallows the
-# `completed` (observed live: the row stayed on active+blink after the turn ended). `plutil` parses the
-# JSON and extracts exactly the top-level key; it is always present on macOS, and the Codex adapter in
-# this same package already relies on it. Anything it cannot parse yields an empty value, i.e. report
-# anyway — a payload rook does not understand must never silence the indicator.
+# LIVE = `type` is `subagent` (a Task/teammate) or `workflow` (an orchestrator), AND `status` is not one of
+# the terminal values. Testing `status = running` instead would MISS work: the field also takes `pending`
+# and `backgrounded`. And `type = shell` (a Bash `run_in_background`) is deliberately NOT live — a
+# `bun run dev` sits there for hours and would park the row on `active` forever, which is the one reason
+# this cannot just ask whether the array is non-empty.
 #
-# `blocked` is NEVER dropped: a subagent's permission prompt is a real question waiting on you (and
-# answering it clears the glyph through the pane's own keystroke, not through a hook).
+# Both fields must match on the SAME entry, which is why this walks the array by INDEX instead of
+# grepping the payload: with a hung `bun run dev` next to a finished subagent, `"type":"subagent"` and
+# `"status":"running"` both appear — in DIFFERENT objects — and a substring match would park the row on
+# `active` forever.
+#
+# `plutil` parses the JSON properly; it is always present on macOS, and the Codex adapter in this same
+# package already relies on it. Anything it cannot parse yields an empty value, i.e. report anyway — a
+# payload rook does not understand must never silence the indicator.
+#
+# The gate is `state = completed` and nothing else: that is the ONLY state this rewrites, and narrowing
+# it there means the hot path — an `active` on every single tool call — no longer reads stdin or forks
+# `plutil` at all. `blocked` is likewise never rewritten: a question waiting on you outranks background work.
 #
 # Reading stdin is gated on $CLAUDECODE — set only in a Claude Code hook's environment — plus a
 # non-tty stdin, so the other callers (the shell integration, the Codex adapter which parses the same
 # stdin itself, the Pi extension) never block on a `cat` of a pipe nobody closes.
-if [ "$state" != "blocked" ] && [ -n "${CLAUDECODE:-}" ] && [ ! -t 0 ]; then
+#
+# Deliberate trade-off: a lead that ends its turn to ask YOU something while teammates are still running
+# shows `active` instead of the checkmark. Today the row lies the other way (it calls you when it is far
+# too early), and a person pulled over for nothing costs more than a question noticed a minute late.
+if [ "$state" = completed ] && [ -n "${CLAUDECODE:-}" ] && [ ! -t 0 ]; then
   payload=$(cat 2>/dev/null) || payload=''
-  agent_type=$(printf '%s' "$payload" | /usr/bin/plutil -extract agent_type raw -o - - 2>/dev/null) || agent_type=''
-  case $agent_type in
-    ''|main|main-*) ;;   # the main thread (or a payload carrying no such key)
-    *) exit 0 ;;         # a subagent: not this session's turn state
-  esac
 
-  # `Stop` means the main thread ended its TURN, not that the work is DONE. In a swarm the lead hands the
-  # turn back while its backgrounded teammates keep grinding ("waiting for reports, then the gate") — and a
-  # `completed --auto-reset` there lights the sidebar's done-checkmark and calls you over for nothing. The
-  # same payload lists those in `background_tasks`, where a LIVE subagent is an entry with `type` =
-  # `subagent` AND `status` = `running` (when it finishes the entry DISAPPEARS from the array — the status
-  # never flips), so report `active --blink` instead. Nothing has to re-light the checkmark afterwards:
-  # Claude Code wakes the main thread when the last agent lands, and its next `Stop` carries an empty
-  # `background_tasks`.
-  #
-  # Both fields must match on the SAME entry, which is why this walks the array by INDEX instead of
-  # grepping the payload: with a hung `bun run dev` next to a finished subagent, `"type":"subagent"` and
-  # `"status":"running"` both appear — in DIFFERENT objects — and a substring match would park the row on
-  # `active` forever. A long-running background BASH is not a subagent and must never hold the row.
-  #
-  # Deliberate trade-off: a lead that ends its turn to ask YOU something while teammates are still running
-  # shows `active` instead of the checkmark. Today the row lies the other way (it calls you when it is far
-  # too early), and a person pulled over for nothing costs more than a question noticed a minute late.
-  if [ "$state" = completed ]; then
-    i=0
-    while [ "$i" -lt 64 ]; do   # a cap, so a payload plutil reads oddly cannot spin here
-      printf '%s' "$payload" | /usr/bin/plutil -extract "background_tasks.$i" raw -o - - >/dev/null 2>&1 || break
-      task_type=$(printf '%s' "$payload" | /usr/bin/plutil -extract "background_tasks.$i.type" raw -o - - 2>/dev/null) || task_type=''
-      task_status=$(printf '%s' "$payload" | /usr/bin/plutil -extract "background_tasks.$i.status" raw -o - - 2>/dev/null) || task_status=''
-      if [ "$task_type" = subagent ] && [ "$task_status" = running ]; then
-        state=active
-        # keep every other flag the caller passed; `--auto-reset` is meaningless for `active`
-        status_args=()
-        blink_passed=
-        for arg in "$@"; do
-          case $arg in
-            --auto-reset) ;;
-            --blink) blink_passed=1; status_args+=("$arg") ;;
-            *) status_args+=("$arg") ;;
-          esac
-        done
-        [ -n "$blink_passed" ] || status_args+=(--blink)
-        set -- "${status_args[@]+"${status_args[@]}"}"
-        break
-      fi
-      i=$((i + 1))
-    done
-  fi
+  i=0
+  while [ "$i" -lt 64 ]; do   # a cap, so a payload plutil reads oddly cannot spin here
+    printf '%s' "$payload" | /usr/bin/plutil -extract "background_tasks.$i" raw -o - - >/dev/null 2>&1 || break
+    task_type=$(printf '%s' "$payload" | /usr/bin/plutil -extract "background_tasks.$i.type" raw -o - - 2>/dev/null) || task_type=''
+    task_status=$(printf '%s' "$payload" | /usr/bin/plutil -extract "background_tasks.$i.status" raw -o - - 2>/dev/null) || task_status=''
+    live=
+    case $task_type in
+      subagent|workflow)
+        case $task_status in
+          completed|failed|cancelled|stopped) ;;   # terminal: this one is done
+          *) live=1 ;;                             # running / pending / backgrounded / anything new
+        esac
+        ;;
+    esac
+    if [ -n "$live" ]; then
+      state=active
+      # keep every other flag the caller passed; `--auto-reset` is meaningless for `active`
+      status_args=()
+      blink_passed=
+      for arg in "$@"; do
+        case $arg in
+          --auto-reset) ;;
+          --blink) blink_passed=1; status_args+=("$arg") ;;
+          *) status_args+=("$arg") ;;
+        esac
+      done
+      [ -n "$blink_passed" ] || status_args+=(--blink)
+      set -- "${status_args[@]+"${status_args[@]}"}"
+      break
+    fi
+    i=$((i + 1))
+  done
 fi
 
 # forward the pane discriminators when the app injected them: each session surface
