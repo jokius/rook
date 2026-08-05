@@ -262,8 +262,11 @@ paths:
   (`AgentStatusWrapperTests`, the subagent-filter section).
   There is NO Swift/app-side leg and NO settings-json change — the filter is a policy of the BRIDGE, so an
   existing install picks it up by re-running Help ▸ Install Agent Status Hooks… (which re-copies the script).
-  **This filter is HALF the story — the other half is `session.status`'s app-side ownership check, and the
-  two close DIFFERENT holes.**
+  **This filter is ONE of THREE mechanisms that meet at this seam, and each closes a DIFFERENT hole:**
+  (1) this `agent_type` filter, for IN-PROCESS subagents;
+  (2) `session.status`'s app-side ownership check, for nested agent PROCESSES;
+  (3) the `completed`→`active --blink` substitution below, for a main thread that ends its turn while its
+  BACKGROUNDED subagents keep running.
   The `agent_type` filter catches IN-PROCESS subagents: their hooks run inside the pane's OWN `claude`, so
   no process-level test can distinguish them and only the payload can.
   A nested agent PROCESS (a `claude -p …` the pane's agent spawned through Bash) is the opposite case: it
@@ -276,7 +279,38 @@ paths:
   running tmux/ssh both pass untouched.
   See the `session.status` ownership-check bullet in the Control API rule for all three conditions and for
   why it is fail-OPEN.
-  Neither mechanism subsumes the other; a change to one is not a reason to drop the other.
+  **The THIRD mechanism is a SUBSTITUTION, not a drop: a `completed` reported while a BACKGROUNDED subagent
+  is still running goes out as `active --blink` instead.**
+  Neither of the first two touches it, because that `completed` is LEGITIMATE — it comes from the main
+  thread, in its own process, and Claude Code's `Stop` means "the main thread ended its TURN", not "the work
+  is done".
+  In a swarm the lead ends its turn constantly while teammates grind in the background ("waiting for the
+  reports, then the gate"), and the installed `Stop`→`completed --auto-reset` hook lights the sidebar's
+  done-checkmark and calls the user over for nothing.
+  Instructing the agent cannot fix it either: `Stop` fires AFTER the agent's last action and OVERWRITES
+  whatever it set, and after `Stop` the agent calls nothing.
+  The signal is in the same payload the `agent_type` filter already reads: `background_tasks` carries one
+  entry per backgrounded task, and a LIVE subagent is one whose `type` is `subagent` AND whose `status` is
+  `running` (verified live against claude-code 2.1.207; when it finishes the ENTRY DISAPPEARS from the array
+  — the status never flips to a terminal value).
+  Both fields must match on the SAME entry, so the wrapper walks the array BY INDEX with
+  `plutil -extract background_tasks.<i>.<field> raw` (capped at 64) rather than grepping the payload: with a
+  hung `bun run dev` beside a finished subagent, `"type":"subagent"` and `"status":"running"` both appear in
+  DIFFERENT objects and a substring match would park the row on `active` forever
+  (`AgentStatusWrapperTests.runningAndSubagentInDifferentEntriesIsNotALiveSubagent` is that regression).
+  A long-running background BASH is deliberately NOT a subagent — it lives in `background_tasks` for hours,
+  and an "array is non-empty" test would strand the row.
+  The substitution keeps every other flag the caller passed and only swaps `--auto-reset` for `--blink`
+  (auto-reset is meaningless for `active`); it is gated on `state == completed` inside the SAME
+  `$CLAUDECODE` + non-tty block as the `agent_type` filter, so `active`/`blocked` and every non-Claude
+  caller are untouched.
+  Nothing has to re-light the checkmark afterwards: Claude Code wakes the main thread when the last agent
+  lands ("Agent finished"), and its next `Stop` carries an empty `background_tasks`.
+  **The deliberate trade-off: a lead that ends its turn to ask the HUMAN something while teammates are still
+  running shows `active` instead of the checkmark.**
+  Accepted knowingly — today the row lies in the OTHER direction (it calls you when it is far too early), and
+  a person pulled over for nothing costs more than a question noticed a minute late.
+  None of the three subsumes another; a change to one is not a reason to drop the others.
   Peer terminals get the decline case for free by different means rook avoids:
   cmux owns the permission decision UI (a blocking hook round-trip captures accept/deny),
   herdr scrapes the PTY (the prompt chrome leaving the screen clears it).

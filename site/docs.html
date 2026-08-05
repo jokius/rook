@@ -2216,7 +2216,18 @@
               reads the payload's
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agent_type</span> and drops a
               subagent's progress, while still passing a subagent's permission prompt through — that one is a real question
-              waiting on you. An agent your agent <em>started</em> is a separate case with a separate fix: a nested
+              waiting on you. Nor does a finished turn claim "done" while agents are still running: Claude Code's
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">Stop</span> event means the main
+              thread ended its <em>turn</em>, so when its payload's
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">background_tasks</span> still holds a
+              live subagent (an entry that is both a subagent and running — a backgrounded
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">bun run dev</span> is not one, and
+              would hold the row forever) the hook reports active with a pulse instead of the done checkmark. Nothing has to
+              re-light it: Claude Code wakes the main thread when the last agent lands, and its next
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">Stop</span> carries an empty list.
+              The trade-off is deliberate — a lead that stops to ask <em>you</em> something while teammates run shows active
+              rather than a checkmark, and being called over too early is the worse lie.
+              An agent your agent <em>started</em> is a separate case with a separate fix: a nested
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">claude -p …</span> is the main thread of
               its own session, so it carries no
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agent_type</span> and used to report

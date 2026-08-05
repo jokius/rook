@@ -59,6 +59,49 @@ if [ "$state" != "blocked" ] && [ -n "${CLAUDECODE:-}" ] && [ ! -t 0 ]; then
     ''|main|main-*) ;;   # the main thread (or a payload carrying no such key)
     *) exit 0 ;;         # a subagent: not this session's turn state
   esac
+
+  # `Stop` means the main thread ended its TURN, not that the work is DONE. In a swarm the lead hands the
+  # turn back while its backgrounded teammates keep grinding ("waiting for reports, then the gate") — and a
+  # `completed --auto-reset` there lights the sidebar's done-checkmark and calls you over for nothing. The
+  # same payload lists those in `background_tasks`, where a LIVE subagent is an entry with `type` =
+  # `subagent` AND `status` = `running` (when it finishes the entry DISAPPEARS from the array — the status
+  # never flips), so report `active --blink` instead. Nothing has to re-light the checkmark afterwards:
+  # Claude Code wakes the main thread when the last agent lands, and its next `Stop` carries an empty
+  # `background_tasks`.
+  #
+  # Both fields must match on the SAME entry, which is why this walks the array by INDEX instead of
+  # grepping the payload: with a hung `bun run dev` next to a finished subagent, `"type":"subagent"` and
+  # `"status":"running"` both appear — in DIFFERENT objects — and a substring match would park the row on
+  # `active` forever. A long-running background BASH is not a subagent and must never hold the row.
+  #
+  # Deliberate trade-off: a lead that ends its turn to ask YOU something while teammates are still running
+  # shows `active` instead of the checkmark. Today the row lies the other way (it calls you when it is far
+  # too early), and a person pulled over for nothing costs more than a question noticed a minute late.
+  if [ "$state" = completed ]; then
+    i=0
+    while [ "$i" -lt 64 ]; do   # a cap, so a payload plutil reads oddly cannot spin here
+      printf '%s' "$payload" | /usr/bin/plutil -extract "background_tasks.$i" raw -o - - >/dev/null 2>&1 || break
+      task_type=$(printf '%s' "$payload" | /usr/bin/plutil -extract "background_tasks.$i.type" raw -o - - 2>/dev/null) || task_type=''
+      task_status=$(printf '%s' "$payload" | /usr/bin/plutil -extract "background_tasks.$i.status" raw -o - - 2>/dev/null) || task_status=''
+      if [ "$task_type" = subagent ] && [ "$task_status" = running ]; then
+        state=active
+        # keep every other flag the caller passed; `--auto-reset` is meaningless for `active`
+        status_args=()
+        blink_passed=
+        for arg in "$@"; do
+          case $arg in
+            --auto-reset) ;;
+            --blink) blink_passed=1; status_args+=("$arg") ;;
+            *) status_args+=("$arg") ;;
+          esac
+        done
+        [ -n "$blink_passed" ] || status_args+=(--blink)
+        set -- "${status_args[@]+"${status_args[@]}"}"
+        break
+      fi
+      i=$((i + 1))
+    done
+  fi
 fi
 
 # forward the pane discriminators when the app injected them: each session surface

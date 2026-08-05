@@ -229,4 +229,92 @@ struct AgentStatusWrapperTests {
         let r = try runWrapper(["active"], env: Self.hookEnv, stdin: "not json at all")
         #expect(r.argv == ["session", "status", "active", "--target", "sid"])
     }
+
+    // MARK: - live background subagents
+    //
+    // `Stop` means the main thread ended its TURN, not that the work is done: a swarm lead hands the
+    // turn back while its teammates keep running in the background, and the installed hook's
+    // `completed --auto-reset` then lights a "done" checkmark that calls the user over for nothing.
+    // The discriminator is the `Stop` payload's own `background_tasks` (verified against
+    // claude-code 2.1.207: a live backgrounded subagent is an entry with `"type":"subagent"` AND
+    // `"status":"running"`, and it VANISHES from the array when it finishes rather than flipping
+    // status). Under that condition the wrapper reports `active --blink` instead.
+
+    private static func stopPayload(_ tasks: String...) -> String {
+        #"{"session_id":"s","hook_event_name":"Stop","stop_hook_active":false,"background_tasks":[\#(tasks.joined(separator: ","))]}"#
+    }
+
+    private static let runningSubagent =
+        #"{"id":"a652a3537a6bbace4","type":"subagent","status":"running","description":"Read probe.txt and glob all .txt files","agent_type":"Explore"}"#
+    private static let finishedSubagent =
+        #"{"id":"b71f0c2d9","type":"subagent","status":"completed","description":"Read probe.txt and glob all .txt files","agent_type":"Explore"}"#
+    // a long-running background shell — NOT an agent, so it must never hold the row in `active`
+    private static let runningShell =
+        #"{"id":"c904ae13f","type":"bash","status":"running","description":"bun run dev"}"#
+
+    @Test func completedWithLiveSubagentReportsActiveInstead() throws {
+        let r = try runWrapper(["completed", "--auto-reset"], env: Self.hookEnv,
+                               stdin: Self.stopPayload(Self.runningSubagent))
+        #expect(r.argv == ["session", "status", "active", "--target", "sid", "--blink"])
+        #expect(!r.argv.contains("--auto-reset"))
+    }
+
+    @Test func substitutionKeepsTheOtherForwardedFlags() throws {
+        // only --auto-reset is dropped (meaningless for `active`); anything else the caller passed rides along
+        let r = try runWrapper(["completed", "--auto-reset", "--color", "#ff0000"], env: Self.hookEnv,
+                               stdin: Self.stopPayload(Self.runningSubagent))
+        #expect(r.argv.prefix(5) == ["session", "status", "active", "--target", "sid"])
+        #expect(r.argv.contains("--blink"))
+        #expect(!r.argv.contains("--auto-reset"))
+        if let i = r.argv.firstIndex(of: "--color") {
+            #expect(r.argv.dropFirst(i + 1).first == "#ff0000")
+        } else {
+            Issue.record("--color was dropped from the forwarded args")
+        }
+    }
+
+    @Test func completedWithFinishedSubagentStillCompletes() throws {
+        // a finished entry is not a live one: the turn really is over
+        let r = try runWrapper(["completed", "--auto-reset"], env: Self.hookEnv,
+                               stdin: Self.stopPayload(Self.finishedSubagent))
+        #expect(r.argv == ["session", "status", "completed", "--target", "sid", "--auto-reset"])
+    }
+
+    @Test func completedWithRunningNonSubagentStillCompletes() throws {
+        // a backgrounded `bun run dev` / `tail -f` lives in background_tasks for HOURS — "array is
+        // non-empty" would pin the session in `active` forever, so only `type == subagent` counts
+        let r = try runWrapper(["completed", "--auto-reset"], env: Self.hookEnv,
+                               stdin: Self.stopPayload(Self.runningShell))
+        #expect(r.argv == ["session", "status", "completed", "--target", "sid", "--auto-reset"])
+    }
+
+    @Test func runningAndSubagentInDifferentEntriesIsNotALiveSubagent() throws {
+        // THE trap the per-element parse exists for: `"type":"subagent"` sits on the FINISHED entry and
+        // `"status":"running"` on the background shell, so both substrings occur in the payload while no
+        // single entry is a live subagent. A grep over the raw JSON says "busy"; the turn is actually done.
+        let r = try runWrapper(["completed", "--auto-reset"], env: Self.hookEnv,
+                               stdin: Self.stopPayload(Self.runningShell, Self.finishedSubagent))
+        #expect(r.argv == ["session", "status", "completed", "--target", "sid", "--auto-reset"])
+    }
+
+    @Test func completedWithNoBackgroundTasksIsUnchanged() throws {
+        // the ordinary Stop: nothing in flight, the checkmark is honest
+        let r = try runWrapper(["completed", "--auto-reset"], env: Self.hookEnv, stdin: Self.stopPayload())
+        #expect(r.argv == ["session", "status", "completed", "--target", "sid", "--auto-reset"])
+    }
+
+    @Test func liveSubagentDoesNotRewriteOtherStates() throws {
+        // the substitution is scoped to `completed`; `active`/`blocked` already say the right thing
+        for state in ["active", "blocked"] {
+            let r = try runWrapper([state], env: Self.hookEnv, stdin: Self.stopPayload(Self.runningSubagent))
+            #expect(r.argv == ["session", "status", state, "--target", "sid"], "state \(state)")
+        }
+    }
+
+    @Test func liveSubagentIgnoredOutsideAClaudeHook() throws {
+        // no $CLAUDECODE (shell integration, Codex adapter, Pi): stdin stays untouched, no substitution
+        let r = try runWrapper(["completed", "--auto-reset"], env: ["ROOK_SESSION_ID": "sid"],
+                               stdin: Self.stopPayload(Self.runningSubagent))
+        #expect(r.argv == ["session", "status", "completed", "--target", "sid", "--auto-reset"])
+    }
 }

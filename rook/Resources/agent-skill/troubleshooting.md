@@ -292,6 +292,45 @@ the check resolves to the MAIN pane, so an agent reporting from a split or the s
 its NEIGHBOUR's foreground process — a mismatch, and the report is dropped. In the main pane it changes
 nothing, so passing it is always right.
 
+### "My turn ended but the row shows `active`, not the completed checkmark"
+
+By design, and it is the THIRD mechanism on this seam (the two above being the `agent_type` filter and the
+pid ownership check). Claude Code's `Stop` event means the main thread ended its TURN, not that the work is
+DONE: in a swarm the lead hands the turn back while its backgrounded teammates keep grinding, and the
+installed `Stop` → `completed --auto-reset` hook used to light the done-checkmark and call the user over for
+nothing. So when the `Stop` payload's `background_tasks` still holds a LIVE subagent — an entry whose `type`
+is `subagent` AND whose `status` is `running`, both on the SAME entry — the wrapper reports `active --blink`
+instead, keeping every other flag it was passed and dropping only `--auto-reset`.
+
+A backgrounded BASH (`bun run dev`, `tail -f`) is deliberately NOT a subagent: it lives in `background_tasks`
+for hours, and treating a non-empty array as "busy" would strand the row on `active` forever. A subagent that
+has FINISHED does not hold it either — its entry DISAPPEARS from the array rather than flipping status.
+
+Nothing has to re-light the checkmark: Claude Code wakes the main thread when the last agent lands, and its
+next `Stop` carries an empty `background_tasks`, which reports the honest `completed --auto-reset`.
+
+**The deliberate trade-off:** if the lead ends its turn to ask the HUMAN something while teammates are still
+running, the row shows `active` instead of the checkmark. That is accepted — the row used to lie the other
+way (calling you when it was far too early), and a person pulled over for nothing costs more than a question
+noticed a minute later. An agent cannot work around it by setting a status itself, either: `Stop` fires
+AFTER the agent's last action and overwrites whatever it set, and after `Stop` the agent runs nothing.
+
+**A leftover `active` is stickier than the checkmark it replaced.** `completed --auto-reset` cleared two
+cheap ways — visiting the session, or ANY keystroke in the pane. `active` clears by neither: only an
+INTERRUPT keystroke (Esc / Ctrl-C in the owning pane), the row's right-click **Clear Status**, or
+`rookctl session status idle --target …`. So if the agent is killed right after the turn (⌃D, closing it)
+the row keeps pulsing `active` where it used to show a checkmark that a single click erased. Same
+stickiness the ordinary `active --blink` from `PostToolUse` has always had — just now reachable at the end
+of a turn too.
+
+**Claude Code only.** Codex and Pi report through their own adapters and the shell integration through
+`ROOK_AGENT_RE`; none of them carries a `background_tasks` payload, so under them a finished turn lights
+the checkmark exactly as before — a Codex-driven swarm will not behave like this.
+
+An install predating this still shows the old behavior (an installed hook is a copy): re-run
+Rook ▸ Help ▸ Install Agent Status Hooks…, then check
+`grep -c background_tasks ~/.config/rook/agent-status/rook-agent-status.sh` (0 = the old hook).
+
 ### "Clicking a path in the terminal does nothing / opens Finder instead of the preview"
 
 ⌘-clicking a link routes by what the path IS, and a click that lands on nothing is silently ignored on
