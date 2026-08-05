@@ -147,9 +147,12 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   say it, never run the installers yourself.
 
 - **Manage file sizes for real — source files stay under 1000 lines, tests under a hard 2000 (= 2×).**
-  In OUR OWN work: when you touch a long file, PROPOSE splitting/relocating it toward that rather than
-  growing it further — but ALWAYS ask the user first, never restructure a file unprompted; and don't
-  reflexively bump the swiftlint `file_length`/`type_body_length` limits to fit new code.
+  In OUR OWN work: when you touch a long file, SPLIT/relocate it along a logical seam rather than growing
+  it further — do it as part of the change, WITHOUT asking (the maintainer gave a standing go-ahead:
+  always split so the code fits the limit); and don't reflexively bump the swiftlint
+  `file_length`/`type_body_length` limits to fit new code.
+  Keep the split mechanical and legible: move code verbatim in its own step, never fold a behavior change
+  into the move.
   For a CONTRIBUTOR's PR: do NOT force this — a contributor shouldn't have to refactor a pre-existing long
   file to land their change; NOTIFY that a file is getting long and SUGGEST keeping it under 1000, but
   never make them address the line count or block the PR on it.
