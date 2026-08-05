@@ -197,6 +197,39 @@ paths:
   This is verified END-TO-END by `KeymapUITests.testCustomCommandShiftedSymbolFires` (a real synthesized
   Shift+/ keypress fires a `shift+/`-bound command) — the host-free tests structurally can't reach
   `chord(from:)`, which is exactly why the earlier parser-only version shipped a runtime that never fired.
+- **A chord resolves per LAYOUT, not per key — this is what makes `keymap.conf` work on a Cyrillic keyboard.**
+  The `NSEvent`-monitor seams (`CustomCommandRunner`, `UndoCloseShortcut`) used to match the character the
+  active layout PRODUCES, so on a Russian layout the physical O yields `щ` and a Latin-spelled `cmd+o` could
+  never match — every custom command and ⌘Z Reopen Closed Item were dead there.
+  Built-in `map` shortcuts were unaffected: they ride AppKit menu key equivalents, a different mechanism.
+  The policy is the host-free `chordKey(forKeyCode:produced:layoutIsASCIICapable:)`
+  (`rookCore/Sources/rookCore/AnsiKeyLayout.swift`); the single bit it needs comes from app-side
+  `KeyboardLayout.isASCIICapable` (`rook/Ghostty/KeyboardLayout.swift`), read FRESH on every key press —
+  no cache, no layout-change observer to get wrong.
+  A layout that can type ASCII (US, Dvorak, Colemak, US-International, French, German) binds the character
+  it produces, exactly as before, so no existing binding changes; one that cannot (every Russian variant,
+  Greek, Hebrew, Arabic, Thai) binds every key by physical position through the ANSI table.
+  Note this reads a DIFFERENT input source than the sibling `KeyboardLayout.asciiCodepoint`:
+  `TISCopyCurrentKeyboardLayoutInputSource` (what you are typing on) vs the ASCII-capable FALLBACK layout
+  that one resolves.
+  **Do NOT "optimize" this into a per-KEY ASCII test** (keep any produced character that happens to be ASCII).
+  Measured on real layout data, it breaks three ways: Greek types `;` on the physical Q and Hebrew types `/`
+  there, so letter chords stay dead on two of the three layouts this targets; two physical keys collapse onto
+  one chord (Hebrew 39/43 → `,`, Russian-PC 44/47 → `.`), firing a binding from a key the user never pressed
+  and swallowing the keystroke; and the ISO section key (keyCode 10) collides with the ANSI backslash key,
+  which is why it is DROPPED on a position-resolved layout (Ukrainian-PC types `\` there, Hebrew-PC `;`).
+  `AnsiKeyLayout.latinKey` and `Keybind.namedKey(forKeyCode:)` claim non-overlapping keyCodes (pinned by a
+  test), because the monitors resolve a named key first.
+  This is a SEPARATE rule from `InterruptKeystroke.isInterrupt`, which looks at the character rather than the
+  layout — do not merge them.
+  It also SPLITS a known limit rather than removing it: `map shift+/ undo_close` stays dead on a Latin layout
+  (that monitor keeps Shift in its base key, so the character is `?`) and now FIRES on a position-resolved
+  one; `undo_close` is the only built-in delivered by a monitor instead of a menu key equivalent.
+  A non-ASCII layout can only bind by POSITION, so it cannot bind the Cyrillic character it prints.
+  **`keybind` in `ghostty.conf` does NOT get this treatment** — that is libghostty's own matcher, where a bare
+  letter is a unicode trigger matched against the produced character and `key_g` is a physical trigger.
+  The answer there is the `key_` form (the bundled defaults already ship `super+key_c`/`key_v`/`key_a` for
+  exactly this reason), not an app-side change.
 - **v1 scope cut (confirmed).**
   Built-in rebinds are single-chord only (leaders only for custom commands).
   The literal `+`/`>` still can't be a bare key TOKEN (they are the chord-joiner / leader separator), but

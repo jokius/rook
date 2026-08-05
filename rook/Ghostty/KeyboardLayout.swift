@@ -11,6 +11,26 @@ import Carbon
 /// whose character is non-ASCII, so it runs at human typing speed on Cyrillic Ctrl-chords and never in a
 /// text-input hot path — a cache would only add a layout-switch invalidation to get wrong.
 enum KeyboardLayout {
+    /// Whether the ACTIVE keyboard layout can type ASCII at all — the one bit
+    /// `chordKey(forKeyCode:produced:layoutIsASCIICapable:)` branches on to decide whether a keymap chord
+    /// resolves by produced character or by physical position. Note the different input source from
+    /// `asciiCodepoint`: this asks about the layout the user is CURRENTLY typing on, not the ASCII layout
+    /// macOS would fall back to.
+    ///
+    /// Read fresh on every key press, like the codepoint above and for the same reason — it costs well
+    /// under a microsecond, so it needs no cache and no `kTISNotifySelectedKeyboardInputSourceChanged`
+    /// observer and cannot go stale mid-session. Falls back to true (bind by produced character) when the
+    /// layout cannot be resolved, which is how every Latin layout already behaves.
+    ///
+    /// This covers the two MONITOR-driven paths only — custom commands and `undo_close`. Every other
+    /// built-in rides an AppKit menu key equivalent, which resolves on its own.
+    static var isASCIICapable: Bool {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let value = TISGetInputSourceProperty(source, kTISPropertyInputSourceIsASCIICapable)
+        else { return true }
+        return CFBooleanGetValue(Unmanaged<CFBoolean>.fromOpaque(value).takeUnretainedValue())
+    }
+
     static func asciiCodepoint(forKeyCode keyCode: UInt16) -> UInt32? {
         guard let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(),
               let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)

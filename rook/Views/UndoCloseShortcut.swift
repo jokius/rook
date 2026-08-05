@@ -38,7 +38,15 @@ final class UndoCloseShortcut {
         if flags.contains(.option) { mods.insert(.option) }
         if flags.contains(.shift) { mods.insert(.shift) }
 
-        let key = namedKey(forKeyCode: event.keyCode) ?? event.charactersIgnoringModifiers?.lowercased()
+        // a layout that cannot type ASCII resolves to the Latin key at the same physical position, so ⌘Z
+        // still reopens a closed item on a Cyrillic layout (where that key types `я`). Unlike
+        // `CustomCommandRunner.chord(from:)` the produced character here KEEPS shift
+        // (`charactersIgnoringModifiers` reports `?` for shift+/), so a shifted-symbol chord does not
+        // match on a Latin layout — pre-existing, and now split by the layout branch: `map shift+/
+        // undo_close` fires on a position-resolved layout and stays dead on a Latin one.
+        let key = namedKey(forKeyCode: event.keyCode)
+            ?? chordKey(forKeyCode: event.keyCode, produced: event.charactersIgnoringModifiers,
+                        layoutIsASCIICapable: KeyboardLayout.isASCIICapable)
         guard let key, key.count == 1 || bindableNamedKeys.contains(key) else { return nil }
         return Chord(mods: mods, key: key)
     }
