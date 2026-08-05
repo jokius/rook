@@ -43,6 +43,7 @@ extension AppStore {
     /// false because this method has RUNTIME callers too: reopening a closed window mid-process reloads its
     /// store through here, and that must not execute anything.
     public func restore(from snapshot: Snapshot, launchRestore: Bool = false) {
+        freshWorkspaceID = nil // live create-time state, never restored from disk
         // fold workspaces sharing an id into the first occurrence, and keep only the first snapshot of any
         // repeated session id, wherever it sits: a file written by a build that could duplicate either
         // stays unreachable past the first match otherwise, and re-saves the corruption.

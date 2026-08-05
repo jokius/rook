@@ -113,8 +113,12 @@ extension AppActions {
                 self?.openWindow(target)
             })
         }
-        if let store, let current = store.currentWorkspaceID, let sessionID = store.selectedSessionID {
-            for workspace in store.workspaces where workspace.id != current {
+        // the excluded workspace is the SESSION'S OWN, not the current one: those diverge now that a
+        // freshly created workspace becomes current, and excluding the current one hid exactly the
+        // destination the user had just made.
+        if let store, let sessionID = store.selectedSessionID,
+           let source = store.workspace(forSession: sessionID)?.id {
+            for workspace in store.workspaces where workspace.id != source {
                 let target = workspace.id
                 items.append(PaletteItem(id: "move-\(target)", title: "Move Session to \(workspace.name)") { [weak self] in
                     self?.moveSession(sessionID, toWorkspace: target)

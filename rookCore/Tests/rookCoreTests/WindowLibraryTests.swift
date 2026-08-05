@@ -416,6 +416,13 @@ final class WindowLibraryTests {
         #expect(info.name == "window 2")
     }
 
+    @Test func newWindowStripsInteriorControlCharactersFromName() {
+        // {AGT_WINDOW_NAME} expands unquoted into /bin/sh -c; `window new --name` must not store the newline.
+        let library = WindowLibrary(directory: directory)
+        let info = library.newWindow(name: "prod\ntouch /tmp/pwned")
+        #expect(info.name == "prodtouch /tmp/pwned")
+    }
+
     @Test func renameWindowUpdatesNameAndIgnoresBlank() {
         let library = WindowLibrary(directory: directory)
         let id = library.windows[0].id
@@ -423,6 +430,14 @@ final class WindowLibraryTests {
         #expect(library.windows[0].name == "personal")
         library.renameWindow(id, to: "  ")
         #expect(library.windows[0].name == "personal")
+    }
+
+    @Test func renameWindowStripsInteriorControlCharacters() {
+        // {AGT_WINDOW_NAME} expands unquoted into /bin/sh -c; an interior newline must not survive the index.
+        let library = WindowLibrary(directory: directory)
+        let id = library.windows[0].id
+        library.renameWindow(id, to: "prod\ntouch /tmp/pwned")
+        #expect(library.windows[0].name == "prodtouch /tmp/pwned")
     }
 
     @Test func removeWindowDropsEntryStoreAndFile() throws {

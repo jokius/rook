@@ -33,7 +33,29 @@ extension SessionNavigation {
 @MainActor
 public final class AppStore {
     public var workspaces: [Workspace]
-    public var selectedSessionID: UUID?
+
+    /// A CHANGE here drops `freshWorkspaceID`: close, workspace removal, pending-close undo and Reopen
+    /// Closed Item all reselect by assigning directly, so centralizing the drop is what keeps a fresh
+    /// workspace from outliving a selection made outside `selectSession`. A same-value write must NOT drop
+    /// it — reselecting the already-active session is what `navigateSession` with one visible session and
+    /// `overlay open --follow` both do, and neither moves the user. `restore(from:)` clears explicitly; it
+    /// reloads state rather than selecting.
+    public var selectedSessionID: UUID? {
+        didSet {
+            if selectedSessionID != oldValue { freshWorkspaceID = nil }
+        }
+    }
+
+    /// The workspace that holds the target without owning the selection: a FOREGROUND create, or a
+    /// `selectWorkspace` on an EMPTY one, which has no session to select. Without it a new workspace is
+    /// never current while any session is selected — selection does not move on create, so File ▸ Rename
+    /// Workspace edited the one you came from and ⌘N put the session there too. Dropped by a selection
+    /// CHANGE (the observer above, so a same-value write keeps it), by `selectWorkspace` naming a workspace
+    /// that HAS a session, by removing the workspace, by the focus filter hiding it, and by `restore(from:)`.
+    /// A BACKGROUND create (`revealNewWorkspace: false`) never sets it, so a script's create cannot steer
+    /// the GUI's next add. `internal` (not private) so the `AppStore+CurrentWorkspace`/`+Persistence`
+    /// extensions — separate files — can reach it; live state, never persisted.
+    var freshWorkspaceID: UUID?
 
     /// Transient sidebar multi-selection. Not persisted: it is UI command state, while
     /// `selectedSessionID` remains the durable active terminal target.
@@ -192,16 +214,6 @@ public final class AppStore {
         return session(withID: selectedSessionID)
     }
 
-    /// The workspace a new session should land in: the selected session's workspace, else the
-    /// last workspace (nil when there are no workspaces). Drives both the bottom bar's add
-    /// actions and the File menu's New Session / Open Directory.
-    public var currentWorkspaceID: UUID? {
-        if let selectedSessionID, let workspace = workspace(forSession: selectedSessionID) {
-            return workspace.id
-        }
-        return workspaces.last?.id
-    }
-
     /// The auto-generated name for the next new workspace (`workspace 1`, `workspace 2`, …).
     public var defaultWorkspaceName: String {
         "workspace \(workspaces.count + 1)"
@@ -298,14 +310,20 @@ public final class AppStore {
     /// the user asked for this workspace, so mutating the set here is intentional.
     /// Pass `revealNewWorkspace: false` to leave the filter untouched — a background
     /// `session.new --no-select` create, which must not widen the view.
+    /// `revealNewWorkspace` ALSO decides targeting: true makes this workspace `currentWorkspaceID` for as
+    /// long as `freshWorkspaceID` holds it, false leaves the target where it is.
     /// Pass `collapsed: true` to create it already collapsed in the sidebar (backs `workspace.new --collapsed`):
     /// a runtime add defaults `isExpanded == true` and renders open, so a collapsed workspace can be built
     /// and filled with `addSession(select: false)` without opening.
     @discardableResult
     public func addWorkspace(name: String, collapsed: Bool = false, revealNewWorkspace: Bool = true) -> Workspace {
-        let workspace = Workspace(name: name, isExpanded: !collapsed)
+        // {AGT_WORKSPACE_NAME} expands unquoted into /bin/sh -c; strip control chars as the OSC path does (TerminalText).
+        let workspace = Workspace(name: TerminalText.sanitized(name), isExpanded: !collapsed)
         workspaces.append(workspace)
-        if revealNewWorkspace { revealNewFocusMember(workspace.id) }
+        if revealNewWorkspace {
+            revealNewFocusMember(workspace.id)
+            freshWorkspaceID = workspace.id
+        }
         scheduleTreeChanged()
         save()
         return workspace
@@ -315,7 +333,9 @@ public final class AppStore {
     /// matches or `name` is blank. Backs `session.new --workspace-name` (addressing a workspace by its
     /// sidebar label instead of an id).
     public func workspace(named name: String) -> Workspace? {
-        guard let needle = name.trimmedOrNil else { return nil }
+        // sanitize the needle like the stored names, so a raw control-char lookup still finds its workspace
+        // (`session.new --workspace-name` without --create-workspace calls this directly).
+        guard let needle = TerminalText.sanitized(name).trimmedOrNil else { return nil }
         return workspaces.first { $0.name == needle }
     }
 
@@ -323,7 +343,9 @@ public final class AppStore {
     /// is forwarded to `addWorkspace` on the create path. Nil only when blank. Backs `--workspace-name --create-workspace`.
     @discardableResult
     public func ensureWorkspace(named name: String, revealNewWorkspace: Bool = true) -> Workspace? {
-        guard let needle = name.trimmedOrNil else { return nil }
+        // sanitize before the blank check: a control-char-only name must read as blank, not create an
+        // unmatchable empty-named workspace on every call.
+        guard let needle = TerminalText.sanitized(name).trimmedOrNil else { return nil }
         return workspace(named: needle) ?? addWorkspace(name: needle, revealNewWorkspace: revealNewWorkspace)
     }
 
@@ -338,7 +360,11 @@ public final class AppStore {
                            name: String? = nil, wait: Bool = false, at index: Int? = nil,
                            select: Bool = true) -> Session? {
         guard let wsIndex = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return nil }
-        let session = Session(initialCwd: cwd, customName: name?.trimmedOrNil)
+        // Both seed values reach a custom-command token that expands unquoted into /bin/sh -c: cwd via
+        // initialCwd → effectiveCwd → {AGT_SESSION_PWD} until OSC 7 reports, and name via customName →
+        // {AGT_SESSION_NAME}. Strip control characters the same way the OSC path does. See TerminalText.
+        let session = Session(initialCwd: TerminalText.sanitized(cwd),
+                              customName: name.map(TerminalText.sanitized)?.trimmedOrNil)
         session.initialCommand = command
         session.commandWait = wait
         if let index {
@@ -468,28 +494,6 @@ public final class AppStore {
         sessionRecency.remove(id)
     }
 
-    /// Sets a session's custom name. An empty (or whitespace-only) name clears
-    /// `customName` to nil, reverting the row to the auto basename.
-    public func renameSession(_ sessionID: UUID, to name: String) {
-        guard let session = session(withID: sessionID) else { return }
-        let renamed = name.trimmedOrNil
-        guard session.customName != renamed else { return } // a same-value rename is not a tree change
-        session.customName = renamed
-        scheduleTreeChanged()
-        save()
-    }
-
-    /// Renames a workspace. An empty (or whitespace-only) name is ignored —
-    /// workspaces have no auto fallback, so a blank name is rejected.
-    public func renameWorkspace(_ workspaceID: UUID, to name: String) {
-        guard let trimmed = name.trimmedOrNil,
-              let index = workspaces.firstIndex(where: { $0.id == workspaceID }),
-              workspaces[index].name != trimmed else { return } // blank and same-value names are no-ops
-        workspaces[index].name = trimmed
-        scheduleTreeChanged()
-        save()
-    }
-
     /// Removes a session, tears down its surface, and — if it was the active
     /// session — reselects the most-recently-active surviving session in scope
     /// (see `closeReselectionTarget(after:)`), falling back to the positional neighbor.
@@ -547,6 +551,7 @@ public final class AppStore {
         }
         dropFocusMember(workspaceID) // a marked root is gone; the filter goes with the last member
         workspaces.remove(at: index)
+        forgetFreshWorkspace(workspaceID)
         if removingActive {
             let fallbackIndex = min(index, workspaces.count - 1)
             selectedSessionID = workspaces[fallbackIndex].sessions.first?.id

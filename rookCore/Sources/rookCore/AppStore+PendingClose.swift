@@ -174,6 +174,7 @@ extension AppStore {
     public func softRemoveWorkspace(_ workspaceID: UUID, grace: TimeInterval = AppStore.pendingCloseGraceInterval) -> Bool {
         guard canRemoveWorkspace, let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return false }
         let folded = foldingPendingCloses(of: workspaces.remove(at: index))
+        forgetFreshWorkspace(workspaceID) // an undo re-inserting the same id must not revive the target
         let workspace = folded.workspace
         let removingActive = selectedSessionID.map { id in workspace.sessions.contains { $0.id == id } } ?? false
         let restoringSelection = removingActive ? selectedSessionID : nil
