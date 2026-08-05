@@ -99,6 +99,7 @@ extension WindowContentView {
                 captionBackground: terminalColor,
                 pillColor: dashboardPillColor,
                 pillTextColor: dashboardPillTextColor,
+                focusAllowed: pick.pending == nil,
                 onHighlight: { dashboard.highlight($0) },
                 onSelect: { selectDashboardMember($0) },
                 onClose: { closeDashboardFromKeyboard() }

@@ -104,6 +104,8 @@ paths:
   section for why the meaning of `focused` was NOT widened instead,
   `workspace.collapse`+`workspace.expand`+`workspace.new --collapsed`/`collapsed` (workspace node),
   `quick`/`quickVisible` (top-level),
+  `pick.open`/`pickPending` (top-level, `tree`-only — the pending picker's id; Esc/⌘W resolve a pick with
+  no command involved, so a cache-backed copy would go stale),
   `font.*`/`fontSize`+`splitFontSize`+`scratchFontSize` (the per-pane LIVE font size — the split/scratch
   panes' fonts are otherwise unobservable, being live-only; supplied to `controlTree` by app-side closures
   reading `GhosttySurfaceView.currentFontSize()`, since the host-free tree can't read a surface),
@@ -331,10 +333,10 @@ paths:
   rules, then remaining targets resolve inside that same store so one command never mutates multiple windows.
   The top-level `target` also carries the first explicit batch target so a new CLI talking to a still-running
   pre-batch server degrades to a named session instead of accidentally acting on `active`.
-- **Command catalog (74 commands):**
+- **Command catalog (77 commands):**
   The count is every `Command` case MINUS `debug.appearance` (the UI-test-only seam below, which has no
   `rookctl` subcommand and is not in the skill) — `awk '/^public enum Command/,/^}/' rookCore/Sources/rookCore/ControlProtocol.swift | grep -cE '^\s+case '`
-  minus one (75 cases → 74).
+  minus one (78 cases → 77).
   Re-RUN that command rather than trusting the number in front of you: it went stale once already, when
   `session.restore` landed and every count surface kept saying 73.
   The same number must appear in `README.md`, `site/docs.html`, `site/commands.html` (four places there:
@@ -348,6 +350,7 @@ paths:
   - `session.new`/`session.close`/`session.select`/`session.rename`/`session.duplicate`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.agent`/`session.flag`/`session.seen`/`session.background`/`session.restore`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`
   - `surface.zoom`
   - `dashboard`
+  - `pick.open`/`pick.result`/`pick.cancel` — the native picker (see its own section below)
   - `quick`/`quick.type`/`quick.text`
   - `sidebar`/`sidebar.mode`/`sidebar.expand`/`sidebar.collapse`
   - `notify`
@@ -370,7 +373,7 @@ paths:
   Setting echoes the resulting effective side in `result.text`; the BARE form (no name) reads the side
   the last config feed applied (`SettingsModel.lastAppliedIsDark`), which the test polls to prove the
   flip actually drove the reload.
-  `AppearanceFlipUITests` is its only consumer; the public command count stays 73.
+  `AppearanceFlipUITests` is its only consumer; the public command count stays 77.
 
   **`events.read` — the READ leg of a bounded event ring, control-NATIVE (no GUI surface at all).**
   It exists because polling `tree --json` and diffing a ~31-field-per-session snapshot cannot see a
@@ -768,8 +771,8 @@ paths:
   honest answer is zero.
   A one-element `targets` array routes to the singular path, like the batch `session.close`/`session.move`.
   `--pane` applies to every target with one value (validated server-side in `injectText`, as before).
-  The command CATALOG does NOT grow — these are flags on an existing command, so every count surface stays
-  at 74.
+  The command CATALOG does NOT grow — these are flags on an existing command, so no count surface moved for
+  them (the catalog total has since risen for unrelated reasons; the point here is that flags never move it).
   **No new `tree` read-back is owed**: `session.type` mutates no app state (the text goes into a shell), and
   its read leg is the existing `session.text`.
   Keep-in-sync: `ControlArgs.flagged` in `ControlProtocol.swift`, the `.sessionType` arm
@@ -1179,6 +1182,68 @@ paths:
   `buildTree`, (3) the `dashboard` subcommand (`validate()`-guarded) in `rookctlKit`, (4) round-trip in
   `ControlProtocolTests` + `ControlDispatcherDashboardTests` + `DashboardLayoutTests`/`DashboardControllerTests`
   + `AppStoreDashboardTests` + CLI mapping in `CommandsTests` + the e2e `DashboardUITests`.
+
+  **`pick.open`/`pick.result`/`pick.cancel` — the native picker, and the one command family whose POINT is
+  asking the HUMAN a question.**
+  An agent driving rook can read state and act, but it had no way to say "which of these?" and get an answer;
+  `pick.open` puts a caller-supplied list into the same palette UI the user already knows, and the answer
+  comes back over the socket.
+  - **`pick.open`** takes `args.items` (`[ControlPickItem]` = `{id, label, subtitle?}`), plus `prompt`
+    (placeholder), `query` (opens already filtered), `allowCustom` (accept the typed query as the answer),
+    `follow` (raise the target window), and the global `--window`.
+    It returns the new picker's id in `result.id` (a fresh UUID), NOT the answer — the answer is read back.
+  - **`pick.result <id>`** returns the nested `ControlPickResult` = `{result, id?, label?, index?, query?}`,
+    where `result` is `pending`|`picked`|`custom`|`cancelled`.
+    `pick.cancel <id>` resolves a pending picker as `cancelled`.
+    Both are addressed by PICK ID and take no window selector: the id is globally unique, so a poll finds its
+    picker wherever it lives — which is what lets a poll survive the window closing under it.
+  - **Validation is dispatcher-owned** (host-free, `ControlDispatcher+Pick.swift`), and the strings are pinned:
+    `pick.open requires items`, `pick.open requires at least one item` (an EMPTY list is legal only with
+    `allowCustom` — a picker with nothing to pick is a free-text prompt, not an error),
+    `too many items (max 1000)` (`ControlPickItem.maxItems`), `pick item label must not be empty`,
+    `pick item ids must be unique`, `item text must not contain control characters` (the same invisible-control
+    vector the store's name sanitizing closes), `pick.result requires a pick id`,
+    `pick.cancel requires a pick id`.
+    App-side adds `pick already pending` (one picker per window), `unknown pick: <id>`, `no open window`, and
+    `no pick surface`.
+  - **Matching is LABEL-ONLY for a caller-supplied list**, unlike the action palette's fuzzy scoring over the
+    whole row: the caller controls the labels, and scoring the subtitle too would let a row win on text its
+    author never meant as a key (`PaletteSearchKeys`, host-free + unit-tested).
+    An EMPTY query preserves CALLER ORDER rather than re-sorting, so a list that is already ranked stays
+    ranked; the query is trimmed first, because a trailing newline (a shell here-doc's parting gift) scored
+    every row zero and silently destroyed that order.
+  - **Retention is why a slow human does not break a script.** A resolved answer is kept after the picker
+    closes: 8 per window (`PickController.retainedResultLimit`) and 32 app-wide for windows that have since
+    closed (`PickRegistry`), evicted oldest-ANSWER-first by a monotonic resolution sequence rather than
+    per-window, so a poll landing after teardown still reads its own result instead of an error.
+  - **Every path that could strand a waiting caller resolves the pick instead of hiding it**: ⌘W (the first
+    rung of the close ladder, ABOVE terminal zoom), the window actually closing, and app termination
+    (`cancelAllPendingPicks` on `willTerminate`).
+    A pending picker is also a MODAL for our purposes — `uiActionsEnabled` gains a `pickActive` term, so the
+    palettes, quick terminal, zoom, dashboard and search decline to steal its first responder.
+  - **`rookctl pick` is the ergonomic half**: `pick` alone is `pick open` (default subcommand), reading items
+    from stdin as one label per line (the label doubles as the id) or as a JSON `[{id,label,subtitle?}]` array
+    when the first non-whitespace byte is `[`.
+    It BLOCKS by default — polling ten times at 100 ms and then every 500 ms, because a human choice takes
+    seconds to minutes and hammering a serial accept loop for that long is rude — and exits `0` for
+    picked/custom, `1` for pending, `2` for cancelled, so a shell script branches on `$?` alone.
+    `--no-block` prints the id and returns, leaving `pick result`/`pick cancel` to the caller.
+    A transport failure mid-poll sends a best-effort `pick.cancel` on a fresh connection, so an abandoned
+    caller does not leave a picker up on the user's screen.
+  - **READ-BACK is `ControlTree.pickPending`** at the tree top level: the id of the picker awaiting an answer
+    in that window, omitted when none.
+    It is `tree`-only and resolved LIVE app-side (the user answers with the keyboard, no command involved, so
+    a cached `window.list` copy would go stale) — the same treatment as `zoomedSurface` and the dashboard
+    fields.
+  Four-point keep-in-sync audit: (1) `case pickOpen`/`pickResult`/`pickCancel` + `ControlArgs.items`/`prompt`/
+  `query`/`allowCustom` (reusing `follow`) + `ControlPickItem`/`ControlPickOutcome`/`ControlPickResult` +
+  `ControlTree.pickPending` in `rookCore`, (2) the dispatcher arm (`ControlDispatcher+Pick.swift`) →
+  `ControlActions` witnesses in `ControlServer+Pick.swift` (a NEW family file — `+SessionActions.swift` is at
+  its size limit) plus the `pickPending` closure in `buildTree`, (3) the `rookctl pick open|result|cancel`
+  subcommand tree in `rookctlKit/MiscCommands.swift`, (4) `PickTests` + `ControlDispatcherPickTests` +
+  `PaletteSearchKeysTests` + `PickCommandsTests` + round-trip in `ControlProtocolTests` + the e2e
+  `ControlPickUITests`.
+
   Mode-bearing commands (`session.split`/`quick`) compute the delta against current state so `on`/`off`/`show`/`hide`
   are idempotent, and an unknown mode is an error.
   `quick`'s visibility reads back on `ControlTree.quickVisible` at the tree TOP level — LIVE, resolved

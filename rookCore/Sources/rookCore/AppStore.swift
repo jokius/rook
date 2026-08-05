@@ -228,6 +228,7 @@ public final class AppStore {
                             scratchFontSize: (Session) -> Double? = { _ in nil },
                             quickVisible: () -> Bool? = { nil },
                             zoomedSurface: () -> String? = { nil },
+                            pickPending: () -> String? = { nil },
                             dashboardMembers: () -> [String]? = { nil },
                             dashboardHighlighted: () -> String? = { nil },
                             dashboardFontSize: () -> Double? = { nil },
@@ -301,7 +302,7 @@ public final class AppStore {
                            dashboardMembers: dashboardMembers(),
                            dashboardHighlighted: dashboardHighlighted(),
                            dashboardFontSize: dashboardFontSize(),
-                           dashboardFontMode: dashboardFontMode())
+                           dashboardFontMode: dashboardFontMode(), pickPending: pickPending())
     }
 
     /// The tree's `paneOverlays`: the panes covered by their own overlay, omitted when neither is.

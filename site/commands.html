@@ -6,7 +6,7 @@
     <title>Command reference — rook | rookctl control API</title>
     <meta
       name="description"
-      content="Complete rookctl reference: all 74 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, events, themes, and keymaps, with arguments and return values."
+      content="Complete rookctl reference: all 77 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, events, themes, and keymaps, with arguments and return values."
     />
     <meta
       name="keywords"
@@ -18,7 +18,7 @@
     <meta property="og:title" content="Command reference — rook" />
     <meta
       property="og:description"
-      content="All 74 rookctl control commands with arguments, return values, and errors."
+      content="All 77 rookctl control commands with arguments, return values, and errors."
     />
     <meta property="og:url" content="https://rook.app/commands" />
     <meta property="og:image" content="https://rook.app/assets/rook-og.png" />
@@ -30,7 +30,7 @@
     <meta name="twitter:title" content="Command reference — rook" />
     <meta
       name="twitter:description"
-      content="All 74 rookctl control commands with arguments, return values, and errors."
+      content="All 77 rookctl control commands with arguments, return values, and errors."
     />
     <meta name="twitter:image" content="https://rook.app/assets/rook-og.png" />
     <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
@@ -151,6 +151,7 @@
             <a href="#session" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">session</a>
             <a href="#overlay" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">session overlay</a>
             <a href="#window" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">window</a>
+            <a href="#pick" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">pick</a>
             <a href="#quick" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">quick</a>
             <a href="#sidebar" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">sidebar</a>
             <a href="#notify" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">notify</a>
@@ -193,7 +194,7 @@
             Command reference
           </h1>
           <p style="font-size: 19px; line-height: 1.6; color: #bfbab0; margin: 0 0 8px">
-            All 74 commands of the rook control API, with arguments and return values. Every one is reachable from the
+            All 77 commands of the rook control API, with arguments and return values. Every one is reachable from the
             <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl</span> CLI and from the local
             control socket.
           </p>
@@ -1647,6 +1648,94 @@
           </section>
 
           <!-- QUICK -->
+          <section id="pick" style="scroll-margin-top: 88px; padding-top: 56px">
+            <h2
+              style="
+                font-family: &quot;JetBrains Mono&quot;, monospace;
+                font-weight: 700;
+                font-size: 28px;
+                letter-spacing: -0.02em;
+                margin: 0 0 16px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+              "
+            >
+              pick
+            </h2>
+            <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 16px">
+              Ask the human a question. A script hands rook a list, the user picks a row in the native palette, and the answer
+              comes back over the socket — the one command family whose point is getting an answer rather than causing an effect.
+              One picker per window; the returned id is globally unique, so
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">pick result</span> and
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">pick cancel</span> need no
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--window</span>.
+            </p>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl pick [open] [--prompt &lt;text&gt;] [--query &lt;text&gt;] [--allow-custom] [--follow] [--no-block] [--window &lt;id&gt;]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">pick.open</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Items come from stdin: one label per line (the label doubles as the id), or a JSON
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">[{"id","label","subtitle"}]</span> array when the first
+                non-whitespace byte is <span style="font-family: &quot;JetBrains Mono&quot;, monospace">[</span>. Up to 1000 items.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--prompt</span> sets the placeholder,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--query</span> opens it already filtered,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--allow-custom</span> lets the typed text itself be the answer
+                (which also makes an EMPTY item list legal — a free-text prompt), and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--follow</span> raises the target window.
+              </p>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                It BLOCKS until the user answers and exits <span style="font-family: &quot;JetBrains Mono&quot;, monospace">0</span> for a
+                choice, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">2</span> for a cancel — so a shell script can branch on
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">$?</span> alone. Matching is on the LABEL only, and an empty query
+                keeps your list in the order you supplied it.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--no-block</span> prints the picker id and returns instead.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                Errors: <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">pick already pending</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">too many items (max 1000)</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">pick item ids must be unique</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">pick item label must not be empty</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">item text must not contain control characters</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">no pick surface</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">no open window</span>.
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl pick result &lt;id&gt;
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">pick.result</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Read a picker's state or answer without waiting:
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{"result":"pending|picked|custom|cancelled","id","label","index","query"}</span>.
+                Exits <span style="font-family: &quot;JetBrains Mono&quot;, monospace">0</span> for picked/custom,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">1</span> for pending,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">2</span> for cancelled.
+                An answer outlives its picker — and even its window — so a late poll still reads it.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                Errors: <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">unknown pick: &lt;id&gt;</span>.
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl pick cancel &lt;id&gt;
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">pick.cancel</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Take a pending picker off the user's screen and resolve it as
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">cancelled</span>. Esc, ⌘W, closing the window, and quitting rook do
+                the same, so a blocked caller is never left waiting on a picker that is no longer there. Read the pending picker's id
+                from the tree's top-level <span style="font-family: &quot;JetBrains Mono&quot;, monospace">pickPending</span>.
+              </p>
+            </div>
+          </section>
+
           <section id="quick" style="scroll-margin-top: 88px; padding-top: 56px">
             <h2
               style="

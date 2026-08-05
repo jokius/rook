@@ -34,6 +34,11 @@ extension ControlServer {
                 controller.close()
                 return ControlResponse(ok: true)
             }
+            // opening a grid under a modal picker would put a focus-stealing key catcher below it; closing
+            // one stays allowed so a script can always clean up.
+            if PickRegistry.shared.controller(for: windowID)?.pending != nil {
+                return ControlResponse(ok: false, error: "pick pending")
+            }
             var resolvedTargets: [ResolvedDashboardTarget] = []
             var unresolved: [String] = []
             if mru {

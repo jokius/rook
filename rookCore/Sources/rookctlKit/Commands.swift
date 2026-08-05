@@ -92,7 +92,8 @@ public struct Rookctl: ParsableCommand {
         abstract: "Drive rook over its control socket.",
         subcommands: [Tree.self, Events.self, Workspace.self, Session.self, Surface.self, Dashboard.self,
                       Window.self, Quick.self,
-                      Sidebar.self, Notify.self, Font.self, Keymap.self, Config.self, Theme.self, Restore.self]
+                      Sidebar.self, Notify.self, Font.self, Keymap.self, Config.self, Theme.self, Pick.self,
+                      Restore.self]
     )
 
     public init() {}

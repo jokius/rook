@@ -367,6 +367,22 @@ paths:
   The visible list is a `@State` array recomputed on query/mode change — NOT a computed property — so
   the rendered rows and the Enter target can't drift out of sync; results sort by score then title. ⌃P
   opens the session switcher, ⌃⇧P the action palette (the session/action shortcut split is deliberate).
+- **The palette has a THIRD feed: an explicit item list, which is what `pick.open` renders.**
+  `CommandPalette` gained an items-carrying init (`items`/`prompt`/`initialQuery`/`allowCustom`/`onCustom`/`onDismiss`),
+  and those explicit items take precedence over `controller.mode`, so a control-driven picker reuses the whole
+  palette — layout, keyboard handling, scrim — instead of growing a second overlay.
+  Three behaviors differ from the built-in feeds, each for a reason:
+  matching is LABEL-ONLY (the host-free `paletteSearchKeys`), because the caller owns the labels and scoring
+  a subtitle would let a row win on text its author never meant as a key;
+  an EMPTY query keeps CALLER ORDER rather than re-sorting (an already-ranked list stays ranked, the same
+  courtesy `.attention` gets), and the query is TRIMMED first, since a trailing newline made `fuzzyScore`
+  return zero for every row and silently destroyed that order;
+  and dismissal goes through `onDismiss` rather than `PaletteController.close()`, because the pick owes its
+  blocked caller a `cancelled` answer, not just a hidden window.
+  A pending pick is a MODAL like zoom and the dashboard: `uiActionsEnabled` carries a `pickActive` term, and
+  ⌘W resolves the pick as its FIRST rung — above terminal zoom — so the socket caller unblocks rather than
+  waiting on a picker the user has already dismissed.
+  See the control-api rule for the wire contract.
 - **Built-in shortcut hints are one resolver, shared by the palette AND the toolbar/sidebar tooltips.**
   `AppActions.shortcutGlyph(for:)` (formerly `paletteHint`) → the host-free `Keymap.glyphHint(for:)`
   (plain `equivalent(for:)?.glyphString`, nil = no shortcut — there is NO fallback arm any more,

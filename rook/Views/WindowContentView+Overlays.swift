@@ -68,7 +68,9 @@ extension WindowContentView {
     /// and showing the wrong window's candidates. Uses `activeWindowID` (frontmost-or-first-open, the
     /// same accessor the palette/actions resolve through), so exactly one window matches even before
     /// the first `didBecomeKey` sets `frontmostWindowID`. Reactive: `frontmostWindowID` is observed.
-    private var isFrontmost: Bool { library.activeWindowID == windowID }
+    /// Internal, not private: the pick focus hand-off in `WindowContentView` reads it too — a background
+    /// window must not claim first responder when its picker resolves.
+    var isFrontmost: Bool { library.activeWindowID == windowID }
 
     /// Where the terminal area starts ON SCREEN: the sidebar column plus its 1pt divider, or 0 whenever no
     /// sidebar is showing. The palette and the switcher center their panel over THAT area rather than over
@@ -85,10 +87,44 @@ extension WindowContentView {
     }
 
     /// The command-palette overlay, mounted only while a palette is open in the frontmost window. Its
-    /// content (search field + result list) is rebuilt from `palette.mode`.
+    /// content (search field + result list) is rebuilt from `palette.mode`. A pending control picker
+    /// suppresses it: the picker is the topmost modal and the two would fight for the keyboard.
     @ViewBuilder private var commandPaletteOverlay: some View {
-        if isFrontmost, palette.mode != nil {
+        if isFrontmost, pick.pending == nil, palette.mode != nil {
             CommandPalette(controller: palette, actions: actions, terminalAreaInset: terminalAreaInset)
+        }
+    }
+
+    /// A control picker is per-window rather than frontmost-global, so a caller may present one in a
+    /// background window without duplicating it elsewhere. The selection reported to the caller is the
+    /// item's ORIGINAL index even though fuzzy filtering reorders the visible rows. Keyed by the pending
+    /// id so one picker replacing another in the same view update gets fresh palette state rather than
+    /// keeping the previous picker's rows, whose select closures capture the previous picker's items.
+    @ViewBuilder var pickPaletteOverlay: some View {
+        if let pending = pick.pending {
+            CommandPalette(
+                controller: palette,
+                actions: actions,
+                terminalAreaInset: terminalAreaInset,
+                items: pending.items.enumerated().map { index, item in
+                    PaletteItem(id: item.id, title: item.label, subtitle: item.subtitle) {
+                        pick.resolve(ControlPickResult(
+                            result: .picked,
+                            id: item.id,
+                            label: item.label,
+                            index: index
+                        ))
+                    }
+                },
+                prompt: pending.prompt,
+                initialQuery: pending.query,
+                allowCustom: pending.allowCustom,
+                onCustom: { query in
+                    pick.resolve(ControlPickResult(result: .custom, query: query))
+                },
+                onDismiss: { pick.cancel() }
+            )
+            .id(pending.id)
         }
     }
 

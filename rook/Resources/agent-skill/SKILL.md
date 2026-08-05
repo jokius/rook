@@ -4,7 +4,8 @@ description: >
   Drive rook, a native macOS terminal app, programmatically via its rookctl CLI and a local
   control socket. Use when running inside a rook session and asked to control the terminal:
   create, rename, close, select, or reorder sessions and workspaces; split panes; toggle the
-  per-session scratch terminal; open or close overlay terminals and read their exit status; display
+  per-session scratch terminal; open or close overlay terminals and read their exit status; ask the
+  user to choose from a native fuzzy picker and read back their answer; display
   an image inline via a bundled helper script; render a Markdown file (a plan, a README) in the
   session's built-in preview panel; type
   into a session, copy its selection, or search its scrollback; post desktop notifications; manage windows (new, list,
@@ -16,7 +17,7 @@ description: >
   feature request / question as a GitHub Discussion.
 when_to_use: >
   Trigger on: rook, rookctl, rook control socket, session.new, session.close, session.type,
-  session.split, session.scratch, session.filetree, session.markdown, markdown preview, session.focus, session.resize, surface.zoom, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status, session.agent, resume agent conversation,
+  session.split, session.scratch, session.filetree, session.markdown, markdown preview, session.focus, session.resize, surface.zoom, dashboard, pick, pick.open, pick.result, pick.cancel, native picker, ask the user to choose, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status, session.agent, resume agent conversation,
   session.flag, session.seen, session.reveal, session.background, session.overlay, workspace.new, workspace.select, workspace.move, workspace.focus, workspace.focus add, workspace focus set, add a workspace to the focus set, workspace.filter, workspace focus filter, re-apply the workspace filter, workspace.root, workspace.collapse, workspace.expand, window.new, window.list,
   window.select, window.resize, window.move, window.zoom, window.fullscreen, window.minimize, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, flagged, notify, font.inc, keymap.reload, keymap.list, config.reload,
   theme.set, theme.list, select theme, edit keymap, show an image, display an image inline, show-image,
@@ -138,7 +139,7 @@ you work. For any session-scoped command meant to act on *this* session — `ove
 `type`, `text`, `background`, `status`, `copy`, … — pass `--target "$ROOK_SESSION_ID"`. Omit it and
 you open overlays / type into whatever the user has selected, not your own session.
 
-## Command summary (74 commands)
+## Command summary (77 commands)
 
 Run `rookctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
 **examples.md**. (The count excludes `debug.appearance`, a UI-test-only seam with no `rookctl`
@@ -180,6 +181,9 @@ the open dashboard shows, in grid order — `<session-id>:left` for a primary pa
 a split pane, so a split session appears as both), `dashboardHighlighted` (the highlighted cell's pane ref —
 the one Enter jumps into, focusing that exact pane), `dashboardFontSize` (the absolute font size in points
 applied to the cells, omitted when untouched), and `dashboardFontMode` (`auto`|`fixed`|`untouched`).
+Finally it carries `pickPending` (the id of the picker currently waiting for the user's answer in that
+window, omitted when none — the read side of `pick open`, so a script can tell whether a question is
+already on screen before opening another).
 
 **events** — `events [--json] [--kind K] [--limit N] [--run UUID --after SEQ]` — follow the app's
 event ring instead of polling `tree`. The CLI is a poll loop over the one-shot `events.read` command
@@ -361,6 +365,25 @@ a GUI opener: **⌘⇧D** (the `dashboard` built-in action), **Navigate ▸ Dash
 **Dashboard** entry TOGGLE the frontmost window's MRU dashboard auto-sized (identical to `dashboard --mru
 --auto-size`); no new control command, the socket `dashboard` command is unchanged.
 
+**pick** — `pick [open] [--prompt P] [--query Q] [--allow-custom] [--follow] [--no-block] [--window W]` ·
+`pick result <id>` · `pick cancel <id>` — ask the USER to choose from a list YOU supply, rendered in
+Rook's own palette, and read the answer back.
+This is the one family whose point is a question for the human: use it when the next step is a decision
+that is not yours to make.
+Choices come from stdin — one label per line (the label doubles as the id), or a JSON
+`[{"id":…,"label":…,"subtitle":…}]` array when the first non-whitespace byte is `[`.
+`open` BLOCKS until the user answers (they may take minutes), prints the answer as one JSON object, and
+exits **0** picked/custom, **2** cancelled, 1 on failure — so a script branches on `$?` alone.
+`--allow-custom` also accepts the typed query as the answer, which is what makes an EMPTY item list legal
+(a plain free-text prompt); `--query` opens already filtered; `--follow` raises the window.
+Matching is on the LABEL only (a subtitle is context, never a search key) and an empty query keeps YOUR
+order, so rank the list yourself.
+`--no-block` prints `{"id":"…"}` instead and leaves `pick result` (same JSON, exit 1 while still
+`pending`) / `pick cancel` to you.
+One picker per window — a second `open` there errors `pick already pending`; read the pending id from the
+tree's top-level `pickPending`.
+Esc, ⌘W, closing the window, and quitting Rook all answer `cancelled` rather than leaving you waiting.
+
 **quick** — `[show|hide|toggle]` (visibility; read back from the tree's `quickVisible`) ·
 `type TEXT` (or `--stdin`) inject keystrokes into the frontmost window's quick terminal ·
 `text [--all] [--lines N]` read its screen back — the twins of `session type`/`session text`,
@@ -435,8 +458,8 @@ Full detail, templates, and the exact `gh` commands are in **troubleshooting.md*
   cursor contract for `events.read`, the scratch/overlay/split
   lifecycle, and the keymap.conf format (`map` / `command`, chords, leaders, `{AGT_X}` tokens).
 - **examples.md** — copy-paste rookctl recipes for common tasks (build a layout, run a program in a
-  blocking overlay and read its status, type into a fresh session, notify, inspect the tree, watch the
-  event stream and keep a durable cursor).
+  blocking overlay and read its status, type into a fresh session, ask the user to choose and branch on
+  the answer, notify, inspect the tree, watch the event stream and keep a durable cursor).
 - **troubleshooting.md** — diagnosing common problems (keymap editor, custom actions, missed events and
   the three cursor errors, logs) and the
   bug-issue / feature-Discussion reporting workflow (draft-first, scrub, never post without approval).

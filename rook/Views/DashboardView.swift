@@ -33,6 +33,8 @@ struct DashboardView: View {
     let pillColor: Color
     /// The caption pill's TEXT — the theme's selection-foreground, readable over `pillColor`.
     let pillTextColor: Color
+    /// False while a control picker is above the dashboard, so its key catcher cannot steal focus.
+    let focusAllowed: Bool
     /// Single click on a cell highlights it (keyboard is primary, mouse secondary).
     let onHighlight: (DashboardMember) -> Void
     /// Enter, or a double click on a cell, jumps into that session+pane (the wiring selects + closes + focuses).
@@ -74,7 +76,13 @@ struct DashboardView: View {
         .background(Color.clear)
         // the key-catcher sits behind the cells so it never intercepts their click hit targets; it owns
         // first responder and swallows every key while open.
-        .background { DashboardKeyCatcher(onKey: handleKey) }
+        .background {
+            DashboardKeyCatcher(
+                focusRevision: controller.focusRevision,
+                focusAllowed: focusAllowed,
+                onKey: handleKey
+            )
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("dashboard")
         // no implicit animation on the grid geometry / highlight — a modal reparent overlay applies its
@@ -240,22 +248,30 @@ private enum DashboardKey {
 /// key-equivalents (⌘Q, ⌘W, …) still reach the menu bar — those go through `performKeyEquivalent` before
 /// keyDown, so the user is never trapped; only plain keystrokes to the terminal are blocked.
 private struct DashboardKeyCatcher: NSViewRepresentable {
+    /// Read only to make SwiftUI re-run `updateNSView` when a picker above the grid resolves: nothing the
+    /// grid renders changed, so without it the catcher never gets a chance to reclaim first responder.
+    let focusRevision: Int
+    let focusAllowed: Bool
     let onKey: (DashboardKey) -> Void
 
     func makeNSView(context _: Context) -> KeyCatcherView {
         let view = KeyCatcherView()
+        view.focusAllowed = focusAllowed
         view.onKey = onKey
         return view
     }
 
     func updateNSView(_ nsView: KeyCatcherView, context _: Context) {
+        _ = focusRevision
+        nsView.focusAllowed = focusAllowed
         nsView.onKey = onKey
         // re-assert first responder on every render so a cell click (or any focus reshuffle) can't leave the
         // overlay without the keyboard while it is open.
-        nsView.grabFocus()
+        if focusAllowed { nsView.grabFocus() }
     }
 
     final class KeyCatcherView: NSView {
+        var focusAllowed = true
         var onKey: ((DashboardKey) -> Void)?
 
         override var acceptsFirstResponder: Bool { true }
@@ -267,7 +283,7 @@ private struct DashboardKeyCatcher: NSViewRepresentable {
 
         /// Take first responder unless we already hold it (a redundant `makeFirstResponder` would churn).
         func grabFocus() {
-            guard let window, window.firstResponder !== self else { return }
+            guard focusAllowed, let window, window.firstResponder !== self else { return }
             window.makeFirstResponder(self)
         }
 

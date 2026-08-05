@@ -217,3 +217,12 @@ paths:
   It is ENVIRONMENTAL, like the HazeOver occlusion above: switch the layout to latin and re-run before
   suspecting the test.
 
+- **The `pick.open` picker reuses the command palette, so its accessibility ids are DIFFERENT ones on the
+  same views.**
+  `CommandPalette` swaps them on whether it was handed explicit items: the panel is `command-palette` for the
+  built-in feeds and `pick-palette` for a control-driven picker, the click-catcher likewise `palette-scrim`
+  vs `pick-scrim` (`Palette.swift`).
+  Rows are `palette-item-<item.id>`, so a test drives a picker by the id the CALLER supplied — which is what
+  makes a pick e2e readable, since the ids are the test's own strings rather than UUIDs it has to capture.
+  A test that queries `command-palette` while a pick is up finds nothing and fails looking like a timing
+  problem; it is the wrong identifier, not a slow mount.

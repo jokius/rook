@@ -633,6 +633,85 @@ rookctl notify "build finished" --title "CI"                 # active session
 rookctl notify "tests failed" --target "$sid"               # a specific session
 ```
 
+## Ask the user to choose, and branch on the answer
+
+When the next step is a decision that is not yours to make, put it in front of the user instead of
+guessing.
+`rookctl pick` renders the choices you write to stdin in Rook's own palette, waits while the user thinks,
+and exits with the answer: **0** picked (or a custom answer), **2** cancelled, 1 on failure.
+Pass `--window "$ROOK_WINDOW_ID"` so the question appears in YOUR window, not in whichever one is
+frontmost.
+
+```bash
+answer=$(printf 'rebase onto main\nmerge main in\nleave the branch alone\n' \
+  | rookctl pick --prompt 'How should I integrate main?' --window "$ROOK_WINDOW_ID")
+case $? in
+  0) choice=$(printf '%s' "$answer" | jq -r '.label') ;;
+  2) echo "user cancelled — stopping here"; exit 0 ;;
+  *) echo "picker failed: $answer" >&2; exit 1 ;;
+esac
+```
+
+One label per line means the label is also the id.
+Feed a JSON array instead when you want to switch on a stable key and give each row a second line of
+context — the subtitle is shown but never matched, so it is the place for consequences ("cannot be
+undone", "12 commits behind"):
+
+```bash
+items=$(jq -nc '[{id:"pr",   label:"Open the PR now",    subtitle:"12 commits, tests green"},
+                 {id:"more", label:"Keep working",       subtitle:"2 TODOs left in the diff"},
+                 {id:"stop", label:"Stop and hand over", subtitle:"I will write up where I got to"}]')
+answer=$(printf '%s' "$items" | rookctl pick --prompt 'What next?' --window "$ROOK_WINDOW_ID") || exit 0
+case $(printf '%s' "$answer" | jq -r '.id') in
+  pr)   gh pr create ;;
+  more) ;;
+  stop) exit 0 ;;
+esac
+```
+
+`--allow-custom` accepts whatever the user types when it matches no row, which also makes an EMPTY list
+legal — that is how you ask for a value rather than a choice:
+
+```bash
+# a plain prompt: no items at all
+if answer=$(printf '' | rookctl pick --allow-custom --prompt 'Name the new branch'); then
+  branch=$(printf '%s' "$answer" | jq -r '.query')     # {"result":"custom","query":"…"}
+fi
+
+# an edit box: --query prefills the current value for them to amend rather than retype
+if answer=$(printf '' | rookctl pick --allow-custom --prompt 'Rename the branch to…' \
+    --query "$(git branch --show-current)"); then
+  new=$(printf '%s' "$answer" | jq -r '.query')
+fi
+
+# suggestions AND free text — .label for a row they picked, .query for something they typed
+if answer=$(printf 'fix/login\nfix/session-leak\n' \
+    | rookctl pick --allow-custom --prompt 'Branch name?' --query 'fix/'); then
+  name=$(printf '%s' "$answer" | jq -r '.label // .query')
+fi
+```
+
+Don't want to sit on the socket while they think? Take the id and come back for the answer:
+
+```bash
+id=$(printf 'yes\nno\n' | rookctl pick --no-block --prompt 'Deploy to prod?' | jq -r '.id')
+# ... keep working ...
+rookctl pick result "$id"     # {"result":"pending"} and exit 1 until they answer
+rookctl pick cancel "$id"     # changed your mind: take the question off their screen
+```
+
+Notes that save a debugging round:
+
+- `picked` returns `{"result":"picked","id":…,"label":…,"index":N}`, where `index` is the position in the
+  list YOU sent — not the row position after filtering.
+  Fields that don't apply are omitted, so read `.result` first.
+- An empty query keeps your array order, so rank the list yourself; typing switches to fuzzy scoring over
+  the LABEL only.
+- One picker per window — a second `pick` there errors `pick already pending`.
+  Check first with `rookctl tree --json | jq -r '.result.tree.pickPending'` (null when nothing is pending).
+- The wait always ends: Esc, ⌘W, closing the window, and quitting Rook all answer `cancelled` (exit 2).
+  Never treat a non-zero exit as "the user said yes".
+
 ## Agent status glyph
 
 ```bash

@@ -216,7 +216,7 @@ The theme picker (View ▸ Select Theme…, or the action palette) previews each
 
 `rook` can be driven from a script over a local unix-domain socket through a companion CLI, `rookctl`. This is for personal scripting — fire-and-forget commands that manage workspaces and sessions, inject text, and invoke control actions, plus a read-only event feed you poll for what the app just did (see [Watching for events](#watching-for-events)). Everything stays request/response: nothing is pushed to you, and there is no terminal-output streaming — to read a terminal's buffer, ask for it with `session text`.
 
-The sections below cover the common cases. All 74 commands, with every argument, return value, and error, are documented in the **[Command reference](https://rook.app/commands)**. (That count is the scriptable set — it excludes `debug.appearance`, a UI-test-only command with no `rookctl` subcommand.)
+The sections below cover the common cases. All 77 commands, with every argument, return value, and error, are documented in the **[Command reference](https://rook.app/commands)**. (That count is the scriptable set — it excludes `debug.appearance`, a UI-test-only command with no `rookctl` subcommand.)
 
 The app bundles `rookctl` inside `rook.app`. The easiest way to put it on your PATH is **Help ▸ Install Command Line Tool…**, which symlinks the bundled binary into `/usr/local/bin` (the first entry in macOS's default PATH). When that directory is user-writable it installs silently; otherwise it asks once for an administrator password.
 
@@ -367,6 +367,42 @@ rookctl session new --window "$ROOK_WINDOW_ID" --cwd .   # open a sibling sessio
 rookctl session type --target "$ROOK_SESSION_ID" $'\n'   # type into this very session
 rookctl tree --socket "$ROOK_SOCKET"                     # reach the same Rook this shell runs in
 ```
+
+### Native picker
+
+`rookctl pick` opens Rook's own fuzzy picker and hands the human's answer back to the script — the way an agent asks *you* to choose from a list instead of guessing.
+Choices arrive on stdin in one of two forms: nonblank lines, where each line is both the label and the id, or a JSON array of `{"id":…,"label":…,"subtitle":…}` objects when the script wants its own ids and a second line of detail per row.
+At most 1000 items, labels must be nonempty, and ids must be unique.
+
+```sh
+printf '%s\n' staging production | rookctl pick --prompt "Deploy where?"
+# {"result":"picked","id":"staging","label":"staging","index":0}
+
+rookctl pick --allow-custom --query "$name" --prompt "Rename to" < /dev/null  # itemless: a plain text prompt
+
+id=$(printf '%s\n' alpha beta | rookctl pick --no-block | jq -r '.id')
+rookctl pick result "$id"    # bare JSON result; exit 1 while pending, 2 when cancelled
+rookctl pick cancel "$id"
+rookctl tree --json | jq -r '.result.tree.pickPending // empty'
+```
+
+The default call **blocks** until the human answers and prints one bare JSON object: `picked` (with the chosen item's `id`, `label`, and its `index` in the list you supplied), `custom` (with the typed `query`), or `cancelled`.
+The exit code carries the same answer for a shell that would rather not parse JSON: 0 for picked or custom, 2 for cancelled, 1 for an error.
+
+Typing filters on the labels only — a subtitle is shown but never searched, so consequence text on one row ("cannot be undone") can never filter out its safer neighbour.
+An empty query lists the items in the order they were supplied, so the caller's first item is the one Return runs on open.
+`--query TEXT` prefills the field and filters immediately, which ranks by match score and therefore does *not* preserve that order; the prefilled text opens selected, so the first keystroke replaces it rather than appending to it.
+`--allow-custom` accepts a query that matches no item as a `custom` result, and with it the item list may be empty — that itemless picker is a plain text prompt.
+An itemless call still reads stdin, so redirect it (`< /dev/null`) or it waits for input that never comes.
+
+`--no-block` prints `{"id":"…"}` and returns immediately, leaving the picker on screen for `pick result <id>` to poll and `pick cancel <id>` to take down.
+A one-shot `pick result` exits 1 while the picker is still up, so the exit code alone distinguishes "not answered yet" from a terminal outcome.
+A resolved result stays readable by its id after the picker closes (the eight most recent per window), so a `--no-block` caller can poll on its own schedule.
+
+`--window <id>` opens the picker in another window, where it waits in the background unless you add `--follow` to raise that window.
+Only one picker can be pending per window — a second `pick` there is refused with `pick already pending` — and while it waits, that window's `tree` carries its id in the top-level `pickPending` field.
+A pending picker is its window's modal layer: it holds the keyboard, Esc or ⌘W cancels it, and commands that would put another focus-stealing surface on screen (`quick show`, `surface zoom`, `dashboard`, `session search`) are refused with `pick pending` until it resolves.
+Closing the window or quitting Rook cancels a pending picker, so a blocked caller always gets an answer instead of hanging forever.
 
 ### Watching for events
 

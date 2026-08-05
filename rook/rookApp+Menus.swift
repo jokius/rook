@@ -64,13 +64,13 @@ extension rookApp {
                 // While terminal zoom is up the UI is modal (the AppActions gate already no-ops these);
                 // the .disabled mirrors that gate so the items read as unavailable instead of dead.
                 let zoomed = actions.terminalZoomActive
-                // While terminal zoom OR the dashboard grid is up the UI is modal (the AppActions gate already
-                // no-ops these); the .disabled mirrors that gate so the items read as unavailable instead of
-                // dead. modalActive folds the dashboard into the same gate so its menu key-equivalents
-                // (which route through performKeyEquivalent, PAST the grid's keyDown-only key-catcher) can't
-                // mutate the deck behind the grid — the Dashboard toggle itself stays zoomed-only so ⌘⇧D can
-                // still close the grid.
+                // While terminal zoom, the dashboard grid, OR the topmost native picker is up the UI is
+                // modal (the AppActions gate already no-ops these); the .disabled mirrors that gate so the
+                // items read as unavailable instead of dead. modalActive folds the dashboard into the same
+                // gate so its menu key-equivalents (which route through performKeyEquivalent, PAST the
+                // grid's keyDown-only key-catcher) can't mutate the deck behind the grid.
                 let modalActive = zoomed || (actions.frontmostDashboard?.isOpen ?? false)
+                    || actions.pickActive(for: library.activeWindowID)
                 // Window: create/open/rename/delete the top-level window bundles. Open Window lists
                 // the library with a checkmark on already-open ones (picking a closed one opens it,
                 // an open one raises it). Delete is disabled with one window left (keep-at-least-one).
@@ -189,13 +189,13 @@ extension rookApp {
             CommandGroup(after: .toolbar) {
                 // same modal-while-zoomed mirror as the File group: grey out what the action gate no-ops.
                 let zoomed = actions.terminalZoomActive
-                // While terminal zoom OR the dashboard grid is up the UI is modal (the AppActions gate already
-                // no-ops these); the .disabled mirrors that gate so the items read as unavailable instead of
-                // dead. modalActive folds the dashboard into the same gate so its menu key-equivalents
-                // (which route through performKeyEquivalent, PAST the grid's keyDown-only key-catcher) can't
-                // mutate the deck behind the grid — the Dashboard toggle itself stays zoomed-only so ⌘⇧D can
-                // still close the grid.
+                // While terminal zoom, the dashboard grid, OR the topmost native picker is up the UI is
+                // modal (the AppActions gate already no-ops these); the .disabled mirrors that gate so the
+                // items read as unavailable instead of dead. modalActive folds the dashboard into the same
+                // gate so its menu key-equivalents (which route through performKeyEquivalent, PAST the
+                // grid's keyDown-only key-catcher) can't mutate the deck behind the grid.
                 let modalActive = zoomed || (actions.frontmostDashboard?.isOpen ?? false)
+                    || actions.pickActive(for: library.activeWindowID)
                 Button { actions.increaseFontSize() } label: { Label("Increase Font Size", systemImage: "textformat.size.larger") }
                     .keyboardShortcut(shortcut(for: .increaseFontSize))
                 Button { actions.decreaseFontSize() } label: { Label("Decrease Font Size", systemImage: "textformat.size.smaller") }
@@ -328,13 +328,13 @@ extension rookApp {
             CommandMenu("Navigate") {
                 // same modal-while-zoomed mirror as the File/View groups.
                 let zoomed = actions.terminalZoomActive
-                // While terminal zoom OR the dashboard grid is up the UI is modal (the AppActions gate already
-                // no-ops these); the .disabled mirrors that gate so the items read as unavailable instead of
-                // dead. modalActive folds the dashboard into the same gate so its menu key-equivalents
-                // (which route through performKeyEquivalent, PAST the grid's keyDown-only key-catcher) can't
-                // mutate the deck behind the grid — the Dashboard toggle itself stays zoomed-only so ⌘⇧D can
-                // still close the grid.
+                // While terminal zoom, the dashboard grid, OR the topmost native picker is up the UI is
+                // modal (the AppActions gate already no-ops these); the .disabled mirrors that gate so the
+                // items read as unavailable instead of dead. modalActive folds the dashboard into the same
+                // gate so its menu key-equivalents (which route through performKeyEquivalent, PAST the
+                // grid's keyDown-only key-catcher) can't mutate the deck behind the grid.
                 let modalActive = zoomed || (actions.frontmostDashboard?.isOpen ?? false)
+                    || actions.pickActive(for: library.activeWindowID)
                 Button { actions.toggleSessionPalette() } label: { Label("Go to Session", systemImage: "rectangle.stack") }
                     .keyboardShortcut(shortcut(for: .sessionPalette))
                     .disabled(modalActive)

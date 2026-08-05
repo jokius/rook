@@ -19,6 +19,9 @@ extension AppActions {
     // dismissed, not only a full one.
     @discardableResult
     func closeActiveSession() -> Bool {
+        // A pick is an external caller waiting on an answer, so it is the first ⌘W layer even when a
+        // terminal is zoomed behind it. Resolve rather than merely hiding it so the caller can finish.
+        if cancelPendingPick(for: library.activeWindowID) { return true }
         // terminal zoom is the window-topmost cover of all: ⌘W dismisses it like the covers below
         // (stepwise — a zoomed quick terminal un-zooms first, the next ⌘W hides it) rather than
         // swallowing the keystroke, and still never mutates hidden session/window state behind it.

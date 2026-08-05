@@ -1571,6 +1571,14 @@ struct AppStoreTests {
         #expect(store.controlTree(zoomedSurface: { "quick" }).zoomedSurface == "quick")
     }
 
+    @Test func controlTreeReportsPickPendingFromClosure() {
+        let store = makeStore()
+        // no closure (host-free / default) or no picker up: omitted (nil); the app supplies the live id.
+        #expect(store.controlTree().pickPending == nil)
+        #expect(store.controlTree(pickPending: { nil }).pickPending == nil)
+        #expect(store.controlTree(pickPending: { "pick-42" }).pickPending == "pick-42")
+    }
+
     @Test func setSidebarVisiblePostsChangeNotificationOnlyOnChange() {
         // the app-target ControlServer observes this to refresh window.list's cached sidebarVisible; the
         // post must fire only on an actual change (queue nil so the synchronous post delivers inline).

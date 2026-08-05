@@ -84,6 +84,9 @@ final class MockControlActions: ControlActions {
         case windowZoom(target: String?)
         case windowFullscreen(target: String?)
         case windowMinimize(target: String?, mode: ControlToggleMode)
+        case pickOpen(PendingPick, window: String?, follow: Bool)
+        case pickResult(target: String, window: String?)
+        case pickCancel(target: String, window: String?)
         case restoreClear
     }
 
@@ -142,5 +145,8 @@ final class MockControlActions: ControlActions {
     var nextWindowZoomResponse = ControlResponse(ok: true)
     var nextWindowFullscreenResponse = ControlResponse(ok: true)
     var nextWindowMinimizeResponse = ControlResponse(ok: true)
+    var nextPickOpenResponse = ControlResponse(ok: true)
+    var nextPickResultResponse = ControlResponse(ok: true)
+    var nextPickCancelResponse = ControlResponse(ok: true)
     var nextRestoreClearResponse = ControlResponse(ok: true)
 }

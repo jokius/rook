@@ -19,6 +19,82 @@ struct ControlProtocolTests {
         #expect(try roundTrip(request) == request)
     }
 
+    @Test func pickCommandsRoundTrip() throws {
+        let items = [
+            ControlPickItem(id: "first", label: "First choice", subtitle: "recommended"),
+            ControlPickItem(id: "second", label: "Second choice"),
+        ]
+        let cases: [ControlRequest] = [
+            ControlRequest(
+                cmd: .pickOpen,
+                args: ControlArgs(follow: true, items: items, prompt: "Choose one",
+                                  query: "prefilled", allowCustom: true, window: "window-id")
+            ),
+            ControlRequest(cmd: .pickResult, target: "pick-id"),
+            ControlRequest(cmd: .pickCancel, target: "pick-id"),
+        ]
+
+        for request in cases {
+            #expect(try roundTrip(request) == request)
+        }
+    }
+
+    @Test func pickResultRoundTripsEveryOutcomeShape() throws {
+        let cases = [
+            ControlPickResult(result: .pending),
+            ControlPickResult(result: .picked, id: "second", label: "Second choice", index: 1),
+            ControlPickResult(result: .custom, query: "A custom answer"),
+            ControlPickResult(result: .cancelled),
+        ]
+
+        for pick in cases {
+            let response = ControlResponse(ok: true, result: ControlResult(pick: pick))
+            #expect(try roundTrip(response) == response)
+        }
+    }
+
+    @Test func controlResultPickOmitsWhenNil() throws {
+        let result = ControlResult(id: "pick-id")
+        let json = String(decoding: try JSONEncoder().encode(result), as: UTF8.self)
+
+        #expect(!json.contains("\"pick\""), "a nil pick must be omitted from the JSON; got \(json)")
+        #expect(try JSONDecoder().decode(ControlResult.self, from: Data(json.utf8)).pick == nil)
+    }
+
+    @Test func controlTreePickPendingOmitsWhenNil() throws {
+        let tree = ControlTree(workspaces: [])
+        let json = String(decoding: try JSONEncoder().encode(tree), as: UTF8.self)
+
+        #expect(!json.contains("pickPending"), "a nil pending picker must be omitted from the JSON; got \(json)")
+        #expect(try JSONDecoder().decode(ControlTree.self, from: Data(json.utf8)).pickPending == nil)
+    }
+
+    @Test func controlArgsDistinguishesEmptyItemsFromAbsentItems() throws {
+        let empty = String(decoding: try JSONEncoder().encode(ControlArgs(items: [])), as: UTF8.self)
+        let absent = String(decoding: try JSONEncoder().encode(ControlArgs(allowCustom: true)), as: UTF8.self)
+
+        #expect(empty.contains("\"items\":[]"), "an empty list must survive as an empty array; got \(empty)")
+        #expect(!absent.contains("items"), "absent items must be omitted from the JSON; got \(absent)")
+        #expect(try JSONDecoder().decode(ControlArgs.self, from: Data(empty.utf8)).items == [])
+        #expect(try JSONDecoder().decode(ControlArgs.self, from: Data(absent.utf8)).items == nil)
+    }
+
+    @Test func controlArgsQueryOmitsWhenNil() throws {
+        let args = ControlArgs(items: [ControlPickItem(id: "first", label: "First choice")])
+        let json = String(decoding: try JSONEncoder().encode(args), as: UTF8.self)
+
+        #expect(!json.contains("query"), "a nil query must be omitted from the JSON; got \(json)")
+        #expect(try JSONDecoder().decode(ControlArgs.self, from: Data(json.utf8)).query == nil)
+    }
+
+    @Test func controlPickItemSubtitleOmitsWhenNil() throws {
+        let item = ControlPickItem(id: "first", label: "First choice")
+        let json = String(decoding: try JSONEncoder().encode(item), as: UTF8.self)
+
+        #expect(!json.contains("subtitle"), "a nil subtitle must be omitted from the JSON; got \(json)")
+        #expect(try JSONDecoder().decode(ControlPickItem.self, from: Data(json.utf8)).subtitle == nil)
+    }
+
     @Test func workspaceCommandsRoundTrip() throws {
         let cases: [ControlRequest] = [
             ControlRequest(cmd: .workspaceNew, args: ControlArgs(name: "work")),

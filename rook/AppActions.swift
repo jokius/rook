@@ -51,12 +51,16 @@ final class AppActions {
         return TerminalZoomRegistry.shared.controller(for: windowID)?.target != nil
     }
 
-    /// While terminal zoom OR the dashboard grid is active, the UI is modal: keyboard/menu/palette actions
-    /// must not mutate the deck behind it. The zoom/dashboard toggles, socket commands, and macOS window
-    /// controls remain separate paths (they never gate on this), so the user is never trapped and can always
-    /// dismiss the modal. `frontmostDashboard?.isOpen` mirrors `terminalZoomActive`, resolved on the frontmost
-    /// window like the zoom target.
-    var uiActionsEnabled: Bool { !terminalZoomActive && !(frontmostDashboard?.isOpen ?? false) }
+    /// While terminal zoom, the dashboard grid, OR the topmost native picker is active, the UI is modal:
+    /// keyboard/menu/palette actions must not mutate the deck behind it. Dismissal paths remain independently
+    /// callable so the user is never trapped: the dashboard toggle stays available while its grid is the
+    /// topmost modal, socket commands and macOS window controls never gate on this, and a picker is resolved
+    /// by ⌘W. `frontmostDashboard?.isOpen` and the picker mirror `terminalZoomActive`, resolved on the
+    /// frontmost window like the zoom target.
+    var uiActionsEnabled: Bool {
+        !terminalZoomActive && !(frontmostDashboard?.isOpen ?? false)
+            && !pickActive(for: library.activeWindowID)
+    }
 
     /// Set briefly while a rename is being started, so the focus-restore that runs when a palette
     /// or the quick terminal closes doesn't steal first responder from the inline rename field.
@@ -96,6 +100,12 @@ final class AppActions {
     /// so an idle auto-follow in the key window moves first responder into the newly selected session.
     private var autoFollowObserver: NSObjectProtocol?
 
+    /// Cancels every window-scoped picker when AppKit begins termination. This observer runs on the
+    /// same synchronous notification as the delegate's quit flush, but never participates in
+    /// `applicationShouldTerminate`: a caller waiting on a pick gets `cancelled` without delaying either
+    /// the quit-confirmation prompt or termination itself.
+    private var terminationObserver: NSObjectProtocol?
+
     init(library: WindowLibrary) {
         self.library = library
         // bridge the host-free `AppStore.autoFollowFire` post to the app-target focus move: rookCore can't
@@ -107,6 +117,11 @@ final class AppActions {
             let captured = note.userInfo?[AppStore.autoFollowIndicatorKey] as? AgentIndicator
             MainActor.assumeIsolated { self?.autoFollowed(sessionID, captured: captured) }
         }
+        terminationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.cancelAllPendingPicks() }
+        }
     }
 
     // isolated so it can read the `@MainActor` non-Sendable observer token; balances the block-based
@@ -114,6 +129,27 @@ final class AppActions {
     // unbalanced addObserver(forName:) is a latent leak either way.
     isolated deinit {
         if let autoFollowObserver { NotificationCenter.default.removeObserver(autoFollowObserver) }
+        if let terminationObserver { NotificationCenter.default.removeObserver(terminationObserver) }
+    }
+
+    /// Resolve the pending picker owned by `windowID` as cancelled. Used by ⌘W and app termination;
+    /// window teardown cancels through `PickRegistry.unregister` so it can retain the terminal result.
+    @discardableResult
+    func cancelPendingPick(for windowID: WindowInfo.ID?) -> Bool {
+        guard let controller = PickRegistry.shared.controller(for: windowID),
+              controller.pending != nil
+        else { return false }
+        controller.cancel()
+        return true
+    }
+
+    /// Resolve all open windows' pending pickers during the synchronous app-termination notification.
+    /// The window library deliberately retains its open ids through quit teardown, so every mounted
+    /// controller remains addressable here.
+    func cancelAllPendingPicks() {
+        for windowID in library.openIDs() {
+            cancelPendingPick(for: windowID)
+        }
     }
 
     // MARK: - Workspaces & sessions
@@ -572,20 +608,25 @@ final class AppActions {
 
     /// Toggle the frontmost window's quick terminal (each window owns its own controller).
     func toggleQuickTerminal() {
-        guard !terminalZoomActive else { return }
+        guard !terminalZoomActive, !pickActive(for: library.activeWindowID) else { return }
         frontmostQuickTerminal?.toggle()
     }
 
     /// Toggle the frontmost window's full-window terminal zoom. Core resolves which surface is active
     /// (quick, overlay, scratch, split, or primary); the owning window renders it above all chrome.
-    func toggleTerminalZoom() { frontmostTerminalZoom?.toggle() }
+    func toggleTerminalZoom() {
+        guard !pickActive(for: library.activeWindowID) else { return }
+        frontmostTerminalZoom?.toggle()
+    }
 
     /// Toggle the frontmost window's dashboard grid (⌘⇧D / the palette / the menu). The GUI open has no
     /// explicit member list, so it fills the grid from the window's most-recently-used sessions (the same
     /// set `dashboard --mru` uses) at the `.auto` font size; closing returns focus to the active session.
     /// Zoom and the dashboard are mutually exclusive, so a zoomed window can't open one.
     func toggleDashboard() {
-        guard !terminalZoomActive else { return }
+        // NOT gated on the dashboard being open: ⌘⇧D stays its own close escape hatch. Zoom and a topmost
+        // native picker still block the toggle.
+        guard !terminalZoomActive, !pickActive(for: library.activeWindowID) else { return }
         guard let dashboard = frontmostDashboard else { return }
         if dashboard.isOpen {
             dashboard.close()
@@ -667,6 +708,7 @@ final class AppActions {
     /// target — `onSearchStart` opens the bar and pins the surface. Shared by the Find menu item, the
     /// palette, and ⌘F.
     func toggleSearch() {
+        guard !pickActive(for: library.activeWindowID) else { return }
         if store?.activeSession?.searchActive == true {
             (store?.activeSession?.searchSurface as? GhosttySurfaceView)?.endSearch()
             return
@@ -806,6 +848,7 @@ final class AppActions {
         // Theme…" launcher (which closes the action palette, then opens the .themes picker a tick later)
         // can't have its field focus stolen back by the close-restore's retry.
         if palette?.mode != nil { return }
+        if pickActive(for: library.activeWindowID) { return }
         if frontmostQuickTerminal?.isVisible == true { return }
         if let view = store?.activeSession?.topmostSurface as? GhosttySurfaceView, let window = view.window {
             window.makeFirstResponder(view)

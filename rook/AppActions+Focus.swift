@@ -10,6 +10,12 @@ extension AppActions {
         DashboardControllerRegistry.shared.controller(for: library.activeWindowID)?.isOpen == true
     }
 
+    /// Whether the specified window has a native control picker pending. Kept as one window-scoped
+    /// predicate so both frontmost and session-addressed focus paths use the same modal invariant.
+    func pickActive(for windowID: WindowInfo.ID?) -> Bool {
+        PickRegistry.shared.controller(for: windowID)?.pending != nil
+    }
+
     /// Whether the dashboard overlay is open in the window OWNING this session — the session-scoped twin of
     /// the frontmost `dashboardActive`, mirroring `terminalZoomActive(for:)`. The right gate for
     /// `focusSplitPane`, whose callers (⌃1/⌃2, ⌘D, the control `session.focus --pane`) can target a session
@@ -64,6 +70,7 @@ extension AppActions {
         // channel focuses sessions in background windows), where the frontmost window's zoom is irrelevant.
         if terminalZoomActive(for: session) { return }
         if dashboardActive(for: session) { return }
+        if pickActive(for: library.windowID(forSession: session.id)) { return }
         // the quick terminal is a window-level cover above the session; while it's up it owns focus, so
         // don't move first responder to a pane behind it (its own hide restores the session). The caller
         // has already set `splitFocused`, so the right pane shows once the quick terminal is dismissed.

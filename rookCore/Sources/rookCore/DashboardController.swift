@@ -71,6 +71,10 @@ public final class DashboardController {
     /// or closed. Set app-side via `setAppliedFontSize(_:)` when the override is applied; reset on close.
     public private(set) var appliedFontSize: Double?
 
+    /// Changes when an overlay above the dashboard releases keyboard ownership, prompting its AppKit
+    /// key catcher to reclaim first responder without changing dashboard content.
+    public private(set) var focusRevision = 0
+
     public init() {}
 
     /// Whether the dashboard is open, i.e. it holds at least one member.
@@ -119,6 +123,13 @@ public final class DashboardController {
     /// method (never a stray external write) mutates it; the wiring calls it on every font (re)apply.
     public func setAppliedFontSize(_ size: Double?) {
         appliedFontSize = size
+    }
+
+    /// requestFocus bumps `focusRevision` so the dashboard's AppKit key catcher reclaims first responder
+    /// once an overlay above it (a control picker) resolves. Called by `restoreFocusAfterPick`; the value
+    /// itself carries no meaning beyond changing.
+    public func requestFocus() {
+        focusRevision &+= 1
     }
 
     /// promoteSplitMember follows a promoted split survivor: `AppStore.closePrimaryPane` moves the split's

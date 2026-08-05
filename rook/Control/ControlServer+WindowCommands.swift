@@ -215,11 +215,12 @@ extension ControlServer {
     }
 
     /// Make `id` the logical frontmost window, the way `WindowAccessor.reportFrontmost` does on the GUI
-    /// path: record it and persist the index.
+    /// path: record it and persist the index. Shared by every control path that presents a window —
+    /// `window.select`, the minimize hand-off, `pick.open --follow`.
     ///
     /// The control channel needs its own path because `reportFrontmost` fires on `didBecomeKey`, which
     /// AppKit does not deliver while the app is inactive — exactly when a script is driving. Idempotent.
-    private func takeFrontmost(_ id: WindowInfo.ID) {
+    func takeFrontmost(_ id: WindowInfo.ID) {
         guard library.frontmostWindowID != id else { return }
         library.frontmostWindowID = id
         library.saveIndex()

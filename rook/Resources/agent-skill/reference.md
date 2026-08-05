@@ -141,7 +141,7 @@ glyph. The read side of `workspace icon`: feeding `icon` straight back restores 
 and `root` (the workspace's root directory — the read side of `workspace root`; omitted when unset, so a
 script can record a root, change it, and restore it).
 
-The tree object itself carries eleven top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries twelve top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `sidebarVisible` (whether the
 window's sidebar is currently shown — the read side of the write-only `sidebar` command, so a script
@@ -164,12 +164,15 @@ no dashboard is open): `dashboardMembers` (the pane refs the open dashboard show
 as both), `dashboardHighlighted` (the highlighted cell's pane ref — the one Enter jumps into, focusing
 that exact pane), `dashboardFontSize` (the absolute font size in points applied to the cells, omitted when
 the mode is `untouched`), and `dashboardFontMode` (`auto` for `--auto-size`, `fixed` for `--font-size`, or
-`untouched`). `idleMs` is live
+`untouched`), and `pickPending` (the id of the picker currently awaiting the user's answer in this window,
+omitted when none — the read side of the write-only `pick open`, so a script can tell whether a question is
+already on screen before opening one and hitting `pick already pending`). `idleMs` is live
 and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible` is on
-both; `sidebarMode`, `quickVisible`, `workspaceFilter`, `zoomedSurface`, and the four `dashboard*` fields
+both; `sidebarMode`, `quickVisible`, `workspaceFilter`, `zoomedSurface`, `pickPending`, and the four
+`dashboard*` fields
 are `tree`-only (a GUI/keyboard change would leave a cached copy stale — an involuntary jump flips
-`workspaceFilter` off with no command involved at all).
-All eleven are read-only projections of GUI state.
+`workspaceFilter` off with no command involved at all, and the user answers a picker with the keyboard).
+All twelve are read-only projections of GUI state.
 
 ## events
 
@@ -831,6 +834,118 @@ Invalid invocations error (rejected at the CLI and re-checked server-side): `--f
 `--auto-size`, a non-positive `--font-size`, `--close` combined with ids, `--mru`, or a font option,
 `--mru` combined with explicit ids, and an open with neither ids nor `--mru`.
 
+## pick
+
+`rookctl pick [open] [--prompt TEXT] [--query TEXT] [--allow-custom] [--follow] [--no-block] [--window W]`
+— ask the USER to choose from a list you supply, rendered in Rook's own command-palette UI, and read their
+answer back over the socket.
+Everything else in this reference lets an agent inspect and act; this is the one family whose point is a
+question for the human, for the step that is not yours to decide.
+
+**Choices come from stdin**, in one of two shapes, picked by the first non-whitespace byte:
+
+- **one label per line** — the label doubles as the id, and blank/whitespace-only lines are dropped.
+  The shell-friendly form: `printf 'one\ntwo\n' | rookctl pick`.
+- **a JSON array** when the input starts with `[` — `[{"id":"a","label":"Ship it","subtitle":"tests
+  green"}, …]`.
+  `id` is what comes back to you (so it can be a path, a sha, a key your script switches on),
+  `label` is what is shown and matched, `subtitle` is an optional second line of context.
+
+At most **1000** items.
+Every label must be non-empty, the ids must be unique, and neither a label nor a subtitle may contain
+control characters.
+
+### Flags
+
+- `--prompt TEXT` — placeholder for the query field (default: `Select…`).
+  Put the QUESTION here.
+- `--query TEXT` — initial query text; a non-empty value opens the picker already filtered.
+- `--allow-custom` — also accept the typed query as the answer.
+  A synthetic `Use "<query>"` row appears only when the trimmed query is non-empty AND matches no item,
+  so a query that hits a row cannot be submitted as free text.
+  This flag is also what makes an EMPTY item list legal — an empty list plus `--allow-custom` is a plain
+  free-text prompt.
+- `--follow` — raise the target window as the picker opens (otherwise it opens quietly and appears when
+  the user visits that window).
+- `--no-block` — print the picker id and return instead of waiting (see below).
+- `--window W` — which window shows the picker (id / prefix / `active`; default: the frontmost).
+
+**Matching is on the LABEL only** — a subtitle is context, never a search key, so it cannot make a row win
+on text its author never meant as one.
+An EMPTY query keeps YOUR array order rather than re-sorting, so a list you have already ranked stays
+ranked; fuzzy scoring applies once the user types.
+The query is trimmed of surrounding whitespace and newlines first (a here-doc's trailing newline otherwise
+scored every row zero and destroyed that order).
+
+### Blocking (the default) and exit codes
+
+`pick open` opens the picker and then polls for the answer — ten times at 100 ms, then every 500 ms,
+because a human choice takes seconds to minutes.
+It prints the result payload as ONE JSON object and exits:
+
+- **picked** — `{"result":"picked","id":"…","label":"…","index":N}`, exit **0**.
+- **custom** — `{"result":"custom","query":"…"}` (the trimmed query), exit **0**.
+- **cancelled** — `{"result":"cancelled"}`, exit **2**.
+- **pending** — `{"result":"pending"}`, exit **1**.
+  The blocking loop never prints this (it keeps waiting); only the one-shot `pick result` can.
+- a failed request — the error, exit **1**.
+
+`index` is the item's ORIGINAL position in the array you sent, not the position of the filtered row the
+user clicked.
+Fields that do not apply to an outcome are omitted, so branch on `result` first.
+
+There is NO timeout option: it waits for as long as the picker is up (the user dismissing it answers
+`cancelled`, so the wait does end).
+A caller that cannot block indefinitely should use `--no-block` and poll `pick result` on its own schedule.
+
+The success payload is JSON either way; `--json` changes only the FAILURE path (a JSON response object on
+stdout instead of a human `error: …` line on stderr).
+If the connection breaks mid-poll, the CLI sends a best-effort `pick.cancel` on a fresh connection, so an
+abandoned caller does not leave a picker up on the user's screen.
+
+### Non-blocking
+
+`rookctl pick --no-block …` prints `{"id":"<uuid>"}` and returns; that id is the PICKER's, not the answer.
+Then:
+
+- `rookctl pick result <id>` — one-shot read, printing the same payloads and using the same exit codes
+  (so `pending` = exit 1 = not answered yet).
+- `rookctl pick cancel <id>` — resolve a pending picker as `cancelled` and take it off the user's screen;
+  prints `ok`, and is also `ok` for a picker that has already answered.
+
+Both take the id as a positional argument.
+It is globally unique, so neither needs `--window` — and the blocking poll deliberately sends none, so the
+user changing windows mid-wait cannot desync it.
+Passing `--window` only NARROWS the lookup to that window: a picker that lives elsewhere then answers
+`unknown pick: <id>`.
+
+**Answers are retained after the picker closes**: the last 8 per window, plus 32 app-wide for windows that
+have since closed, evicted oldest-ANSWER-first.
+So a poll landing after the user closed the window still reads its own result instead of an error.
+
+### Lifecycle
+
+One picker per window; a second `pick.open` there errors `pick already pending`.
+Every path that could strand a waiting caller RESOLVES the picker as `cancelled` rather than merely hiding
+it: Esc, a click on the scrim, ⌘W (the picker is the FIRST rung of the close ladder, above terminal zoom),
+the window actually closing, and app termination.
+So a blocking `pick` always terminates.
+
+While a picker is pending it is modal for that window: the command palettes, quick terminal, terminal zoom,
+the dashboard and in-terminal search all decline to take its keyboard focus.
+Read the pending picker's id from the tree's top-level `pickPending` (omitted when none).
+
+### Errors
+
+`pick.open requires items` (no `items` at all — raw socket only, the CLI always sends the array),
+`pick.open requires at least one item` (an empty list without `--allow-custom`, which is also what an empty
+stdin produces), `too many items (max 1000)`, `pick item label must not be empty`,
+`pick item ids must be unique`, `item text must not contain control characters` (a label or a subtitle),
+`pick already pending`, `no open window`, `no pick surface` (the target window has no picker surface
+mounted), `unknown pick: <id>` (no live or retained picker with that id — or it lives in another window
+than the `--window` you passed), and, over the raw socket where the id is not a required positional,
+`pick.result requires a pick id` / `pick.cancel requires a pick id`.
+
 ## quick
 
 `rookctl quick [show|hide|toggle]` — the frontmost window's quick terminal (a single scratch
@@ -1077,7 +1192,10 @@ user-edited file read at launch — there is no control command for it.
 `no such file: <path>` / `session.markdown open requires a path` / `invalid markdown mode` (session markdown),
 `invalid color (expected #rrggbb)` (workspace color — the CLI rejects it locally too),
 `unknown SF Symbol: <name>` / `no such image file: <path>` / `unsupported icon image (svg, png, or jpeg)` (workspace icon),
-`no open window` (quick/sidebar), `quick terminal not open` / `quick terminal not realized` (quick type) /
+`pick already pending` / `unknown pick: <id>` / `no pick surface` / `pick.open requires at least one item` /
+`too many items (max 1000)` / `pick item label must not be empty` / `pick item ids must be unique` /
+`item text must not contain control characters` (pick — see the `pick` section for the full list),
+`no open window` (quick/sidebar/pick), `quick terminal not open` / `quick terminal not realized` (quick type) /
 `failed to read surface buffer` (quick text / session text), `window not open — window.select it first`
 (resize/move/minimize/`--window`),
 `cannot minimize a full-screen window — window.fullscreen it first` (window minimize),

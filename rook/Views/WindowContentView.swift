@@ -3,6 +3,24 @@ import AppKit
 import Combine
 import SwiftUI
 
+/// Window-local handoff between picker dismissal and the owning window becoming frontmost.
+/// A background window must not claim first responder, but its removed picker field cannot remain
+/// the responder when that window is activated later.
+struct PickFocusRestorationState {
+    private(set) var isDeferred = false
+
+    mutating func pickerResolved(isFrontmost: Bool) -> Bool {
+        isDeferred = !isFrontmost
+        return isFrontmost
+    }
+
+    mutating func windowBecameFrontmost(pickPending: Bool) -> Bool {
+        guard isDeferred, !pickPending else { return false }
+        isDeferred = false
+        return true
+    }
+}
+
 /// The actual per-window UI: the workspace/session sidebar + the active session's terminal, plus
 /// the quick-terminal / palette / switcher overlays. Holds the resolved non-optional `AppStore` so
 /// the binding-based wiring is unchanged from the single-window version; `ContentView` resolves the
@@ -31,6 +49,15 @@ struct WindowContentView: View {
     /// view-only grid. Registered in `DashboardControllerRegistry` on appear so the socket can drive it; the
     /// `+Dashboard` extension owns the overlay branch, deck yield, font override, and modal lifecycle.
     @State var dashboard = DashboardController()
+    /// Per-window native picker presented through the shared palette view. Registered for control-socket
+    /// lookup while this window is mounted; unlike `palette`, its pending state is window-scoped.
+    @State var pick = PickController()
+    /// Tracks this view's balanced auto-follow suppression so window teardown can release it even when
+    /// SwiftUI removes the observer before the pick controller publishes its cancellation.
+    @State private var pickSuppressesAutoFollow = false
+    /// Defers picker focus restoration when a control request resolves in a background window. The
+    /// always-mounted frontmost observer consumes it without activating or ordering that window.
+    @State private var pickFocusRestoration = PickFocusRestorationState()
     /// The terminal background color, mirrored from the (non-observable) `GhosttyApp` into view
     /// state and used as the quick terminal's opaque backing, so a settings theme change (posting
     /// `.rookAppearanceChanged`) re-renders it live.
@@ -102,40 +129,12 @@ struct WindowContentView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            // The split's AppKit HSplitView can overrun into the titlebar zone and steal header clicks, so
-            // the deck stays inset below the titlebar. While zoomed, keep that eager deck mounted so
-            // background sessions and control-opened overlays still realize their terminal surfaces and run;
-            // the zoom layer owns the visible window.
-            splitRoot
-                .padding(.top, titlebarHeight)
-                .opacity(terminalZoom.target == nil ? 1 : 0)
-                .allowsHitTesting(terminalZoom.target == nil)
-            if let zoomTarget = terminalZoom.target {
-                terminalZoomLayer(zoomTarget)
-                    .zIndex(10)
-                zoomTitlebar
-                    .zIndex(11)
-            } else {
-                // the window overlays (quick terminal / palettes / switcher) sit BELOW the titlebar, inset by
-                // its height — NOT as a body-level `.overlay` above EVERYTHING. A full-window overlay's dim
-                // scrim composites OVER the transparent custom titlebar (whose AppKit backing is deliberately
-                // hidden for translucency, WindowAppearance), darkening + seaming the normal non-compact titlebar
-                // (the corruption). Keeping the titlebar at the highest zIndex means a scrim can never cover it.
-                windowOverlayLayer
-                    .padding(.top, titlebarHeight)
-                    .zIndex(1)
-                if dashboard.isOpen {
-                    // the open dashboard is a view-only modal, like terminal zoom: swap the full titlebar for
-                    // a stripped bar (mirroring zoomTitlebar) so its interactive buttons can't steal the
-                    // key-catcher's first responder — which strands Esc — or drive actions that make no sense
-                    // behind the grid. The two modes are mutually exclusive, so only one titlebar is ever up.
-                    dashboardTitlebar
-                        .zIndex(2)
-                } else {
-                    customTitlebar
-                        .zIndex(2)
-                }
-            }
+            windowBody
+            // A control picker is the window's topmost modal — LAST in this outer stack, so it stays visible
+            // and interactive even when terminal zoom or the dashboard was already active when the request
+            // arrived. Its own stack level rather than another child of the inner one: that ZStack already
+            // sits at the type checker's limit, and wrapping keeps every existing zIndex untouched.
+            pickModalLayer
         }
         // with the title bar hidden (.hiddenTitleBar), pull our header to the very top so the traffic
         // lights overlay it as one row; no system title bar is left to clip the content.
@@ -192,6 +191,9 @@ struct WindowContentView: View {
                 store.suppressAutoFollow()
             }
         }
+        .onChange(of: pendingPickID) { (old: String?, new: String?) in
+            handlePickPendingChange(old: old, new: new)
+        }
         // a settings appearance change isn't observable through GhosttyApp, so re-render on the
         // notification to pick up the new terminal color in the quick terminal backing.
         .onReceive(NotificationCenter.default.publisher(for: .rookAppearanceChanged)) { _ in
@@ -218,27 +220,126 @@ struct WindowContentView: View {
         .background(WindowAccessor(titleToken: windowTitle, windowID: windowID, library: library, store: store))
         // own a per-window quick terminal: register it so the frontmost-window call sites resolve it,
         // and spawn its shell in THIS window's active session's directory.
-        .onAppear {
-            quickTerminal.cwdProvider = { [store] in
-                store.activeSession?.effectiveCwd ?? FileManager.default.homeDirectoryForCurrentUser.path
-            }
-            // the quick terminal's shell sees this window's ROOK_* env (scratch: ENABLED + WINDOW_ID + SOCKET).
-            quickTerminal.envProvider = { [quickTerminalEnv, windowID] in quickTerminalEnv(windowID) }
-            // typing in the quick terminal counts as activity, so an idle auto-follow fire can't change this
-            // window's selected session behind the overlay while the user types (mirrors the overlay/scratch).
-            quickTerminal.onUserInput = { [store] in store.noteUserActivity() }
-            QuickTerminalRegistry.shared.register(windowID, controller: quickTerminal)
-            terminalZoom.targetResolver = { [store, quickTerminal] in
-                TerminalZoomController.resolveTarget(store: store, quickTerminalVisible: quickTerminal.isVisible)
-            }
-            TerminalZoomRegistry.shared.register(windowID, controller: terminalZoom)
-            registerDashboard()
-        }
+        .onAppear { wireWindowControllers() }
         .onDisappear {
             QuickTerminalRegistry.shared.unregister(windowID)
             TerminalZoomRegistry.shared.unregister(windowID)
             tearDownDashboard()
+            if pickSuppressesAutoFollow {
+                store.resumeAutoFollow()
+                pickSuppressesAutoFollow = false
+            }
+            PickRegistry.shared.unregister(windowID)
         }
+    }
+
+    /// The window's own layers: the eager deck plus either the zoom cover or the overlay/titlebar chrome.
+    /// Split off `body` so the outer stack can put the control picker above all of it without adding a
+    /// child to this ZStack, which is at the type checker's limit.
+    private var windowBody: some View {
+        ZStack(alignment: .top) {
+            // The split's AppKit HSplitView can overrun into the titlebar zone and steal header clicks, so
+            // the deck stays inset below the titlebar. While zoomed, keep that eager deck mounted so
+            // background sessions and control-opened overlays still realize their terminal surfaces and run;
+            // the zoom layer owns the visible window.
+            alwaysMountedSplitLayer
+            if let zoomTarget = terminalZoom.target {
+                terminalZoomLayer(zoomTarget)
+                    .zIndex(10)
+                zoomTitlebar
+                    .zIndex(11)
+            } else {
+                // the window overlays (quick terminal / palettes / switcher) sit BELOW the titlebar, inset by
+                // its height — NOT as a body-level `.overlay` above EVERYTHING. A full-window overlay's dim
+                // scrim composites OVER the transparent custom titlebar (whose AppKit backing is deliberately
+                // hidden for translucency, WindowAppearance), darkening + seaming the normal non-compact titlebar
+                // (the corruption). Keeping the titlebar at the highest zIndex means a scrim can never cover it.
+                windowOverlayLayer
+                    .padding(.top, titlebarHeight)
+                    .zIndex(1)
+                if dashboard.isOpen {
+                    // the open dashboard is a view-only modal, like terminal zoom: swap the full titlebar for
+                    // a stripped bar (mirroring zoomTitlebar) so its interactive buttons can't steal the
+                    // key-catcher's first responder — which strands Esc — or drive actions that make no sense
+                    // behind the grid. The two modes are mutually exclusive, so only one titlebar is ever up.
+                    dashboardTitlebar
+                        .zIndex(2)
+                } else {
+                    customTitlebar
+                        .zIndex(2)
+                }
+            }
+        }
+    }
+
+    /// Own this window's per-window controllers on mount: register each in its shared registry and wire
+    /// the closures they need from the view (cwd/env providers, activity, the picker focus gate). A method
+    /// rather than an inline `.onAppear` closure — `body`'s modifier chain is at the type checker's limit.
+    private func wireWindowControllers() {
+        quickTerminal.cwdProvider = { [store] in
+            store.activeSession?.effectiveCwd ?? FileManager.default.homeDirectoryForCurrentUser.path
+        }
+        // the quick terminal's shell sees this window's ROOK_* env (scratch: ENABLED + WINDOW_ID + SOCKET).
+        quickTerminal.envProvider = { [quickTerminalEnv, windowID] in quickTerminalEnv(windowID) }
+        // typing in the quick terminal counts as activity, so an idle auto-follow fire can't change this
+        // window's selected session behind the overlay while the user types (mirrors the overlay/scratch).
+        quickTerminal.onUserInput = { [store] in store.noteUserActivity() }
+        quickTerminal.focusAllowed = { [pick] () -> Bool in pick.pending == nil }
+        QuickTerminalRegistry.shared.register(windowID, controller: quickTerminal)
+        terminalZoom.targetResolver = { [store, quickTerminal] in
+            TerminalZoomController.resolveTarget(store: store, quickTerminalVisible: quickTerminal.isVisible)
+        }
+        TerminalZoomRegistry.shared.register(windowID, controller: terminalZoom)
+        registerDashboard()
+        PickRegistry.shared.register(windowID, controller: pick)
+    }
+
+    /// The pending picker's id, hoisted out of the `body` modifier chain: that chain sits at the type
+    /// checker's limit, and an inline optional-chained key path there tips it over.
+    private var pendingPickID: String? { pick.pending?.id }
+
+    /// A native picker owns keyboard focus just like a built-in palette: pair auto-follow suppression per
+    /// window, and return first responder to this window's terminal after every resolution path.
+    private func handlePickPendingChange(old: String?, new: String?) {
+        if old == nil, new != nil, !pickSuppressesAutoFollow {
+            // A socket-driven picker may arrive while either title-bar popover is already open.
+            // Dismiss both immediately so no second interactive surface remains above the modal picker.
+            recentSessionsShown = false
+            attentionPopoverShown = false
+            store.suppressAutoFollow()
+            pickSuppressesAutoFollow = true
+        } else if old != nil, new == nil, pickSuppressesAutoFollow {
+            store.resumeAutoFollow()
+            pickSuppressesAutoFollow = false
+            if pickFocusRestoration.pickerResolved(isFrontmost: isFrontmost) {
+                restoreFocusAfterPick()
+            }
+        }
+    }
+
+    /// The control picker, inset by the titlebar exactly like `windowOverlayLayer` so its scrim still
+    /// never composites over the transparent title bar (the transparent-titlebar-scrim rule) even though
+    /// it draws above every layer of `windowBody`.
+    private var pickModalLayer: some View {
+        pickPaletteOverlay
+            .padding(.top, titlebarHeight)
+    }
+
+    /// The eager split/deck remains mounted behind every modal presentation, including terminal zoom.
+    /// Keep frontmost-driven cleanup here rather than on `windowOverlayLayer`, which is absent while
+    /// zoomed: otherwise a palette owned by the old front window can survive the handoff and remount
+    /// after the picker and zoom both close.
+    private var alwaysMountedSplitLayer: some View {
+        splitRoot
+            .padding(.top, titlebarHeight)
+            .opacity(terminalZoom.target == nil ? 1 : 0)
+            .allowsHitTesting(terminalZoom.target == nil)
+            .onChange(of: isFrontmost) { _, frontmost in
+                if frontmost, pick.pending != nil { palette.close() }
+                if frontmost, pickFocusRestoration.windowBecameFrontmost(pickPending: pick.pending != nil) {
+                    restoreFocusAfterPick()
+                }
+            }
     }
 
     private var openOverlaySessionIDs: [UUID] {

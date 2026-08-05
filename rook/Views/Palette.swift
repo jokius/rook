@@ -96,6 +96,17 @@ struct CommandPalette: View {
     /// sidebar is on screen). The panel shifts by half of it so it centers over the TERMINAL rather than
     /// the whole window; the scrim stays full width, so a click on the sidebar still dismisses.
     let terminalAreaInset: Double
+    /// Caller-provided rows for a control-API pick. A non-nil array replaces the built-in mode's
+    /// catalog, including when the array is empty.
+    let explicitItems: [PaletteItem]?
+    /// Search-field prompt for an explicit picker; nil uses the neutral picker default.
+    let prompt: String?
+    /// Whether an unmatched, non-empty explicit-picker query can be submitted as free text.
+    let allowCustom: Bool
+    let onCustom: ((String) -> Void)?
+    /// Called when an explicit picker is dismissed or completes. Built-in palettes leave this nil and
+    /// continue to close through `PaletteController`; a pick uses it to resolve cancellation.
+    let onDismiss: (() -> Void)?
 
     /// The chrome text sizes and the panel's scale, read from the non-observable `GhosttyApp` — a palette
     /// mounts fresh on every open, so it can never render a stale size.
@@ -108,7 +119,7 @@ struct CommandPalette: View {
     /// How far down the window the panel starts.
     private static let topInsetFraction: Double = 0.12
 
-    @State private var query = ""
+    @State private var query: String
     @State private var selection = 0
     /// The visible, filtered result list. Held in `@State` (recomputed on query/mode change) so
     /// the rendered rows and the Enter target are guaranteed to be the same array — a recomputed
@@ -116,7 +127,26 @@ struct CommandPalette: View {
     @State private var filtered: [PaletteItem] = []
     @FocusState private var fieldFocused: Bool
 
+    /// `initialQuery` seeds the search field for an explicit picker: the caller's `--query` opens the
+    /// palette already filtered, since `.onAppear` runs the first `updateFiltered()` against it. SwiftUI
+    /// selects a focused field's existing text, so the first keystroke REPLACES the seed.
+    init(controller: PaletteController, actions: AppActions, terminalAreaInset: Double,
+         items: [PaletteItem]? = nil, prompt: String? = nil, initialQuery: String? = nil,
+         allowCustom: Bool = false, onCustom: ((String) -> Void)? = nil,
+         onDismiss: (() -> Void)? = nil) {
+        self.controller = controller
+        self.actions = actions
+        self.terminalAreaInset = terminalAreaInset
+        self.explicitItems = items
+        self.prompt = prompt
+        _query = State(initialValue: initialQuery ?? "")
+        self.allowCustom = allowCustom
+        self.onCustom = onCustom
+        self.onDismiss = onDismiss
+    }
+
     private var allItems: [PaletteItem] {
+        if let explicitItems { return explicitItems }
         switch controller.mode {
         case .actions: return actions.paletteActions()
         case .sessions: return actions.paletteSessions()
@@ -127,28 +157,37 @@ struct CommandPalette: View {
         }
     }
 
-    /// Recomputes `filtered` for the current query: keep items whose title (or subtitle) matches,
-    /// best score first, then alphabetically by title (so an empty query lists everything A→Z and
-    /// equal-scoring matches are ordered predictably).
+    /// Recomputes `filtered` for the current query: keep items whose search keys match (`paletteSearchKeys`
+    /// — label only for a caller-supplied picker, label plus subtitle for a built-in palette), best score
+    /// first, then alphabetically by title (so equal-scoring matches are ordered predictably). An empty
+    /// query lists a built-in palette A→Z, but leaves a caller-supplied picker and `.attention` in their
+    /// source order. The query is trimmed of whitespace AND newlines first: `fuzzyScore` splits on both,
+    /// so a blank query that kept a newline would score every row 0 and lose the source order to the
+    /// tie-break.
     private func updateFiltered() {
-        let q = query.trimmingCharacters(in: .whitespaces)
-        // the attention palette's empty-query order is the paletteAttention()/attentionSessions ranking
-        // (blocked→active→completed, newest change first). preserve it verbatim instead of falling through
-        // to the alphabetical tie-break below — every row scores 0 for an empty query, so that tie-break
-        // would re-sort them A→Z and Return would jump to the alphabetically-first session, not the blocked
-        // one. fuzzy filtering still applies once the user types.
-        if controller.mode == .attention, q.isEmpty {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // skipping the rank is what preserves the source order — the attention palette's
+        // paletteAttention()/attentionSessions ranking (blocked→active→completed, newest change first), and
+        // a picker's caller-supplied array order. every row scores 0 for an empty query, so the tie-break
+        // below would re-sort them A→Z and Return would run the alphabetically-first row instead of the
+        // intended one. fuzzy filtering still applies once the user types.
+        if q.isEmpty, explicitItems != nil || controller.mode == .attention {
             filtered = allItems
             selection = filtered.isEmpty ? 0 : min(selection, filtered.count - 1)
             return
         }
         filtered = fuzzyRank(query: q, items: allItems) { item in
-            item.subtitle.map { [item.title, $0] } ?? [item.title]
+            paletteSearchKeys(title: item.title, subtitle: item.subtitle, callerSupplied: explicitItems != nil)
+        }
+        if explicitItems != nil,
+           let label = pickCustomRowLabel(query: q, filteredCount: filtered.count, allowCustom: allowCustom) {
+            filtered = [PaletteItem(id: "pick-custom", title: label) { onCustom?(q) }]
         }
         selection = filtered.isEmpty ? 0 : min(selection, filtered.count - 1)
     }
 
     private var placeholder: String {
+        if explicitItems != nil { return prompt ?? "Select…" }
         switch controller.mode {
         case .sessions: return "Go to session…"
         case .themes: return "Select a theme…"
@@ -163,7 +202,10 @@ struct CommandPalette: View {
     /// the current theme's row; leaving it (to another mode or closed) reverts any uncommitted preview.
     /// Idempotent — `AppActions` guards begin/cancel on its active flag.
     private func syncThemeSession() {
-        guard controller.mode == .themes else { actions.cancelThemePreview(); return }
+        guard explicitItems == nil, controller.mode == .themes else {
+            actions.cancelThemePreview()
+            return
+        }
         actions.beginThemePreview()
         if let index = filtered.firstIndex(where: { $0.id == actions.currentThemeID }) { selection = index }
     }
@@ -176,7 +218,9 @@ struct CommandPalette: View {
             ZStack(alignment: .top) {
                 Color.black.opacity(0.2)
                     .contentShape(Rectangle())
-                    .onTapGesture { controller.close() }
+                    .onTapGesture { dismiss() }
+                    .accessibilityElement()
+                    .accessibilityIdentifier(explicitItems == nil ? "palette-scrim" : "pick-scrim")
                 panel
                     .frame(width: width)
                     // `.top`, or the panel centers inside a frame taller than itself and drops down the
@@ -206,7 +250,7 @@ struct CommandPalette: View {
                     .onChange(of: query) { selection = 0; updateFiltered(); previewSelected() }
                     .onKeyPress(.downArrow) { move(1); return .handled }
                     .onKeyPress(.upArrow) { move(-1); return .handled }
-                    .onKeyPress(.escape) { controller.close(); return .handled }
+                    .onKeyPress(.escape) { dismiss(); return .handled }
             }
             .padding(metrics.scaled(12))
             Divider()
@@ -218,11 +262,11 @@ struct CommandPalette: View {
         .background { PalettePanelBackground() }
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.1)))
         .shadow(radius: 24)
-        .accessibilityIdentifier("command-palette")
+        .accessibilityIdentifier(explicitItems == nil ? "command-palette" : "pick-palette")
         .onAppear {
             fieldFocused = true
             updateFiltered()
-            syncThemeSession()
+            if explicitItems == nil { syncThemeSession() }
             // a palette opened from a title-bar button (the attention bell) mounts while that button
             // still holds first responder, so the synchronous focus above loses the race and the field
             // never takes the keyboard. re-assert on the next runloop tick — after the click settles —
@@ -230,8 +274,17 @@ struct CommandPalette: View {
             // this is a no-op (see swiftui focus-pattern: onAppear focus may need a main-async kick).
             DispatchQueue.main.async { fieldFocused = true }
         }
-        .onChange(of: controller.mode) { selection = 0; updateFiltered(); syncThemeSession() }
-        .onDisappear { actions.cancelThemePreview() }
+        // a pick's rows come from the caller, not from `controller.mode`: a built-in palette switching mode
+        // underneath must not re-filter (or re-enter the theme preview) inside the picker.
+        .onChange(of: controller.mode) {
+            guard explicitItems == nil else { return }
+            selection = 0
+            updateFiltered()
+            syncThemeSession()
+        }
+        .onDisappear {
+            if explicitItems == nil { actions.cancelThemePreview() }
+        }
     }
 
     private var results: some View {
@@ -279,7 +332,15 @@ struct CommandPalette: View {
 
     private func runItem(_ item: PaletteItem) {
         item.run()
-        controller.close()
+        dismiss()
+    }
+
+    /// Close the palette. A built-in one closes through `PaletteController` (which unmounts the overlay);
+    /// a pick has no controller state of its own — its `onDismiss` resolves the pending pick, and the
+    /// resolution is what unmounts it.
+    private func dismiss() {
+        if explicitItems == nil { controller.close() }
+        onDismiss?()
     }
 }
 
@@ -346,5 +407,6 @@ private struct PaletteRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(isSelected ? Color.accentColor.opacity(0.25) : Color.clear)
         .contentShape(Rectangle())
+        .accessibilityIdentifier("palette-item-\(item.id)")
     }
 }

@@ -277,6 +277,238 @@ struct Dashboard: RequestCommand {
     }
 }
 
+// MARK: - pick
+
+/// Native fuzzy-picker commands. `Open` is the default so the shell-friendly common case is simply
+/// `printf 'one\ntwo\n' | rookctl pick`; explicit `result` and `cancel` verbs make `--no-block`
+/// useful without requiring callers to speak the socket protocol themselves.
+struct Pick: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Open, poll, or cancel a native fuzzy picker.",
+        subcommands: [Open.self, Result.self, Cancel.self],
+        defaultSubcommand: Open.self
+    )
+
+    /// Render the immediate `pick.open` response as the documented `{"id":"…"}` JSON object.
+    static func formatPickID(_ id: String) throws -> String {
+        String(decoding: try JSONEncoder().encode(ControlResult(id: id)), as: UTF8.self)
+    }
+
+    /// Render the nested `pick.result` payload itself, rather than the enclosing control response.
+    static func formatPickResult(_ result: ControlPickResult) throws -> String {
+        String(decoding: try JSONEncoder().encode(result), as: UTF8.self)
+    }
+
+    /// Map every picker state to a process status. `pending` is non-terminal in the blocking loop; if
+    /// observed by the one-shot `pick result` verb it uses the generic failure status.
+    static func exitCode(for outcome: ControlPickOutcome) -> ExitCode {
+        switch outcome {
+        case .picked, .custom: .success
+        case .pending: .failure
+        case .cancelled: ExitCode(rawValue: 2)
+        }
+    }
+
+    /// Human choices may take minutes, so poll quickly only for the first second (ten 100 ms waits),
+    /// then back off to 500 ms rather than hammering the server's serial accept loop indefinitely.
+    static func pollDelay(afterPendingPoll poll: Int) -> TimeInterval {
+        poll <= 10 ? 0.1 : 0.5
+    }
+
+    static func writeStandardError(_ line: String) {
+        FileHandle.standardError.write(Data("\(line)\n".utf8))
+    }
+
+    /// A failed response goes to stdout under `--json` (so a pipeline still parses one object) and to
+    /// stderr otherwise, matching the shared `printResponse` split.
+    static func writeResponse(_ response: ControlResponse, json: Bool,
+                              output: (String) -> Void, errorOutput: (String) -> Void) {
+        let line = SocketClient.formatResponse(response, json: json)
+        if json {
+            output(line)
+        } else {
+            errorOutput(line)
+        }
+    }
+
+    struct Open: RequestCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Read choices from stdin and open a native fuzzy picker."
+        )
+
+        @Option(name: .long, help: "Placeholder text shown in the picker query field.") var prompt: String?
+        @Option(name: .long, help: "Initial text for the picker query field; it opens already filtered.")
+        var query: String?
+        @Flag(name: .long, help: "Accept the current query as a custom result.") var allowCustom = false
+        @Flag(name: .long, help: "Raise the target window when the picker opens.") var follow = false
+        @Flag(name: .long, help: "Print the picker id and return without waiting for a result.") var noBlock = false
+        @OptionGroup var options: ClientOptions
+
+        func makeRequest() throws -> ControlRequest {
+            try makeRequest(input: FileHandle.standardInput.readDataToEndOfFile())
+        }
+
+        /// Build the open request from injected stdin bytes. Production passes standard input; tests pass
+        /// data directly so parsing and argument mapping never block on the process's real stdin.
+        func makeRequest(input: Data) throws -> ControlRequest {
+            let args = ControlArgs(
+                follow: follow ? true : nil,
+                items: try Self.parseItems(input),
+                prompt: prompt,
+                query: query,
+                allowCustom: allowCustom ? true : nil
+            )
+            return ControlRequest(cmd: .pickOpen, args: options.withWindow(args))
+        }
+
+        /// Sniff stdin's first non-whitespace byte. JSON arrays preserve caller-supplied ids/subtitles;
+        /// bare lines use the label itself as the id and discard empty or whitespace-only lines.
+        static func parseItems(_ input: Data) throws -> [ControlPickItem] {
+            let whitespace = Set([UInt8(ascii: " "), UInt8(ascii: "\t"),
+                                  UInt8(ascii: "\n"), UInt8(ascii: "\r")])
+            if input.first(where: { !whitespace.contains($0) }) == UInt8(ascii: "[") {
+                return try JSONDecoder().decode([ControlPickItem].self, from: input)
+            }
+            guard let text = String(data: input, encoding: .utf8) else {
+                throw ValidationError("stdin must be UTF-8 text or a JSON item array")
+            }
+            return text.components(separatedBy: .newlines)
+                .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                .map { ControlPickItem(id: $0, label: $0) }
+        }
+
+        func run() throws {
+            let client = SocketClient(path: options.socketPath())
+            try execute(
+                input: FileHandle.standardInput.readDataToEndOfFile(),
+                send: client.send,
+                sleep: Thread.sleep(forTimeInterval:),
+                output: { print($0) },
+                errorOutput: Pick.writeStandardError
+            )
+        }
+
+        /// Execute open → poll with injectable I/O. The production wrapper supplies the socket, sleep,
+        /// stdin, stdout, and stderr; unit tests exercise the unbounded blocking flow without real delays
+        /// or process file descriptors.
+        func execute(
+            input: Data,
+            send: (ControlRequest) throws -> ControlResponse,
+            sleep: (TimeInterval) -> Void,
+            output: (String) -> Void,
+            errorOutput: (String) -> Void = Pick.writeStandardError
+        ) throws {
+            let opened = try send(makeRequest(input: input))
+            guard opened.ok else {
+                Pick.writeResponse(opened, json: options.json, output: output, errorOutput: errorOutput)
+                throw ExitCode.failure
+            }
+            guard let pickID = opened.result?.id else {
+                errorOutput("error: pick.open result missing id")
+                throw ExitCode.failure
+            }
+            if noBlock {
+                output(try Pick.formatPickID(pickID))
+                return
+            }
+
+            var pendingPolls = 0
+            while true {
+                let response: ControlResponse
+                do {
+                    response = try send(ControlRequest(cmd: .pickResult, target: pickID))
+                } catch {
+                    // a transport failure mid-wait — a refused connect, a truncated or empty reply —
+                    // leaves the picker up with nobody waiting on it. every request opens its own
+                    // connection, so the cancel can still land even though this poll could not.
+                    abandon(pickID, send: send)
+                    throw error
+                }
+                // the poll carries no window selector, so a pending picker is always found by id and
+                // answers ok. a not-ok response therefore means the server no longer holds one, and
+                // there is nothing left to dismiss.
+                guard response.ok else {
+                    Pick.writeResponse(response, json: options.json, output: output, errorOutput: errorOutput)
+                    throw ExitCode.failure
+                }
+                guard let result = response.result?.pick else {
+                    errorOutput("error: pick.result missing result")
+                    abandon(pickID, send: send)
+                    throw ExitCode.failure
+                }
+                if result.result == .pending {
+                    pendingPolls += 1
+                    sleep(Pick.pollDelay(afterPendingPoll: pendingPolls))
+                    continue
+                }
+
+                output(try Pick.formatPickResult(result))
+                let code = Pick.exitCode(for: result.result)
+                if code.rawValue != 0 { throw code }
+                return
+            }
+        }
+
+        /// Dismiss the picker this command opened but can no longer wait on, so the window is not left
+        /// holding a picker whose owner is gone and the next `pick.open` there is not refused. Best effort:
+        /// the poll already failed, so a failing cancel adds nothing to report.
+        private func abandon(_ pickID: String, send: (ControlRequest) throws -> ControlResponse) {
+            _ = try? send(ControlRequest(cmd: .pickCancel, target: pickID))
+        }
+    }
+
+    struct Result: RequestCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Print a picker's current or terminal result as JSON."
+        )
+        @Argument(help: "Exact picker id returned by pick open.") var id: String
+        @OptionGroup var options: ClientOptions
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .pickResult, target: id, args: options.withWindow())
+        }
+
+        func run() throws {
+            try execute(
+                send: SocketClient(path: options.socketPath()).send,
+                output: { print($0) },
+                errorOutput: Pick.writeStandardError
+            )
+        }
+
+        /// Execute a one-shot read with injectable transport/stdout/stderr so every wire outcome and exit
+        /// mapping is covered without replacing process file descriptors.
+        func execute(
+            send: (ControlRequest) throws -> ControlResponse,
+            output: (String) -> Void,
+            errorOutput: (String) -> Void = Pick.writeStandardError
+        ) throws {
+            let response = try send(makeRequest())
+            guard response.ok else {
+                Pick.writeResponse(response, json: options.json, output: output, errorOutput: errorOutput)
+                throw ExitCode.failure
+            }
+            guard let result = response.result?.pick else {
+                errorOutput("error: pick.result missing result")
+                throw ExitCode.failure
+            }
+            output(try Pick.formatPickResult(result))
+            let code = Pick.exitCode(for: result.result)
+            if code.rawValue != 0 { throw code }
+        }
+    }
+
+    struct Cancel: RequestCommand {
+        static let configuration = CommandConfiguration(abstract: "Cancel a pending picker.")
+        @Argument(help: "Exact picker id returned by pick open.") var id: String
+        @OptionGroup var options: ClientOptions
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .pickCancel, target: id, args: options.withWindow())
+        }
+    }
+}
+
 // MARK: - sidebar
 
 struct Sidebar: ParsableCommand {

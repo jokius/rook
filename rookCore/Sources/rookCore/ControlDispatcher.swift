@@ -127,6 +127,12 @@ public protocol ControlActions {
     func windowZoom(_ target: String?) -> ControlResponse
     func windowFullscreen(_ target: String?) -> ControlResponse
     func windowMinimize(_ target: String?, mode: ControlToggleMode) async -> ControlResponse
+    /// Open a native picker. The host owns window resolution, registry lookup, and presentation.
+    func openPick(_ pick: PendingPick, window: String?, follow: Bool) -> ControlResponse
+    /// Read a native picker's current result. The host owns window resolution and registry lookup.
+    func pickResult(_ target: String, window: String?) -> ControlResponse
+    /// Cancel a native picker. The host owns window resolution, registry lookup, and dismissal.
+    func cancelPick(_ target: String, window: String?) -> ControlResponse
     func clearRestoreCommands() -> ControlResponse
 }
 
@@ -227,6 +233,8 @@ public struct ControlDispatcher {
             return await dispatchWindowCommand(request)
         case .dashboard:
             return dispatchDashboard(request)
+        case .pickOpen, .pickResult, .pickCancel:
+            return dispatchPickCommand(request)
         case .debugAppearance:
             // UI-test-only seam handled app-side in `ControlServer` (needs AppKit + `ContentView.isUITestLaunch`).
             return nil
