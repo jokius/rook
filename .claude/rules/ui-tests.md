@@ -127,6 +127,13 @@ paths:
   testing, and never "in parallel/background" (background only hides the output,
   not the on-screen event synthesis).
   Host-free `swift test` is fine anytime (no screen interaction).
+- **Dismiss the Settings window by ITS OWN close button, never ⌘W.**
+  ⌘W reaches the app's Close Session command and takes the seeded session with it — which a session-row-count
+  oracle reads as a workspace COLLAPSE rather than as a closed session, so the test fails for the wrong
+  reason (or worse, passes for it).
+  Target the window by a control that only that tab has:
+  `app.windows.containing(.any, identifier: <a control on the tab>).firstMatch.buttons[XCUIIdentifierCloseWindow].click()`
+  (see `SidebarUITests.testWorkspaceRowClickStopsTogglingAfterLiveSettingsFlip`).
 - **Test cadence — ASK before a full UI run; don't default to it.**
   The host-free `cd rookCore && swift test` is fast (~0.2 s) — always run it.
   The XCUITest suite is SLOW (~75 s for one class, ~460 s for all 77) and re-runs unaffected tests,

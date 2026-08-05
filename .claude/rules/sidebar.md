@@ -86,6 +86,16 @@ paths:
   under the control keep-in-sync rule), so it adds NO control command — the ALL-workspaces
   `sidebar.expand`/`sidebar.collapse` stay the control surface.
   Covered by `SidebarUITests.testClickWorkspaceRowTogglesExpansion`.
+  **The whole-row target is OPTIONAL, gated on `GhosttyApp.workspaceRowClickExpands` (default ON,
+  Settings ▸ General ▸ Mouse — see [[settings]]); the disclosure TRIANGLE is unconditional**, since AppKit
+  toggles that natively and a setting that removed the affordance entirely would be a different feature.
+  **The deferred work item re-reads that mirror when it FIRES, not when it is scheduled, and clears
+  itself.** Nothing else cancels an already-scheduled toggle, so reading it only at schedule time let a
+  click followed by turning the setting off INSIDE the double-click interval still expand the row.
+  Covered by `SidebarUITests.testWorkspaceRowClickDoesNotToggleWhenSettingIsOff` (the launch-time mirror,
+  via a seeded `settings.json`) and `testWorkspaceRowClickStopsTogglingAfterLiveSettingsFlip` (the
+  `persistAndApply` mirror leg, which the seeded test cannot see — without it a missing live mirror leaves
+  the toggle needing a relaunch and the suite green).
 - **A session ROW click reveals a blocked session's pane-tagged pane.**
   `Coordinator.outlineViewSelectionDidChange` selects the clicked session (`selectSession`) then — async,
   after the selection + the sidebar's own focus-restore settle — calls `AppActions.revealActiveBlockedPane()`,

@@ -24,8 +24,21 @@ struct rookApp: App {
     @State private var appearanceObserver: SystemAppearanceObserver
     @State private var accessibilityObserver: SystemAccessibilityObserver
 
+    /// Whether this launch owes the user the first-run welcome. Decided in `init()`, because the first
+    /// launch writes its own window snapshot moments after the scene appears and that write would read
+    /// back as prior state.
+    private let welcomeDue: Bool
+
     /// The plain `WindowGroup`'s scene id, used by `openWindow(id:)` to spawn additional windows.
     private static let windowGroupID = "terminal"
+
+    /// The directory this launch reads and writes its state in: an isolated `ROOK_STATE_DIR` (dev/test
+    /// instances) else `~/Library/Application Support/rook`. Same resolution `SettingsStore`/`WindowLibrary`
+    /// do internally, hoisted so `init()`'s first-run check and the scene task's marker write can't drift.
+    private static var stateDirectory: URL {
+        ProcessInfo.processInfo.environment["ROOK_STATE_DIR"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) } ?? PersistenceStore.defaultDirectory
+    }
 
     /// The version paired with rook's `TERM_PROGRAM` identity in every spawned terminal.
     private static let terminalProgramVersion =
@@ -34,6 +47,10 @@ struct rookApp: App {
     init() {
         // one-shot import of a pre-rebrand agterm install (state + config), before anything reads either.
         rookApp.migrateLegacyInstall()
+        // right after the migration (an imported agterm install is an established user, not a first run)
+        // and BEFORE anything else reads or writes the state directory: `WindowLibrary`'s bootstrap seeds
+        // a window and saves it, which a later read would see as evidence of an earlier launch.
+        welcomeDue = FirstRunWelcome.isDue(in: rookApp.stateDirectory)
         let library = rookApp.restoredLibrary()
         _library = State(initialValue: library)
         let actions = AppActions(library: library)
@@ -176,6 +193,9 @@ struct rookApp: App {
                     // the eager-deck surfaces exist (idempotent, so per-window `.task` re-entry is safe).
                     appearanceObserver.start()
                     accessibilityObserver.start()
+                    // last: a modal here blocks the rest of the task, and the window behind it should be
+                    // fully wired before it opens. `presentOnce` latches, so the per-window .task is safe.
+                    if welcomeDue { WelcomeAlert.presentOnce(stateDirectory: Self.stateDirectory) }
                 }
         }
         // chromeless: no system title bar (the traffic lights float over our custom titlebar row in
