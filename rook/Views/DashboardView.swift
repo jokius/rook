@@ -162,8 +162,10 @@ struct DashboardView: View {
     /// A per-instance identity token for the member's currently-resolved slot surface (`.split` →
     /// `session.splitSurface`, else `session.surface`), folded into the cell `.id`. When a shown session's
     /// PRIMARY shell exits, `AppStore.closePrimaryPane` PROMOTES the split survivor into `session.surface`
-    /// (a DIFFERENT surface instance) and nils `splitSurface`; reconcile then drops the `.split` cell but
-    /// keeps the `.primary` one. `TerminalView.updateNSView` never re-resolves `session[keyPath:]`, so without
+    /// (a DIFFERENT surface instance) and nils `splitSurface`. The surviving cell is `.primary` either way —
+    /// reconcile drops a `.split` cell that sits beside one, and `DashboardController.promoteSplitMember`
+    /// rewrites a LONE `.split` cell (a grid built from `<id>:right`) into it rather than letting it be
+    /// pruned. `TerminalView.updateNSView` never re-resolves `session[keyPath:]`, so without
     /// the surface identity in the id SwiftUI would keep hosting the torn-down old primary surface (a blank
     /// cell) while the live survivor stays unhosted. Folding `ObjectIdentifier` into the id changes it on a
     /// swap, forcing a re-mount → `makeNSView` re-resolves the slot → hosts the survivor. The token is STABLE
@@ -204,8 +206,9 @@ struct DashboardView: View {
     }
 
     /// The pane marker suffix for the caption: `▶` for a split (right) pane cell, `◀` for the primary (left)
-    /// pane cell of a SPLIT session (both cells present, so they need distinguishing), and nothing for a
-    /// non-split session's single primary cell.
+    /// pane cell of a SPLIT session, and nothing for a non-split session's single primary cell. It marks
+    /// WHICH pane the cell hosts, not that its sibling is on the grid — a `<id>:left` request puts a lone
+    /// `◀` cell up, which still says the session has another pane you are not watching.
     private func paneIndicator(for member: DashboardMember, session: Session) -> String {
         if member.surface == .split { return " ▶" }
         return session.hasSplit ? " ◀" : ""

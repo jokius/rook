@@ -93,7 +93,8 @@ paths:
   `session.flag`/`flagged`, `session.filetree`/`fileTreeVisible`+`fileTreeRoot`,
   `session.markdown`/`markdownPath` (the open file IS the panel's visibility, so one field covers both),
   `session.focus`/`splitFocused`, `session.resize`/`splitRatio`,
-  `session.overlay.resize`/`overlaySizePercent`, `sidebar`/`sidebarVisible` (top-level),
+  `session.overlay.resize`/`overlaySizePercent`, `session.overlay.open --pane`/`paneOverlays`,
+  `sidebar`/`sidebarVisible` (top-level),
   `sidebar.mode`/`sidebarMode`, `workspace.focus`/`marked` + `focused` (workspace node),
   `workspace.filter`/`workspaceFilter` (top-level, `tree`-only) — THREE fields for the focus state, not
   two, because the state itself is two independent bits (which workspaces are marked, and whether the mark
@@ -1064,6 +1065,41 @@ paths:
   `rookctlKit`, (4) round-trip in `ControlProtocolTests` + dispatcher routing/validation in `ControlDispatcherTests`
   + `AppStorePaneTests` (resize clamp/switch/no-overlay) + CLI mapping in `CommandsTests` + the e2e
   `testOverlayResizeSwitchesFloatingAndFull` in `ControlOverlaySplitUITests`.
+  **`--pane left|right` scopes `session.overlay.open`/`.close`/`.result` to ONE split pane**, leaving the
+  sibling live and interactive — a second agent, a diff, or a log next to the shell you keep working in.
+  It is an ARG on the three existing commands, not a new `Command` case (the `--follow` precedent), parsed to
+  the host-free `OverlayPane`, which takes the `TerminalZoomSurface` spellings MINUS `scratch`
+  (`left`/`primary`, `right`/`split`) — there is no scratch pane to cover, so `scratch` is rejected even
+  though `session.status --pane` accepts it.
+  Omitted keeps the session-wide overlay, so every pre-pane caller is byte-identical on the wire.
+  A pane overlay is ALWAYS FULL-PANE: `--pane` conflicts with `--size-percent` on open
+  (`PaneOverlayError.sizePercentConflict`) and `session.overlay.resize` refuses ANY `--pane`, valid spelling
+  or not (`resizeUnsupported`) — there is no per-pane size to change.
+  Both overlay kinds are INDEPENDENT slots on the session, so a session-wide overlay and one or two pane
+  overlays can be up at once.
+  **Where each rejection lives is the dispatcher-first split taken literally**: the selector parse, the
+  size conflict, and the resize refusal are host-free in `ControlDispatcher+Session`; `alreadyOpen` and
+  `paneNotVisible` need the LIVE session and fire in `ControlServer`, so their wording is shared through
+  `PaneOverlayError` rather than duplicated.
+  `paneNotVisible` is not a nicety — an unrendered pane never gets a nonzero backing size, so its surface
+  would never be created and the slot would sit open with no program, answering "overlay still running"
+  forever (see [[libghostty]] for the retirement path that covers the pane going away AFTER the open).
+  The `rookctl session overlay open --pane … --block` poll forwards `--pane` too: polling a pane overlay
+  with no pane reads the session-wide slot, which is never running.
+  A pane overlay is ZOOMABLE as its own surface (`surface:<id>:overlay-left|overlay-right`), and it is the
+  last cover in `Session.topmostSurface` — below the session-wide overlay and the scratch, above the pane —
+  which is what makes the ⌘W rung close it, ⌘F decline the pane beneath it, and `session.focus` route to it.
+  Its READ side is `ControlSessionNode.paneOverlays` (`["left"]` / `["right"]` / `["left","right"]`, omitted
+  when neither), independent of the `overlay` bool; those overlays are always full-pane, so there is no
+  per-pane size to report.
+  Four-point keep-in-sync audit: (1) the `ControlArgs.pane` doc + `ControlSessionNode.paneOverlays` +
+  `PaneOverlayError` in `ControlProtocol.swift` and `ControlSessionOverlayOpenOptions.pane` +
+  the `pane:` parameters on `ControlActions.closeSessionOverlay`/`sessionOverlayResult` in
+  `ControlDispatcher.swift`, (2) the three dispatcher arms in `ControlDispatcher+Session.swift` →
+  `AppStore.openPaneOverlay`/`closePaneOverlay`/`recordPaneOverlayExit` behind the `ControlServer` arms,
+  (3) the `--pane` option on `session overlay open|close|result` in `rookctlKit`,
+  (4) `ControlDispatcherOverlayPaneTests` + `AppStorePaneOverlayTests` + the `paneOverlays` round-trip in
+  `ControlProtocolTests` + the CLI mapping in `CommandsTests`.
   The READ side is `ControlSessionNode.overlaySizePercent` on each `tree` node (see the `tree` read-side
   fields below) — populated in `AppStore.controlTree`, round-tripped by `treeSessionNodeRoundTripsWithOverlaySizePercent`/`…OmitsOverlaySizePercentWhenNil`
   and `AppStorePaneTests.controlTreeReportsOverlaySizePercent`, and mirrored in the agent-skill `reference.md`

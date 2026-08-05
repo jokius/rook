@@ -281,7 +281,7 @@ struct rookApp: App {
         let sessionID = session.id
         view.onExit = { [weak view] in
             guard let view else { return }
-            Self.handlePaneExit(view, store: store, sessionID: sessionID)
+            Self.handlePaneExit(view, store: store, sessionID: sessionID, library: library)
         }
         view.onFocusChange = { focused in
             guard focused else { return }
@@ -311,7 +311,8 @@ struct rookApp: App {
     /// passes (both slots live) and tears down the fresh right pane, stranding the session on the dead
     /// left one. Mirrors the role-aware `onFocusChange` so fresh and promoted panes route the same way.
     @MainActor
-    private static func handlePaneExit(_ view: GhosttySurfaceView, store: AppStore, sessionID: UUID) {
+    private static func handlePaneExit(_ view: GhosttySurfaceView, store: AppStore, sessionID: UUID,
+                                       library: WindowLibrary) {
         if view.isSplitPane {
             store.closeSplitPane(sessionID)
         } else {
@@ -321,6 +322,13 @@ struct rookApp: App {
             // wiring. no-op when the session closed instead (single pane) — `surface` is then nil.
             if let promoted = store.session(withID: sessionID)?.surface as? GhosttySurfaceView {
                 promoted.onFontSizeChange = { store.setFontSize(sessionID, $0) }
+                // the same "session survived ⇒ its split was promoted" test, for a dashboard holding this
+                // session by `<id>:right`. synchronous, so it lands before the reconcile onChange prunes the
+                // cell; this is the ONLY place that can tell a promotion from the split's own shell exiting,
+                // since `closeSplit` and `closePrimaryPane` both end with `hasSplit == false`.
+                library.windowID(for: store)
+                    .flatMap { DashboardControllerRegistry.shared.controller(for: $0) }?
+                    .promoteSplitMember(session: sessionID)
             }
         }
         // focus the surviving (now maximized) pane; if the whole session closed instead, focus the session

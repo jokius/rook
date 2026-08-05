@@ -55,4 +55,45 @@ struct AppStoreDashboardTests {
         let store = makeStore()
         #expect(store.dashboardMRUMembers(limit: 9).isEmpty) // no sessions → no recent members
     }
+
+    @Test func dashboardMembersHonorsExplicitPaneAndDedupsBySessionPlusPane() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let a = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        a.hasSplit = true
+        // a bare id takes BOTH panes, `A:left` only the primary — so `A A:left` collapses to the bare id's
+        // two cells (dedup is by session+pane), while `A:left A:right` stays two distinct cells.
+        let (collapsed, _) = store.dashboardMembers(
+            for: [ResolvedDashboardTarget(session: a.id, pane: nil),
+                  ResolvedDashboardTarget(session: a.id, pane: .primary)], limit: 9)
+        #expect(collapsed == [DashboardMember(session: a.id, surface: .primary),
+                              DashboardMember(session: a.id, surface: .split)])
+
+        let (bothPanes, _) = store.dashboardMembers(
+            for: [ResolvedDashboardTarget(session: a.id, pane: .primary),
+                  ResolvedDashboardTarget(session: a.id, pane: .split)], limit: 9)
+        #expect(bothPanes == [DashboardMember(session: a.id, surface: .primary),
+                              DashboardMember(session: a.id, surface: .split)])
+    }
+
+    @Test func dashboardMembersPaneRefFreesTheOtherCellUnderTheCap() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let a = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let b = store.addSession(toWorkspace: ws.id, cwd: "/b")!
+        a.hasSplit = true
+        // the point of the feature: naming one pane of the split leaves room for `b` under a 2-cell cap,
+        // where the bare id would have taken both cells and evicted it.
+        let (bare, bareDropped) = store.dashboardMembers(for: [a.id, b.id], limit: 2)
+        #expect(bare == [DashboardMember(session: a.id, surface: .primary),
+                         DashboardMember(session: a.id, surface: .split)])
+        #expect(bareDropped == 1) // b never reaches the grid
+
+        let (scoped, scopedDropped) = store.dashboardMembers(
+            for: [ResolvedDashboardTarget(session: a.id, pane: .split),
+                  ResolvedDashboardTarget(session: b.id, pane: nil)], limit: 2)
+        #expect(scoped == [DashboardMember(session: a.id, surface: .split),
+                           DashboardMember(session: b.id, surface: .primary)])
+        #expect(scopedDropped == 0)
+    }
 }

@@ -43,4 +43,36 @@ struct ControlDispatcherDashboardTests {
             ok: false, error: "dashboard --close takes no ids, --mru, or font options"))
         #expect(actions.calls.isEmpty)
     }
+
+    /// Malformed GRAMMAR is hard: it fails the whole command here, before any window is touched. A
+    /// well-formed ref that names no live pane is the app's problem and joins the `unresolved` note instead.
+    @Test func dashboardRejectsMalformedPaneSuffixBeforeReachingTheApp() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        for raw in ["A:lft", "A:primary", "A:scratch", "surface:A:left", ""] {
+            let response = await dispatcher.dispatch(ControlRequest(
+                cmd: .dashboard, args: ControlArgs(targets: ["ok", raw])))
+            #expect(response == ControlResponse(
+                ok: false,
+                error: "dashboard: invalid session id '\(raw)' — use <id>, <id>:left, or <id>:right"))
+        }
+        #expect(actions.calls.isEmpty) // nothing reached the app, so no grid half-opened
+    }
+
+    /// Well-formed ids — bare or pane-suffixed — forward VERBATIM: the dispatcher checks the grammar but
+    /// leaves resolution (and re-parsing) to the app side, so the raw strings must survive the hop.
+    @Test func dashboardForwardsWellFormedPaneRefsVerbatim() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .dashboard, args: ControlArgs(targets: ["A", "B:left", "active:RIGHT"])))
+
+        #expect(response == ControlResponse(ok: true))
+        #expect(actions.calls == [
+            .dashboard(targets: ["A", "B:left", "active:RIGHT"], window: nil, close: false,
+                       fontMode: .untouched, mru: false)
+        ])
+    }
 }

@@ -211,6 +211,42 @@ struct DashboardControllerTests {
             == DashboardLayout.dashboardFontSize(cols: c9, rows: r9, base: 13))
     }
 
+    @Test func promoteSplitMemberRewritesALoneSplitCellIntoPrimary() {
+        let controller = DashboardController()
+        let a = UUID(), b = UUID()
+        // a grid built from `<a>:right` — the split cell is the ONLY cell watching that session.
+        controller.open(members: [split(a), primary(b)], highlighted: split(a))
+
+        controller.promoteSplitMember(session: a)
+
+        // the shell moved into the primary slot, so the cell follows it rather than being pruned by reconcile
+        #expect(controller.members == [primary(a), primary(b)])
+        #expect(controller.highlighted == primary(a)) // the highlight rides across
+    }
+
+    @Test func promoteSplitMemberCollapsesIntoAnExistingPrimaryCell() {
+        let controller = DashboardController()
+        let a = UUID()
+        // a BARE id contributes both cells, so the promoted split would duplicate the primary one
+        controller.open(members: [primary(a), split(a)], highlighted: split(a))
+
+        controller.promoteSplitMember(session: a)
+
+        #expect(controller.members == [primary(a)])
+        #expect(controller.highlighted == primary(a))
+    }
+
+    @Test func promoteSplitMemberIsANoOpWithoutASplitCell() {
+        let controller = DashboardController()
+        let a = UUID(), b = UUID()
+        controller.open(members: [primary(a), primary(b)], highlighted: primary(b))
+
+        controller.promoteSplitMember(session: a)
+
+        #expect(controller.members == [primary(a), primary(b)])
+        #expect(controller.highlighted == primary(b))
+    }
+
     @Test func registryRegistersLooksUpAndUnregisters() {
         let registry = DashboardControllerRegistry.shared
         let id = UUID() // unique key keeps this hermetic under parallel tests on the shared singleton

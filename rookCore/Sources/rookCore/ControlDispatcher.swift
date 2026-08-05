@@ -518,12 +518,15 @@ public struct ControlDispatcher {
 
     /// The dashboard overlay is host-free-validated here. The open path needs at least one id (or `--mru`)
     /// and at most one font flag; `--close` takes no id, `--mru`, or font flag; a `--font-size` must be
-    /// finite and positive; `--mru` cannot be combined with explicit ids (but composes with the font flags).
+    /// finite and positive; `--mru` cannot be combined with explicit ids (but composes with the font flags);
+    /// and every id parses as a `DashboardTarget` — a malformed pane suffix fails the WHOLE command here,
+    /// while a well-formed ref naming no live pane is an app-side miss.
     /// The 9-cell cap is NOT applied here: the cell unit is a session+pane, so a split session expands to two
     /// cells and the cap counts PANES — that expansion needs the store, so it lives app-side in
     /// `ControlServer.setDashboard`, which also reports any dropped panes. Target resolution (incl. the
     /// `--mru` recency lookup), the pane expansion + cap, the surface reparent, and the per-window controller
-    /// all stay app-side behind `ControlActions.setDashboard`; this only forwards the raw ids.
+    /// all stay app-side behind `ControlActions.setDashboard`; this forwards the ids as raw strings once
+    /// their grammar is checked.
     private func dispatchDashboard(_ request: ControlRequest) -> ControlResponse {
         let args = request.args
         let targets = args?.targets ?? []
@@ -555,6 +558,13 @@ public struct ControlDispatcher {
         }
         guard !targets.isEmpty else {
             return ControlResponse(ok: false, error: "dashboard requires at least one session id")
+        }
+        // GRAMMAR only: a malformed pane suffix (or an empty target) fails the command here, while a
+        // well-formed ref that resolves to nothing is app-side and joins the `unresolved` note instead.
+        if let malformed = targets.first(where: { DashboardTarget(rawValue: $0) == nil }) {
+            return ControlResponse(
+                ok: false,
+                error: "dashboard: invalid session id '\(malformed)' — use <id>, <id>:left, or <id>:right")
         }
         return actions.setDashboard(targets: targets, window: args?.window, close: false, fontMode: fontMode, mru: false)
     }

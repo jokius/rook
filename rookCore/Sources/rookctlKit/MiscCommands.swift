@@ -208,23 +208,34 @@ struct Surface: ParsableCommand {
 /// `rookctl dashboard <ids…> [--font-size N | --auto-size] [--window W]` opens a view-only grid of the
 /// named sessions (max 9); `rookctl dashboard --mru [--font-size N | --auto-size] [--window W]` opens one
 /// of the window's most-recently-used sessions (up to 9) instead of naming ids; `rookctl dashboard --close
-/// [--window W]` closes the open one. The positional ids map to `ControlArgs.targets`; the dispatcher caps
-/// them at 9, dedups, and reports any drop. The CLI re-checks the flag combinations `validate()`-style so a
-/// bad invocation is a clean usage error without a socket round-trip (the dispatcher enforces the same rules
-/// server-side).
+/// [--window W]` closes the open one. An id may carry a `:left`/`:right` pane suffix to place ONE pane of a
+/// split session. The positional ids map to `ControlArgs.targets`; the dispatcher validates the flags and
+/// the pane grammar, while the 9-cell cap, the session+pane dedup, and the drop report are app-side, since
+/// expanding an id into cells needs the store. The CLI re-checks the flag combinations `validate()`-style so
+/// a bad invocation is a clean usage error without a socket round-trip (the dispatcher enforces the same
+/// rules server-side).
 struct Dashboard: RequestCommand {
     static let configuration = CommandConfiguration(
         abstract: "Open a view-only grid of live sessions, or --close the open one.",
         discussion: """
         dashboard S1 S2 S3                 open a grid of the named sessions (ids or unique prefixes, max 9)
+        dashboard S1:left                  place only the main pane of a split session
+        dashboard S1:left S2:right         mix panes across sessions; a bare id still takes all of its panes
         dashboard S1 S2 --font-size 12     open with an absolute cell font size (points)
         dashboard S1 S2 --auto-size        open sizing cells relative to the Settings default font
         dashboard --mru                    open a grid of the window's most-recently-used sessions (up to 9)
         dashboard --mru --auto-size        the same, sizing cells relative to the Settings default font
         dashboard S1 --window W            open in a specific window (defaults to the frontmost)
         dashboard --close                  close the open dashboard
+
+        The 9-cell cap counts PANES, so a split session normally takes two of them. A pane suffix keeps the
+        pane you want and frees the other cell; `:right` on a session with no split is reported as
+        unresolved. The suffix is the same form `tree --json` reports in `dashboardMembers`.
         """)
-    @Argument(help: "Session ids (or unique prefixes) to show, max 9. Omit only with --mru or --close.") var ids: [String] = []
+    @Argument(help: """
+        Session ids (or unique prefixes) to show, max 9. Each may carry a :left/:right pane suffix; a bare \
+        id takes every pane of the session. Omit only with --mru or --close.
+        """) var ids: [String] = []
     @Option(name: .customLong("font-size"), help: "Absolute cell font size in points (mutually exclusive with --auto-size).") var fontSize: Double?
     @Flag(name: .long, help: "Size cells relative to the Settings default font, shrinking as the grid grows.") var autoSize = false
     @Flag(name: .long, help: "Populate the grid from the window's most-recently-used sessions (up to 9).") var mru = false

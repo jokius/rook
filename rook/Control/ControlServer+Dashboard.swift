@@ -6,15 +6,18 @@ import rookCore
 /// `ControlServer.swift` (like the session/window/appearance arms) to keep that file under the size limit.
 extension ControlServer {
     /// Open or close the target window's dashboard overlay — the app side of the host-free `dashboard`
-    /// command (the dispatcher validated the args and built `fontMode`; it no longer caps the ids). Resolves
-    /// `window ?? frontmost` to an OPEN window's store. With `mru` it pulls up to `DashboardLayout.maxCells`
-    /// of that window's most-recently-used sessions from the store's recency (fewer if it has fewer; nothing
-    /// goes unresolved); otherwise it resolves each id to a session in THAT store, deduping by resolved UUID
-    /// (order preserved) and reporting any that don't resolve in `result.text` (never a silent drop). It then
-    /// EXPANDS each resolved session IN ORDER into pane cells — always its `.primary` pane, plus a `.split`
-    /// cell when the session `hasSplit` (both shells alive) — so a split session shows as TWO cells. The
-    /// `DashboardLayout.maxCells` (9) cap now counts PANES, applied here after expansion; any dropped panes
-    /// are reported alongside `unresolved` (joined with "; "). Each cell reparents its OWN pane surface
+    /// command (the dispatcher validated the args, the pane grammar, and built `fontMode`; it no longer caps
+    /// the ids). Resolves `window ?? frontmost` to an OPEN window's store. With `mru` it pulls up to
+    /// `DashboardLayout.maxCells` of that window's most-recently-used sessions from the store's recency (fewer
+    /// if it has fewer; nothing goes unresolved); otherwise each id parses as a `DashboardTarget` and its head
+    /// resolves to a session in THAT store, any that don't resolve reported in `result.text` (never a silent
+    /// drop). A BARE id then EXPANDS in order into pane cells — always its `.primary` pane, plus a `.split`
+    /// cell when the session `hasSplit` (both shells alive) — so a split session shows as TWO cells, while a
+    /// `:left`/`:right` suffix takes that cell alone; a `:right` naming no live pane is a MISS, not an error.
+    /// Cells dedup by session+pane, NOT by session, so `A:left A:right` is two cells and `A A:left` is still
+    /// two. The `DashboardLayout.maxCells` (9) cap now counts PANES, applied here after expansion; any dropped
+    /// panes are reported alongside `unresolved` (joined with "; "). Emptiness is judged on the expanded
+    /// CELLS, since a resolved id can now contribute none. Each cell reparents its OWN pane surface
     /// (`.primary` → `\.surface`, `.split` → `\.splitSurface`) app-side in `WindowContentView`. Opening closes
     /// any active terminal zoom for the window (zoom and dashboard are mutually exclusive) and drives that
     /// window's `DashboardController` via the registry; `--close` calls `close()`. The per-window controller
@@ -31,35 +34,50 @@ extension ControlServer {
                 controller.close()
                 return ControlResponse(ok: true)
             }
-            var sessionIDs: [UUID] = []
+            var resolvedTargets: [ResolvedDashboardTarget] = []
             var unresolved: [String] = []
             if mru {
                 // --mru: pull the window's most-recently-used sessions (≤ maxCells) from the store's recency;
                 // there are no explicit ids to resolve, so nothing goes unresolved.
-                sessionIDs = store.recentSessions(limit: DashboardLayout.maxCells)
-                guard !sessionIDs.isEmpty else {
+                let recent = store.recentSessions(limit: DashboardLayout.maxCells)
+                guard !recent.isEmpty else {
                     return ControlResponse(ok: false, error: "no recent sessions")
                 }
+                resolvedTargets = recent.map { ResolvedDashboardTarget(session: $0, pane: nil) }
             } else {
                 let candidates = store.workspaces.flatMap { $0.sessions.map(\.id) }
-                var seen = Set<UUID>()
                 for target in targets {
-                    guard case .resolved(let id) = ControlResolve.resolve(target, candidates: candidates,
+                    guard let parsed = DashboardTarget(rawValue: target),
+                          case .resolved(let id) = ControlResolve.resolve(parsed.head, candidates: candidates,
                                                                           active: store.selectedSessionID),
-                          store.session(withID: id) != nil else {
+                          let session = store.session(withID: id) else {
                         unresolved.append(target)
                         continue
                     }
-                    if seen.insert(id).inserted { sessionIDs.append(id) }
-                }
-                guard !sessionIDs.isEmpty else {
-                    return ControlResponse(ok: false, error: "no dashboard sessions resolved")
+                    // a `:right` ref to a session with no split is a MISS, not a malformed command — the
+                    // dispatcher already passed the grammar. `hasSplit` is the same test `dashboardValidMembers`
+                    // reconciles against, so this never admits a cell reconcile would immediately prune.
+                    guard parsed.pane != .split || session.hasSplit else {
+                        unresolved.append(target)
+                        continue
+                    }
+                    resolvedTargets.append(ResolvedDashboardTarget(session: id, pane: parsed.pane))
                 }
             }
-            // expand each resolved session into pane cells (always the primary pane, plus the split pane when the
-            // session hasSplit) and cap the resulting PANE list to the 9-cell limit — the shared host-free
-            // AppStore helper, so this expansion+cap has one implementation with AppActions.toggleDashboard.
-            let (members, droppedPanes) = store.dashboardMembers(for: sessionIDs, limit: DashboardLayout.maxCells)
+            // expand each resolved target into pane cells (a bare id: the primary pane, plus the split pane when
+            // the session hasSplit; a pane ref: that cell alone) and cap the resulting PANE list to the 9-cell
+            // limit — the shared host-free AppStore helper, so this expansion+cap has one implementation with
+            // AppActions.toggleDashboard. It also dedups, so a bare id beside a pane ref for the same session
+            // cannot double-host a surface.
+            let (members, droppedPanes) = store.dashboardMembers(for: resolvedTargets,
+                                                                 limit: DashboardLayout.maxCells)
+            // guard the EXPANSION, not the resolved targets: with pane refs the two are no longer equivalent.
+            // `dashboard <id>:right` on a session with no split resolves the id but expands to nothing, and
+            // opening with an empty member set would clear the window's zoom and silently close a live
+            // dashboard while reporting ok (`DashboardController.isOpen` is `!members.isEmpty`).
+            guard !members.isEmpty else {
+                return ControlResponse(ok: false, error: "no dashboard sessions resolved")
+            }
             // zoom and dashboard are mutually exclusive: drop any active zoom for this window on open.
             TerminalZoomRegistry.shared.controller(for: windowID)?.clear()
             controller.open(members: members, fontMode: fontMode)
