@@ -122,6 +122,14 @@ targets:
           # …and its own display name, so the dev instance is obvious in the Dock and ⌘-Tab next to the
           # deployed "Rook". Cosmetic only — the bundle id above is what actually separates them.
           BUNDLE_DISPLAY_NAME: Rook Dev
+          # …and its own BUNDLE FILE name. The display name above is not enough: Spotlight and Finder
+          # list an app by its .app FILENAME, so both builds showed up as an indistinguishable "Rook"
+          # and launching the dev one by accident was a matter of picking the wrong row (verified with
+          # `mdls -name kMDItemDisplayName`, which returned "Rook" for the Debug build despite its
+          # CFBundleDisplayName). WRAPPER_NAME renames only the .app wrapper — PRODUCT_NAME stays
+          # `rook`, so `Contents/MacOS/rook` and the bundled `rookctl` keep their paths and every
+          # script that reaches inside the bundle is unaffected.
+          WRAPPER_NAME: Rook Dev.app
     postBuildScripts:
       # build the rookctl CLI and bundle it at Contents/MacOS/rookctl so the
       # in-app "Install Command Line Tool" can symlink it into PATH. Runs before

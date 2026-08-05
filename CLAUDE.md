@@ -191,7 +191,7 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   `scripts/run.sh` ends in `open rook.app` with no kill, so if an instance is already running macOS
   just brings it to front — the freshly built binary is NOT loaded.
   To actually test a rebuild, fully quit the running app first (then `open`,
-  or launch `…/Debug/rook.app` directly / `open -n`); otherwise visual verification runs against the
+  or launch `…/Debug/Rook Dev.app` directly / `open -n`); otherwise visual verification runs against the
   old build and a real fix looks like it failed.
 - **A `make deploy`'d copy in `/Applications` SHADOWS the dev build — for the CLI,
   the hooks, AND the app.** Once Rook is installed via `make deploy` (Release → `/Applications/rook.app`),
@@ -203,7 +203,7 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   AND a plain launch/activate (LaunchServices resolves `com.rook.app` to `/Applications`) all
   hit the DEPLOYED build — NOT whatever you just rebuilt into `build/DerivedData`.
   When iterating on `rookctl` or the hook scripts, the change is therefore NOT exercised by the PATH
-  CLI / the hooks until you either (a) invoke the fresh binary by full path — `build/DerivedData/Build/Products/Debug/rook.app/Contents/MacOS/rookctl …`
+  CLI / the hooks until you either (a) invoke the fresh binary by full path — `'build/DerivedData/Build/Products/Debug/Rook Dev.app/Contents/MacOS/rookctl' …`
   (or `export ROOKCTL=` to it for the hooks), or (b) `make deploy` again and re-run Help ▸ Install
   Command Line Tool… + Install Agent Status Hooks… to re-point PATH and the hooks at the new build.
   For APP-code changes, do NOT quit the deployed app (see the next note — it is the user's live daily
@@ -212,6 +212,17 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   They also carry a distinct DISPLAY NAME — the Debug config sets `BUNDLE_DISPLAY_NAME = Rook Dev`
   (Release keeps `Rook`; `Info.plist` takes both `CFBundleName`/`CFBundleDisplayName` from that variable),
   so the dev instance is tellable from the daily driver in the Dock and ⌘-Tab.
+  **And a distinct WRAPPER name: the Debug bundle is `Rook Dev.app`, not `rook.app`.**
+  The display name alone was NOT enough — Spotlight and Finder list an app by its `.app` FILE name, so
+  both builds surfaced as an identical "Rook" (`mdls -name kMDItemDisplayName` on the Debug build
+  returned `Rook` despite its `CFBundleDisplayName`), and the user kept launching the dev one by
+  accident.
+  `WRAPPER_NAME` renames ONLY the wrapper: `PRODUCT_NAME` stays `rook`, so `Contents/MacOS/rook` and the
+  bundled `rookctl` keep their paths — but every shell reference to the bundle now needs QUOTING,
+  because the name contains a space.
+  `make deploy` also un-registers its own `DerivedData/.../Release/rook.app` from LaunchServices after
+  copying, so the only findable "Rook" is the installed one; a build-directory copy is an artifact, not
+  an app the user should be able to launch by accident.
   A dev instance is only truly isolated when the DAILY DRIVER is the deployed RELEASE: running the Debug
   build itself as the daily terminal gives it the same `com.rook.app.debug` identity as `make dev`, and two
   instances of one identity fight (the second can come up with no scene and no control socket).
@@ -226,7 +237,7 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   but the RUNNING instance keeps the old code until the USER relaunches it on their own schedule (so
   their live sessions survive) — just report it's installed; do NOT relaunch it.
   For dev-build UI acceptance / socket probes, open a SEPARATE ISOLATED instance that coexists with the
-  deployed app: `open -n --env ROOK_STATE_DIR=<tmp> --env ROOK_CONTROL_SOCKET=<tmp>/rook.sock build/DerivedData/Build/Products/Debug/rook.app`
+  deployed app: `open -n --env ROOK_STATE_DIR=<tmp> --env ROOK_CONTROL_SOCKET=<tmp>/rook.sock 'build/DerivedData/Build/Products/Debug/Rook Dev.app'`
   (verified: launches a second instance with the deployed app untouched and its socket not stolen).
   Probe via the temp socket (`rookctl tree --socket <tmp>/rook.sock` — `--socket` is a per-subcommand
   option, so it goes AFTER the subcommand, never before it) and quit ONLY that instance BY PID (`kill <pid>`,

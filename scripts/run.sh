@@ -7,4 +7,4 @@ cd "$(dirname "$0")/.."
 xcodegen generate
 xcodebuild -project rook.xcodeproj -scheme rook -configuration Debug \
   -derivedDataPath build/DerivedData build
-open build/DerivedData/Build/Products/Debug/rook.app
+open "build/DerivedData/Build/Products/Debug/Rook Dev.app"

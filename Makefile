@@ -33,6 +33,12 @@ release: ## release build, no launch (scripts/build.sh)
 deploy: release ## release build + copy to /Applications (same dir the cask/DMG installs to)
 	rm -rf "$(INSTALL_DIR)/rook.app"
 	cp -R "$(RELEASE_APP)" "$(INSTALL_DIR)/rook.app"
+	@# Un-register the build-directory copy. Building a Release registers it with LaunchServices too, so
+	@# Spotlight then lists TWO identical "Rook" entries (both wrappers are named rook.app) and launching
+	@# the wrong one is a coin flip. The installed copy is the one that should be findable; this one is a
+	@# build artifact. Unregistering removes the index entry only — the file stays for the next build.
+	@/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister \
+	  -u "$(RELEASE_APP)" 2>/dev/null || true
 	@echo "installed $(INSTALL_DIR)/rook.app"
 
 test: ## host-free rookCore unit tests (scripts/test.sh)

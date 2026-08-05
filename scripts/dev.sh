@@ -9,7 +9,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 STATE_DIR="${ROOK_DEV_STATE_DIR:-/tmp/rook-dev}"
-APP="$PWD/build/DerivedData/Build/Products/Debug/rook.app"
+# the Debug wrapper is "Rook Dev.app", not "rook.app": Spotlight and Finder list an app by its FILE
+# name, so a same-named dev build was indistinguishable from the deployed one and got launched by
+# mistake. Only the wrapper is renamed — PRODUCT_NAME is still `rook`, so the paths INSIDE it (the
+# executable, the bundled rookctl) are unchanged.
+APP="$PWD/build/DerivedData/Build/Products/Debug/Rook Dev.app"
 BIN="$APP/Contents/MacOS"
 
 [ "${FRESH:-}" = "1" ] && rm -rf "$STATE_DIR"
@@ -39,4 +43,5 @@ open -n --env ROOK_STATE_DIR="$STATE_DIR" \
   "$APP"
 
 echo "dev instance up — state $STATE_DIR, socket $STATE_DIR/rook.sock"
-echo "drive it: $BIN/rookctl tree --socket $STATE_DIR/rook.sock"
+# quoted, because the dev wrapper's name has a space in it — the hint is meant to be pasted as-is
+echo "drive it: \"$BIN/rookctl\" tree --socket $STATE_DIR/rook.sock"
