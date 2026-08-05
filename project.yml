@@ -222,7 +222,6 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.rook.app.Tests
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/rook.app/Contents/MacOS/rook"
         BUNDLE_LOADER: "$(TEST_HOST)"
         CODE_SIGN_IDENTITY: "-"
         GENERATE_INFOPLIST_FILE: YES
@@ -232,6 +231,16 @@ targets:
         # ad-hoc signed like the UI runner; hardened runtime on a test bundle loaded into the host
         # trips a Team-ID mismatch.
         ENABLE_HARDENED_RUNTIME: NO
+      # TEST_HOST is per-config because the Debug bundle is WRAPPED as "Rook Dev.app" (WRAPPER_NAME,
+      # so Spotlight/Finder can tell the dev build from the deployed one) while Release stays
+      # "rook.app". PRODUCT_NAME is `rook` in both, so only the wrapper differs. Getting this wrong
+      # fails BEFORE any compilation, in xcodebuild's preflight: "Could not find test host for
+      # rookTests".
+      configs:
+        Debug:
+          TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Rook Dev.app/Contents/MacOS/rook"
+        Release:
+          TEST_HOST: "$(BUILT_PRODUCTS_DIR)/rook.app/Contents/MacOS/rook"
 
   rookUITests:
     type: bundle.ui-testing
