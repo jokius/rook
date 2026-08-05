@@ -1626,6 +1626,30 @@
               inline rename, the palette search field, and every Settings field at once.
             </p>
 
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              Chords are written in Latin and <strong style="color: #e6e1d7">work on any keyboard layout</strong>. Rook resolves
+              a chord by the layout rather than by the character a key happens to produce: on a layout that can type ASCII (US,
+              Dvorak, Colemak, French, German) the produced character is used, exactly as before; on one that cannot (any
+              Russian, Greek, Hebrew, Arabic, or Thai layout) every key is matched by its physical position. So
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">cmd+o</span> fires on the key where
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">o</span> lives, whether that key
+              prints <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">o</span> or
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">щ</span>. The flip side: on a
+              non-Latin layout a chord can only name a Latin key — you cannot bind the Cyrillic character a key prints.
+            </p>
+
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              That applies to <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">keymap.conf</span>.
+              A <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">keybind</span> in
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ghostty.conf</span> is matched by
+              libghostty itself, where a bare letter is matched against the character the layout produces and only the
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">key_</span> form is physical — so
+              write
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">keybind = super+key_c=copy_to_clipboard</span>,
+              not <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">super+c</span>, if you want it
+              to fire on a non-Latin layout.
+            </p>
+
             <h3
               style="
                 font-family: &quot;JetBrains Mono&quot;, monospace;
