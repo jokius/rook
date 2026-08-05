@@ -1,5 +1,16 @@
 import Foundation
 
+private extension KeyedDecodingContainer {
+    /// Decodes an OPTIONAL field lossily: a present-but-invalid value (a malformed UUID, an unknown enum
+    /// raw value from a newer build, a wrong JSON type from a hand edit) drops to nil instead of throwing.
+    /// `Optional` alone tolerates only a MISSING key, so one bad value fails the whole snapshot and
+    /// `PersistenceStore.load` starts fresh — wiping every workspace and session over a non-essential field.
+    /// (`try?` already flattens the double optional per SE-0230.)
+    func lossy<T: Decodable>(_ type: T.Type, _ key: Key) -> T? {
+        try? decodeIfPresent(type, forKey: key)
+    }
+}
+
 /// The persisted form of the whole app state: a plain value tree that mirrors the
 /// `@MainActor` model but carries no live `Session`/`Workspace` references.
 ///
@@ -78,12 +89,18 @@ public struct Snapshot: Codable, Equatable, Sendable {
         case focusedWorkspaceID, markedWorkspaceID
     }
 
-    /// Custom decode so `sessionRecency` is LOSSY: a present-but-invalid list (a malformed UUID
-    /// string or a wrong JSON type after a hand edit) drops to nil instead of throwing. Without
-    /// this, `Optional` tolerates only a MISSING key, so one bad MRU entry would fail the entire
-    /// `Snapshot` and `PersistenceStore.load` would start fresh — wiping every workspace and
-    /// session over a non-essential field. Mirrors `SessionSnapshot`'s `backgroundWatermark`
-    /// handling below; every other field keeps its strict/`decodeIfPresent` behavior.
+    /// Custom decode so EVERY optional is LOSSY (see `lossy(_:_:)` above): one bad value drops to nil
+    /// instead of failing the entire `Snapshot` and making `PersistenceStore.load` start fresh — wiping
+    /// every workspace and session over a non-essential field. `WorkspaceSnapshot` and `SessionSnapshot`
+    /// below guard their own optionals the same way, so the tree survives a bad optional at any depth.
+    ///
+    /// What still throws is identity and payload: `version`, `workspaces`, and each nested `id`/`name`/
+    /// `cwd`/`sessions`. That gap is real and unclosed, not a safe floor: a hand-edited `"cwd": 5` on one
+    /// session still wipes the whole tree. It stands because the alternatives each cost something this one
+    /// does not — recovering the field keeps a session pointing somewhere the user never left it, dropping
+    /// the element loses that session silently — never because throwing is cheaper. Pick one deliberately
+    /// before treating this line as settled. A parse-level failure is outside all of it: unterminated JSON
+    /// never reaches these guards, and `save` writes atomically so the app cannot leave that behind.
     ///
     /// It is ALSO where the two LEGACY focus keys migrate onto the set, and THREE generations have to land
     /// on the right state. (a) Ancient — `focusedWorkspaceID` alone: the field meant "the tree is collapsed
@@ -95,29 +112,34 @@ public struct Snapshot: Codable, Equatable, Sendable {
     /// exact state an involuntary jump leaves behind — the one the split exists to persist. (c) New keys
     /// present: passed through verbatim, and they WIN over any legacy key still in the file.
     /// The legacy values are LOCALS, not stored properties, so a migrated snapshot re-encodes without them.
+    ///
+    /// The migration gate is ABSENCE of both new keys, which `Result` — not `try?` — can tell from a FAILED
+    /// decode (SE-0230 flattens both to nil). On a file whose new keys are malformed, migrating would
+    /// resurrect the legacy mark and force the flag on over an explicit `focusEnabled` in the same file:
+    /// a filter state the file never stated.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         version = try c.decode(Int.self, forKey: .version)
-        selectedSessionID = try c.decodeIfPresent(UUID.self, forKey: .selectedSessionID)
+        selectedSessionID = c.lossy(UUID.self, .selectedSessionID)
         workspaces = try c.decode([WorkspaceSnapshot].self, forKey: .workspaces)
-        sidebarWidth = try c.decodeIfPresent(Double.self, forKey: .sidebarWidth)
-        fileTreeWidth = try c.decodeIfPresent(Double.self, forKey: .fileTreeWidth)
-        markdownWidth = try c.decodeIfPresent(Double.self, forKey: .markdownWidth)
-        sidebarVisible = try c.decodeIfPresent(Bool.self, forKey: .sidebarVisible)
-        sidebarMode = try c.decodeIfPresent(SidebarMode.self, forKey: .sidebarMode)
-        let ids = try c.decodeIfPresent([UUID].self, forKey: .focusedWorkspaceIDs)
-        let enabled = try c.decodeIfPresent(Bool.self, forKey: .focusEnabled)
-        if ids == nil, enabled == nil {
+        sidebarWidth = c.lossy(Double.self, .sidebarWidth)
+        fileTreeWidth = c.lossy(Double.self, .fileTreeWidth)
+        markdownWidth = c.lossy(Double.self, .markdownWidth)
+        sidebarVisible = c.lossy(Bool.self, .sidebarVisible)
+        sidebarMode = c.lossy(SidebarMode.self, .sidebarMode)
+        let decodedIDs = Result { try c.decodeIfPresent([UUID].self, forKey: .focusedWorkspaceIDs) }
+        let decodedEnabled = Result { try c.decodeIfPresent(Bool.self, forKey: .focusEnabled) }
+        if case .success(.none) = decodedIDs, case .success(.none) = decodedEnabled {
             let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
-            let effective = try legacy.decodeIfPresent(UUID.self, forKey: .focusedWorkspaceID)
-            let marked = try legacy.decodeIfPresent(UUID.self, forKey: .markedWorkspaceID)
+            let effective = legacy.lossy(UUID.self, .focusedWorkspaceID)
+            let marked = legacy.lossy(UUID.self, .markedWorkspaceID)
             focusedWorkspaceIDs = (marked ?? effective).map { [$0] }
             focusEnabled = effective.map { _ in true }
         } else {
-            focusedWorkspaceIDs = ids
-            focusEnabled = enabled
+            focusedWorkspaceIDs = (try? decodedIDs.get()) ?? nil
+            focusEnabled = (try? decodedEnabled.get()) ?? nil
         }
-        sessionRecency = (try? c.decodeIfPresent([UUID].self, forKey: .sessionRecency)) ?? nil
+        sessionRecency = c.lossy([UUID].self, .sessionRecency)
     }
 }
 
@@ -160,21 +182,20 @@ public struct WorkspaceSnapshot: Codable, Equatable, Sendable {
         case id, name, sessions, collapsed, colorHex, icon, root
     }
 
-    /// Custom decode so `icon` is LOSSY: a present-but-invalid spec (an unknown `kind` — e.g. a DOWNGRADE
-    /// after a newer release added an icon kind this build can't decode, or a hand-edit typo) drops to nil
-    /// instead of throwing `DataCorrupted`. Without this, `Optional` tolerates only a MISSING key, so one
-    /// bad icon would fail the entire `WorkspaceSnapshot` and `PersistenceStore.load` would start fresh —
-    /// wiping every workspace and session over a decorative field. Mirrors `SessionSnapshot`'s
-    /// `backgroundWatermark` handling; every other field keeps its strict/`decodeIfPresent` behavior.
+    /// Custom decode so every optional is LOSSY (see `lossy(_:_:)` at the top), matching
+    /// `Snapshot.init(from:)`: an unknown icon `kind` after a DOWNGRADE, or a hand-edited
+    /// `"collapsed": "yes"`, drops that field to nil instead of throwing. A throw here fails the whole
+    /// workspace, which fails the `workspaces` array above it, and `PersistenceStore.load` starts fresh —
+    /// wiping the tree over one row's expansion arrow. Only `id`/`name`/`sessions` stay strict.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
         name = try c.decode(String.self, forKey: .name)
         sessions = try c.decode([SessionSnapshot].self, forKey: .sessions)
-        collapsed = try c.decodeIfPresent(Bool.self, forKey: .collapsed)
-        colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
-        icon = (try? c.decodeIfPresent(WorkspaceIcon.self, forKey: .icon)) ?? nil
-        root = try c.decodeIfPresent(String.self, forKey: .root)
+        collapsed = c.lossy(Bool.self, .collapsed)
+        colorHex = c.lossy(String.self, .colorHex)
+        icon = c.lossy(WorkspaceIcon.self, .icon)
+        root = c.lossy(String.self, .root)
     }
 }
 
@@ -290,34 +311,35 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         case markdownPath, restoreCommand, splitRestoreCommand
     }
 
-    /// Custom decode so `backgroundWatermark` and the two `agentSession` refs are LOSSY: a
-    /// present-but-invalid value (an unknown watermark `kind`/`fit`/`position`, or an unknown agent `kind`
-    /// — e.g. a DOWNGRADE after a newer release added a value the older build can't decode, or a hand-edit
-    /// typo) drops to nil instead of throwing `DataCorrupted`. Without this, `Optional` tolerates only a
-    /// MISSING key, so one bad value would fail the entire `SessionSnapshot` and `PersistenceStore.load`
-    /// would start fresh — wiping every workspace and session. A dropped agent ref costs only the resume
-    /// (the pane still restores and re-runs its agent). Every other field keeps `decodeIfPresent`
-    /// (missing-key tolerant, the forward-compat the field docs describe).
+    /// Custom decode so every optional is LOSSY (see `lossy(_:_:)` at the top), matching
+    /// `Snapshot.init(from:)`: an unknown watermark `kind`/`fit`/`position` or agent `kind` after a
+    /// DOWNGRADE, or any hand-edit typo, drops that field to nil rather than throwing. A throw here fails
+    /// the whole `SessionSnapshot`, which fails the `workspaces` array above it, and
+    /// `PersistenceStore.load` starts fresh — wiping everything over one session's font size. A dropped
+    /// agent ref costs only the resume (the pane still restores and re-runs its agent).
+    /// `id` and `cwd` stay strict, and that is the unclosed half: a session that cannot say which it is or
+    /// where to spawn is not restorable, but throwing here costs the WHOLE tree, not this one session.
+    /// See `Snapshot.init(from:)` above for the trade-off and why it has not been picked yet.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
-        customName = try c.decodeIfPresent(String.self, forKey: .customName)
+        customName = c.lossy(String.self, .customName)
         cwd = try c.decode(String.self, forKey: .cwd)
-        isSplit = try c.decodeIfPresent(Bool.self, forKey: .isSplit)
-        fontSize = try c.decodeIfPresent(Double.self, forKey: .fontSize)
-        splitCwd = try c.decodeIfPresent(String.self, forKey: .splitCwd)
-        splitRatio = try c.decodeIfPresent(Double.self, forKey: .splitRatio)
-        flagged = try c.decodeIfPresent(Bool.self, forKey: .flagged)
-        foregroundCommand = try c.decodeIfPresent([String].self, forKey: .foregroundCommand)
-        splitForegroundCommand = try c.decodeIfPresent([String].self, forKey: .splitForegroundCommand)
-        agentSession = (try? c.decodeIfPresent(AgentSessionRef.self, forKey: .agentSession)) ?? nil
-        splitAgentSession = (try? c.decodeIfPresent(AgentSessionRef.self, forKey: .splitAgentSession)) ?? nil
-        initialCommand = try c.decodeIfPresent(String.self, forKey: .initialCommand)
-        commandWait = try c.decodeIfPresent(Bool.self, forKey: .commandWait)
-        backgroundWatermark = (try? c.decodeIfPresent(BackgroundWatermark.self, forKey: .backgroundWatermark)) ?? nil
-        fileTreeVisible = try c.decodeIfPresent(Bool.self, forKey: .fileTreeVisible)
-        markdownPath = try c.decodeIfPresent(String.self, forKey: .markdownPath)
-        restoreCommand = try c.decodeIfPresent(String.self, forKey: .restoreCommand)
-        splitRestoreCommand = try c.decodeIfPresent(String.self, forKey: .splitRestoreCommand)
+        isSplit = c.lossy(Bool.self, .isSplit)
+        fontSize = c.lossy(Double.self, .fontSize)
+        splitCwd = c.lossy(String.self, .splitCwd)
+        splitRatio = c.lossy(Double.self, .splitRatio)
+        flagged = c.lossy(Bool.self, .flagged)
+        foregroundCommand = c.lossy([String].self, .foregroundCommand)
+        splitForegroundCommand = c.lossy([String].self, .splitForegroundCommand)
+        agentSession = c.lossy(AgentSessionRef.self, .agentSession)
+        splitAgentSession = c.lossy(AgentSessionRef.self, .splitAgentSession)
+        initialCommand = c.lossy(String.self, .initialCommand)
+        commandWait = c.lossy(Bool.self, .commandWait)
+        backgroundWatermark = c.lossy(BackgroundWatermark.self, .backgroundWatermark)
+        fileTreeVisible = c.lossy(Bool.self, .fileTreeVisible)
+        markdownPath = c.lossy(String.self, .markdownPath)
+        restoreCommand = c.lossy(String.self, .restoreCommand)
+        splitRestoreCommand = c.lossy(String.self, .splitRestoreCommand)
     }
 }

@@ -543,6 +543,132 @@ final class PersistenceTests {
         }
     }
 
+    @Test func malformedSidebarModeDropsToNilKeepingTree() throws {
+        // an unknown sidebarMode raw value (written by a NEWER build, or a hand edit) must drop to nil
+        // lossily — never fail the whole Snapshot decode and wipe the tree over a display field.
+        let ws = UUID()
+        let session = UUID()
+        let tree = #""selectedSessionID": "\#(session.uuidString)", "workspaces": "# +
+            #"[ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ]"#
+        for bad in [#""sidebarMode": "hologram""#, #""sidebarMode": 42"#] {
+            try Data(#"{ "version": 1, \#(bad), \#(tree) }"#.utf8).write(to: fileURL)
+            let loaded = store.load()
+            #expect(loaded.workspaces.map(\.id) == [ws], "\(bad) wiped the tree")
+            #expect(loaded.selectedSessionID == session)
+            #expect(loaded.sidebarMode == nil)
+        }
+    }
+
+    @Test func malformedTopLevelOptionalsDropToNilKeepingTree() throws {
+        // every optional on `Snapshot` must survive a wrong JSON type or a malformed UUID from a hand edit.
+        // Only `version` and `workspaces` are strict — the payload itself — so none of these may take the
+        // tree down with them. Each case asserts the field it NILLED: a guard that recovered to a wrong
+        // non-nil default would still keep the tree alive and pass a tree-only assertion.
+        let ws = UUID()
+        let session = UUID()
+        let tree = #""workspaces": "# +
+            #"[ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ]"#
+        let cases: [(bad: String, nilled: (Snapshot) -> Bool)] = [
+            (#""selectedSessionID": "not-a-uuid""#, { $0.selectedSessionID == nil }),
+            (#""sidebarWidth": "wide""#, { $0.sidebarWidth == nil }),
+            (#""fileTreeWidth": "wide""#, { $0.fileTreeWidth == nil }),
+            (#""markdownWidth": "wide""#, { $0.markdownWidth == nil }),
+            (#""sidebarVisible": "yes""#, { $0.sidebarVisible == nil }),
+            (#""focusedWorkspaceIDs": ["not-a-uuid"]"#, { $0.focusedWorkspaceIDs == nil }),
+            (#""focusedWorkspaceIDs": 42"#, { $0.focusedWorkspaceIDs == nil }),
+            (#""focusEnabled": 42"#, { $0.focusEnabled == nil }),
+            (#""focusedWorkspaceID": "not-a-uuid""#, { $0.focusedWorkspaceIDs == nil && $0.focusEnabled == nil }),
+            (#""markedWorkspaceID": "not-a-uuid""#, { $0.focusedWorkspaceIDs == nil && $0.focusEnabled == nil }),
+        ]
+        for (bad, nilled) in cases {
+            try Data(#"{ "version": 1, \#(bad), \#(tree) }"#.utf8).write(to: fileURL)
+            let loaded = store.load()
+            #expect(loaded.workspaces.map(\.id) == [ws], "\(bad) wiped the tree")
+            #expect(loaded.workspaces.first?.sessions.map(\.id) == [session], "\(bad) wiped the sessions")
+            #expect(nilled(loaded), "\(bad) did not drop its field to nil")
+        }
+    }
+
+    @Test func malformedSessionAndWorkspaceOptionalsDropToNilKeepingTree() throws {
+        // a bad optional NESTED in a session/workspace is the wider surface: it fails its own snapshot,
+        // which fails the `workspaces` array above it, and `load()` starts fresh — the whole tree gone over
+        // one session's font size. Each nested optional guards itself; only identity and payload throw.
+        let ws = UUID()
+        let session = UUID()
+        let sessionCases: [(bad: String, nilled: (SessionSnapshot) -> Bool)] = [
+            (#""customName": 7"#, { $0.customName == nil }),
+            (#""isSplit": 1"#, { $0.isSplit == nil }),
+            (#""fontSize": "12""#, { $0.fontSize == nil }),
+            (#""splitCwd": 3"#, { $0.splitCwd == nil }),
+            (#""splitRatio": "half""#, { $0.splitRatio == nil }),
+            (#""flagged": "true""#, { $0.flagged == nil }),
+            (#""foregroundCommand": "vim""#, { $0.foregroundCommand == nil }),
+            (#""splitForegroundCommand": "vim""#, { $0.splitForegroundCommand == nil }),
+            (#""agentSession": "claude""#, { $0.agentSession == nil }),
+            (#""splitAgentSession": "claude""#, { $0.splitAgentSession == nil }),
+            (#""initialCommand": ["vim"]"#, { $0.initialCommand == nil }),
+            (#""commandWait": "no""#, { $0.commandWait == nil }),
+            (#""backgroundWatermark": "none""#, { $0.backgroundWatermark == nil }),
+            (#""fileTreeVisible": "yes""#, { $0.fileTreeVisible == nil }),
+            (#""markdownPath": 5"#, { $0.markdownPath == nil }),
+            (#""restoreCommand": []"#, { $0.restoreCommand == nil }),
+            (#""splitRestoreCommand": 0"#, { $0.splitRestoreCommand == nil }),
+        ]
+        for (bad, nilled) in sessionCases {
+            let tree = #""workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": "# +
+                #"[ { "id": "\#(session.uuidString)", "cwd": "/a", \#(bad) } ] } ]"#
+            try Data(#"{ "version": 1, \#(tree) }"#.utf8).write(to: fileURL)
+            let loaded = store.load()
+            let restored = try #require(loaded.workspaces.first?.sessions.first, "\(bad) wiped the tree")
+            #expect(restored.id == session)
+            #expect(restored.cwd == "/a", "\(bad) must not disturb the fields around it")
+            #expect(nilled(restored), "\(bad) did not drop its field to nil")
+        }
+
+        let workspaceCases: [(bad: String, nilled: (WorkspaceSnapshot) -> Bool)] = [
+            (#""collapsed": "yes""#, { $0.collapsed == nil }),
+            (#""colorHex": 16"#, { $0.colorHex == nil }),
+            (#""root": []"#, { $0.root == nil }),
+        ]
+        for (bad, nilled) in workspaceCases {
+            let tree = #""workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", \#(bad), "# +
+                #""sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ]"#
+            try Data(#"{ "version": 1, \#(tree) }"#.utf8).write(to: fileURL)
+            let loaded = store.load()
+            let restored = try #require(loaded.workspaces.first, "\(bad) wiped the tree")
+            #expect(restored.sessions.map(\.id) == [session], "\(bad) wiped the sessions")
+            #expect(nilled(restored), "\(bad) did not drop its field to nil")
+        }
+    }
+
+    @Test func aMalformedFocusSetLeavesTheLegacyKeysUnmigrated() throws {
+        // now that the new focus keys decode lossily, a FAILED decode must NOT read as an ABSENT key: the
+        // legacy migration is gated on absence, and firing it here would resurrect the legacy mark and
+        // override the explicit `focusEnabled` in the same file — inventing a filter state the file never
+        // stated. `try?` alone cannot tell the two apart (SE-0230 flattens both to nil); `Result` can.
+        let ws = UUID()
+        let session = UUID()
+        let legacy = UUID()
+        let tree = #""workspaces": "# +
+            #"[ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ]"#
+        let legacyKeys = #""focusedWorkspaceID": "\#(legacy.uuidString)", "markedWorkspaceID": "\#(legacy.uuidString)""#
+
+        // a malformed SET alongside an explicit `focusEnabled: false`
+        let badSet = #"{ "version": 1, \#(legacyKeys), "focusedWorkspaceIDs": 42, "focusEnabled": false, \#(tree) }"#
+        try Data(badSet.utf8).write(to: fileURL)
+        let withBadSet = store.load()
+        #expect(withBadSet.workspaces.map(\.id) == [ws])
+        #expect(withBadSet.focusedWorkspaceIDs == nil, "a malformed set must not fall back to the legacy mark")
+        #expect(withBadSet.focusEnabled == false, "nor override the flag the file states")
+
+        // and the mirror case: a malformed FLAG alongside an explicit set
+        let badFlag = #"{ "version": 1, \#(legacyKeys), "focusedWorkspaceIDs": ["\#(ws.uuidString)"], "focusEnabled": "yes", \#(tree) }"#
+        try Data(badFlag.utf8).write(to: fileURL)
+        let withBadFlag = store.load()
+        #expect(withBadFlag.focusedWorkspaceIDs == [ws], "the valid set stands")
+        #expect(withBadFlag.focusEnabled == nil, "the malformed flag drops to nil, not to the legacy true")
+    }
+
     @Test func restoreInsertsAbsentSelectionAtFront() {
         let a = UUID()
         let b = UUID()
