@@ -86,7 +86,6 @@ struct CommandPalette: View {
     let controller: PaletteController
     let actions: AppActions
 
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var query = ""
     @State private var selection = 0
     /// The visible, filtered result list. Held in `@State` (recomputed on query/mode change) so
@@ -178,7 +177,10 @@ struct CommandPalette: View {
             Divider()
             results
         }
-        .background(panelBackground, in: RoundedRectangle(cornerRadius: 12))
+        // keep the live material inside its own invalidation boundary: an arrow-key selection change
+        // rebuilds the palette content, and an AnyShapeStyle backdrop passed from here is opaque to
+        // SwiftUI's diffing, so the whole panel backdrop got re-resolved on every keystroke.
+        .background { PalettePanelBackground() }
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.1)))
         .shadow(radius: 24)
         .accessibilityIdentifier("command-palette")
@@ -197,21 +199,12 @@ struct CommandPalette: View {
         .onDisappear { actions.cancelThemePreview() }
     }
 
-    /// The floating-panel treatment is the native material, unless Reduce Transparency asks for a solid
-    /// surface — then the system window color, which keeps the system-label text legible either side of
-    /// light/dark. SwiftUI re-renders this on a live flip; nothing is written to settings.
-    private var panelBackground: AnyShapeStyle {
-        reduceTransparency
-            ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
-            : AnyShapeStyle(.regularMaterial)
-    }
-
     private var results: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(filtered.enumerated()), id: \.element.id) { index, item in
-                        row(item, index: index)
+                        PaletteRow(item: item, isSelected: index == selection)
                             .id(item.id)
                             .onTapGesture { runItem(item) }
                     }
@@ -223,12 +216,63 @@ struct CommandPalette: View {
                 // live theme preview: navigating a row applies it (no-op for non-theme palettes,
                 // whose items carry no onSelect).
                 filtered[sel].onSelect?()
-                withAnimation(.easeOut(duration: 0.1)) { proxy.scrollTo(filtered[sel].id, anchor: .center) }
+                // anchorless scrollTo is a no-op while the row is already visible and reveals only the
+                // minimum at an edge. animating a center-anchored scroll on every key-repeat event kept
+                // interrupting layout/compositing, which is what made the material-backed panel flash.
+                proxy.scrollTo(filtered[sel].id)
             }
         }
     }
 
-    private func row(_ item: PaletteItem, index: Int) -> some View {
+    private func move(_ delta: Int) {
+        guard !filtered.isEmpty else { return }
+        selection = max(0, min(selection + delta, filtered.count - 1))
+    }
+
+    /// Preview the currently-selected item (fires its `onSelect`). Called after a filter re-orders the
+    /// list so the new top match previews even when `selection` stayed 0 (no `onChange(of: selection)`).
+    /// A no-op for non-theme palettes — only theme rows carry an `onSelect`.
+    private func previewSelected() {
+        guard filtered.indices.contains(selection) else { return }
+        filtered[selection].onSelect?()
+    }
+
+    private func runSelected() {
+        guard filtered.indices.contains(selection) else { return }
+        runItem(filtered[selection])
+    }
+
+    private func runItem(_ item: PaletteItem) {
+        item.run()
+        controller.close()
+    }
+}
+
+/// The floating-panel treatment is the native material, unless Reduce Transparency asks for a solid
+/// surface — then the system window color, which keeps the system-label text legible either side of
+/// light/dark. SwiftUI re-renders this on a live flip; nothing is written to settings.
+/// It is a view of its OWN so a selection change in `CommandPalette` cannot invalidate and re-resolve
+/// the whole backdrop.
+private struct PalettePanelBackground: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    @ViewBuilder var body: some View {
+        if reduceTransparency {
+            RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .windowBackgroundColor))
+        } else {
+            RoundedRectangle(cornerRadius: 12).fill(.regularMaterial)
+        }
+    }
+}
+
+/// A real row view gives SwiftUI a narrow diffing boundary: a selection change updates the previous and
+/// the next row instead of rebuilding every row the lazy stack has on screen (which a `row(_:index:)`
+/// helper reading `selection` forced).
+private struct PaletteRow: View {
+    let item: PaletteItem
+    let isSelected: Bool
+
+    var body: some View {
         HStack {
             if let status = item.status {
                 StatusGlyph(status: status, colorHex: item.statusColor, shape: item.statusShape)
@@ -262,30 +306,7 @@ struct CommandPalette: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(index == selection ? Color.accentColor.opacity(0.25) : Color.clear)
+        .background(isSelected ? Color.accentColor.opacity(0.25) : Color.clear)
         .contentShape(Rectangle())
-    }
-
-    private func move(_ delta: Int) {
-        guard !filtered.isEmpty else { return }
-        selection = max(0, min(selection + delta, filtered.count - 1))
-    }
-
-    /// Preview the currently-selected item (fires its `onSelect`). Called after a filter re-orders the
-    /// list so the new top match previews even when `selection` stayed 0 (no `onChange(of: selection)`).
-    /// A no-op for non-theme palettes — only theme rows carry an `onSelect`.
-    private func previewSelected() {
-        guard filtered.indices.contains(selection) else { return }
-        filtered[selection].onSelect?()
-    }
-
-    private func runSelected() {
-        guard filtered.indices.contains(selection) else { return }
-        runItem(filtered[selection])
-    }
-
-    private func runItem(_ item: PaletteItem) {
-        item.run()
-        controller.close()
     }
 }
