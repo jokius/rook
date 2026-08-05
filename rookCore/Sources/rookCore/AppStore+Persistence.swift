@@ -35,7 +35,10 @@ extension AppStore {
     ///
     /// Deliberately does NOT call `save()`: it loads what was just read from disk,
     /// so re-persisting it would be a pointless write (and the only mutator that
-    /// skips `save()` for that reason). If the persisted `selectedSessionID` points
+    /// skips `save()` for that reason). The closing `reselectIfSelectionHidden` is
+    /// the exception — when it repairs a selection the restored filter/mode strands,
+    /// its `selectSession` schedules a save, and THAT one is worth writing.
+    /// If the persisted `selectedSessionID` points
     /// at a session that no longer exists, it is cleared to keep selection valid.
     ///
     /// `launchRestore` marks an APP-BOOTSTRAP restore and is the ONLY thing that arms a persisted
@@ -85,6 +88,10 @@ extension AppStore {
         let restoredIDs = Set(workspaces.flatMap(\.sessions).map(\.id))
         sessionRecency = RecencyStack(items: (snapshot.sessionRecency ?? []).filter { restoredIDs.contains($0) })
         recordRecency()
+        // LAST, after the recency stack is re-seeded: a restored filter/mode can hide the restored
+        // selection, and the repair picks MRU — run any earlier and it would find an empty stack and fall
+        // back to the positional first row.
+        reselectIfSelectionHidden()
     }
 
     /// Persists the current state eagerly. Called after every structural mutation and on

@@ -529,9 +529,9 @@ public final class AppStore {
     /// Removes a workspace and every session in it, tearing down each session's surfaces
     /// and pruning them from the recency stack. No-ops unless more than one workspace
     /// exists (the last one is kept). If the active session lived in the removed
-    /// workspace, reselects the first session of a remaining workspace (the one that
-    /// shifted into the removed slot, else the first non-empty workspace), or nil when
-    /// no sessions remain.
+    /// workspace, reselects through `workspaceRemovalTarget(at:)` — the most recent
+    /// still VISIBLE session, falling back to the positional walk only when nothing is
+    /// visible, and nil when no sessions remain.
     public func removeWorkspace(_ workspaceID: UUID) {
         guard canRemoveWorkspace, let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return }
         let workspace = workspaces[index]
@@ -553,9 +553,7 @@ public final class AppStore {
         workspaces.remove(at: index)
         forgetFreshWorkspace(workspaceID)
         if removingActive {
-            let fallbackIndex = min(index, workspaces.count - 1)
-            selectedSessionID = workspaces[fallbackIndex].sessions.first?.id
-                ?? workspaces.first(where: { !$0.sessions.isEmpty })?.sessions.first?.id
+            selectedSessionID = workspaceRemovalTarget(at: index)
             replaceSidebarSelection(with: selectedSessionID)
             disableFocusIfSelectionOutsideSet(selectedSessionID) // the reselected session may live outside the marked set
             recordRecency()
@@ -745,87 +743,6 @@ public final class AppStore {
         if changed { save() }
     }
 
-    /// Sets this window's sidebar visibility and persists it. Clean no-op (no write) when unchanged, so
-    /// menu, toolbar, palette, and control callers can delta-compute their desired state without
-    /// duplicating the persistence gate. `sidebarVisible` is per-window state saved in this store's
-    /// snapshot.
-    public func setSidebarVisible(_ visible: Bool) {
-        guard sidebarVisible != visible else { return }
-        sidebarVisible = visible
-        save()
-        // refresh the app-target ControlServer's window.list cache: a GUI-only toggle isn't a control
-        // command, so without this the cached sidebarVisible would lag until the next command.
-        NotificationCenter.default.post(name: .rookSidebarVisibilityChanged, object: nil)
-    }
-
-    /// Flips this window's sidebar visibility and persists the new state.
-    public func toggleSidebarVisible() {
-        setSidebarVisible(!sidebarVisible)
-    }
-
-    /// Sets the sidebar mode and persists it. Clean no-op (no write) when the mode is unchanged, so the
-    /// delta-computed control/menu callers stay idempotent.
-    public func setSidebarMode(_ mode: SidebarMode) {
-        guard sidebarMode != mode else { return }
-        sidebarMode = mode
-        pruneSidebarSelection()
-        save()
-    }
-
-    /// Sets one workspace's expand/collapse state and persists it. Clean no-op (no write) for an unknown id
-    /// or when unchanged. The sidebar calls this for a GENUINE per-row user toggle only (a row click or the
-    /// disclosure triangle), never for a programmatic reveal — so a deliberate collapse survives a later
-    /// reveal of a session inside the workspace, and toggling one workspace never touches another's saved
-    /// state (unlike `setWorkspacesExpanded`, which rewrites the whole tree).
-    public func setWorkspaceExpanded(_ id: UUID, expanded: Bool) {
-        guard let index = workspaces.firstIndex(where: { $0.id == id }), workspaces[index].isExpanded != expanded else { return }
-        workspaces[index].isExpanded = expanded
-        save()
-    }
-
-    /// Marks each workspace expanded iff its id is in `expandedIDs` and persists the collapse state so it
-    /// survives a relaunch. One `save()` for the whole diff; a clean no-op (no write) when nothing changed.
-    /// Backs the deliberate all-workspace commands (Expand Workspaces / Collapse Workspaces), which set
-    /// every workspace at once; per-row toggles use `setWorkspaceExpanded` instead.
-    public func setWorkspacesExpanded(_ expandedIDs: Set<UUID>) {
-        var changed = false
-        for index in workspaces.indices {
-            let expanded = expandedIDs.contains(workspaces[index].id)
-            if workspaces[index].isExpanded != expanded {
-                workspaces[index].isExpanded = expanded
-                changed = true
-            }
-        }
-        if changed { save() }
-    }
-
-    /// Sets (or clears) a session's flag — the durable flagged working-set membership the flat sidebar
-    /// view projects. Persists the change. Clean no-op (no write) for an unknown id or when the flag is
-    /// already in the requested state, so the delta-computed control/menu callers stay idempotent.
-    public func setFlag(_ on: Bool, forSession id: UUID) {
-        guard let session = session(withID: id), session.flagged != on else { return }
-        session.flagged = on
-        pruneSidebarSelection()
-        save()
-    }
-
-    /// Sets (or clears) multiple sessions' flags in one save. Unknown ids are ignored.
-    public func setFlag(_ on: Bool, forSessions ids: [UUID]) {
-        let targetIDs = Set(ids)
-        guard !targetIDs.isEmpty else { return }
-        var changed = false
-        for workspace in workspaces {
-            for session in workspace.sessions where targetIDs.contains(session.id) && session.flagged != on {
-                session.flagged = on
-                changed = true
-            }
-        }
-        if changed {
-            pruneSidebarSelection()
-            save()
-        }
-    }
-
     /// Sets (or clears) a session's background watermark and persists it. Clean no-op (no write) for an
     /// unknown id or when the spec is unchanged, so a repeated `session.background` set is idempotent.
     /// Returns whether the spec actually CHANGED, so the app target can gate the (retained, teardown-only-
@@ -845,28 +762,6 @@ public final class AppStore {
         }
         save()
         return true
-    }
-
-    /// Unflags every session across all workspaces in one `save()`. No-ops (no write) when nothing is
-    /// flagged. Backs the Clear Flagged action and the `session.flag clear` control mode.
-    public func clearFlags() {
-        var changed = false
-        for workspace in workspaces {
-            for session in workspace.sessions where session.flagged {
-                session.flagged = false
-                changed = true
-            }
-        }
-        if changed {
-            pruneSidebarSelection()
-            save()
-        }
-    }
-
-    /// The flagged sessions across all workspaces in tree order (`workspaces.flatMap(\.sessions)` filtered
-    /// by `flagged`). A pure derived projection — the flat sidebar view renders this directly.
-    public var flaggedSessions: [Session] {
-        workspaces.flatMap(\.sessions).filter(\.flagged)
     }
 
     /// The window-wide non-idle sessions, the single source of truth for the titlebar attention icon

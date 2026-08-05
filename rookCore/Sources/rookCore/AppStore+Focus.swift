@@ -23,8 +23,14 @@ extension AppStore {
     ///
     /// Only the FLAG drops: none of the callers is the user saying they are done with the focus (most fire
     /// while nobody is at the keyboard), so the set is kept and `setFocusEnabled(true)` returns to it.
+    ///
+    /// Also a no-op in `.flagged` mode: the flat flagged list is cross-workspace and ignores the marked set,
+    /// so a selection outside the set THERE has not navigated past the filter and there is nothing to
+    /// reveal. Without the term, entering the flagged view with the only flagged session in an unmarked
+    /// workspace silently switches the filter off — invisible until the user returns to the tree and finds
+    /// the whole thing back. Returning to `.tree` re-applies it (and reselects into it).
     func disableFocusIfSelectionOutsideSet(_ sessionID: UUID?) {
-        guard focusEnabled, let sessionID else { return }
+        guard focusEnabled, sidebarMode != .flagged, let sessionID else { return }
         if let owner = workspace(forSession: sessionID)?.id, focusedWorkspaceIDs.contains(owner) { return }
         focusEnabled = false
     }
@@ -100,8 +106,9 @@ extension AppStore {
     /// The single write point for the two filter fields. It clamps `enabled` to false on an empty set —
     /// the guard that makes `enabled + empty` unrepresentable — skips the write entirely when nothing
     /// changes (so the delta-computed control/menu callers stay idempotent and a no-op never persists),
-    /// then prunes the sidebar selection and saves. The clamp, the delta guard, the prune and the save
-    /// live HERE and nowhere else, which is what makes the invariants hold for every mutator above.
+    /// then prunes the sidebar selection, keeps the active session visible, and saves. The clamp, the delta
+    /// guard, the prune, the reselect and the save live HERE and nowhere else, which is what makes the
+    /// invariants hold for every mutator above.
     private func commitFocus(ids: Set<UUID>, enabled: Bool) {
         let wantEnabled = enabled && !ids.isEmpty
         guard focusedWorkspaceIDs != ids || focusEnabled != wantEnabled else { return }
@@ -111,6 +118,7 @@ extension AppStore {
         // builds its row cache from `visibleWorkspaces`.
         forgetHiddenFreshWorkspace()
         pruneSidebarSelection()
+        reselectIfSelectionHidden()
         save()
     }
 
@@ -223,5 +231,51 @@ extension AppStore {
     /// filter as the visible sidebar.
     public var navigableSessions: [Session] {
         sidebarMode == .flagged ? flaggedSessions : visibleWorkspaces.flatMap(\.sessions)
+    }
+
+    /// Moves the selection back INSIDE the visible set whenever the active session sits outside it — the
+    /// counterpart of `disableFocusIfSelectionOutsideSet`, which handles the other direction (an explicit
+    /// cross-set SELECT reveals its target by dropping the filter; a NARROWING has no target to reveal, so
+    /// it moves the selection instead). Without it the window kept rendering a session the sidebar could
+    /// not point at: the terminal drew it while no row was selected.
+    ///
+    /// Four narrowings reach that state — focusing a workspace that does not own the active session,
+    /// applying the filter while its workspace is unmarked, switching to the flagged view while it is not
+    /// flagged, and unflagging it inside the flagged view — plus the WIDENING that fills a visible set which
+    /// was empty (a narrowing has to leave the selection alone there, so filling the set is what finally
+    /// repairs it).
+    ///
+    /// The pick is MRU rather than positional, so a filter-off-then-on round trip lands back where the user
+    /// was; the first visible session backs it up when nothing in the set has ever been activated. No-op on
+    /// a nil selection (a restore clears a dangling one deliberately) and on an EMPTY visible set — there is
+    /// nowhere to move to, and deselecting would leave the window with no terminal at all. Keyboard focus
+    /// needs nothing here: the app target moves first responder when the selection changes.
+    func reselectIfSelectionHidden() {
+        guard let selected = selectedSessionID, !navigableSessions.contains(where: { $0.id == selected }) else { return }
+        guard let target = mostRecentVisibleSessionID else { return }
+        selectSession(target)
+    }
+
+    /// The selection after the workspace holding the active session is removed: the most recent session
+    /// still VISIBLE, else the first visible one. Unlike `closeReselectionTarget` there is no "stay in this
+    /// workspace" term — that workspace is what was removed — but the visible-set term still holds, or the
+    /// pick strands the selection on a row the sidebar cannot render. Falls back to the positional walk at
+    /// `index` (the workspace that shifted into the removed slot, else the first non-empty one) only when
+    /// nothing is visible at all, and nil when no sessions remain anywhere.
+    func workspaceRemovalTarget(at index: Int) -> UUID? {
+        if let visible = mostRecentVisibleSessionID { return visible }
+        guard !workspaces.isEmpty else { return nil }
+        let fallbackIndex = min(index, workspaces.count - 1)
+        return workspaces[fallbackIndex].sessions.first?.id
+            ?? workspaces.first(where: { !$0.sessions.isEmpty })?.sessions.first?.id
+    }
+
+    /// The most-recently-active session inside the visible set, falling back to the first one — nil only
+    /// when nothing is visible. The single definition of "where the selection belongs after the visible set
+    /// changed", shared by the two repairs above so they cannot drift apart.
+    private var mostRecentVisibleSessionID: UUID? {
+        let visible = navigableSessions
+        guard !visible.isEmpty else { return nil }
+        return sessionRecency.top(1, in: Set(visible.map(\.id))).first ?? visible[0].id
     }
 }

@@ -463,6 +463,7 @@ struct AppStoreFocusTests {
         let store = makeStore()
         let work = store.addWorkspace(name: "work")
         let other = store.addWorkspace(name: "other")
+        let empty = store.addWorkspace(name: "empty")
         let inWork = store.addSession(toWorkspace: work.id, cwd: "/a")!
         let inOther = store.addSession(toWorkspace: other.id, cwd: "/b")!
         store.selectSession(inWork.id)
@@ -475,10 +476,19 @@ struct AppStoreFocusTests {
         #expect(!store.isCurrentWorkspaceSoleFocus)
         #expect(store.isCurrentWorkspaceFocusMember)
 
-        store.setFocusedWorkspace(other.id) // the current workspace drops out of the set entirely
+        // zooming to `other` no longer strands the selection in `work`: the narrowing takes the active
+        // session with it, so the CURRENT workspace follows and both facts stay true.
+        store.setFocusedWorkspace(other.id)
+        #expect(store.selectedSessionID == inOther.id)
+        #expect(store.isCurrentWorkspaceSoleFocus)
+        #expect(store.isCurrentWorkspaceFocusMember)
+
+        // the one narrowing that CAN leave the current workspace out of the set: an empty one has no
+        // session to move to, so the selection stays behind and both facts go false.
+        store.setFocusedWorkspace(empty.id)
+        #expect(store.selectedSessionID == inOther.id)
         #expect(!store.isCurrentWorkspaceSoleFocus)
         #expect(!store.isCurrentWorkspaceFocusMember)
-        _ = inOther
     }
 
     @Test func visibleWorkspacesReturnsTheWholeTreeWhileTheFilterIsOff() {
@@ -627,21 +637,47 @@ struct AppStoreFocusTests {
         #expect(store.focusedWorkspaceIDs == [work.id]) // ...without discarding the set
     }
 
-    @Test func removingAWorkspaceThatReselectsOutsideTheSetRevealsTheTarget() {
+    @Test func removingAWorkspaceStaysInsideTheMarkedSetRatherThanTakingThePositionalNeighbor() {
         let store = makeStore()
         let a = store.addWorkspace(name: "a")
         let b = store.addWorkspace(name: "b")
         let c = store.addWorkspace(name: "c")
-        _ = store.addSession(toWorkspace: a.id, cwd: "/a")!
+        let inA = store.addSession(toWorkspace: a.id, cwd: "/a")!
         _ = store.addSession(toWorkspace: b.id, cwd: "/b")!
         let activeInC = store.addSession(toWorkspace: c.id, cwd: "/c")!
+        store.selectSession(inA.id)
         store.selectSession(activeInC.id)
-        store.setFocusedWorkspace(a.id)
+        store.setFocusMembership(a.id, member: true)
+        store.setFocusMembership(c.id, member: true)
+        store.setFocusEnabled(true) // both marked, so the active session is already visible
+        #expect(store.selectedSessionID == activeInC.id)
 
-        store.removeWorkspace(c.id) // reselects into b (the fallback slot), outside the marked a
-        #expect(store.workspace(forSession: store.selectedSessionID!)?.id == b.id)
+        // the positional walk lands in `b`, which the filter isn't rendering; the visible-set pick stays
+        // inside the surviving member `a`, so the filter has no reason to drop.
+        store.removeWorkspace(c.id)
+        #expect(store.selectedSessionID == inA.id)
+        #expect(store.focusedWorkspaceIDs == [a.id] && store.focusEnabled)
+    }
+
+    @Test func removingAWorkspaceWithNothingVisibleLeftRevealsThePositionalTarget() {
+        let store = makeStore()
+        let empty = store.addWorkspace(name: "empty")
+        let b = store.addWorkspace(name: "b")
+        let c = store.addWorkspace(name: "c")
+        let inB = store.addSession(toWorkspace: b.id, cwd: "/b")!
+        let activeInC = store.addSession(toWorkspace: c.id, cwd: "/c")!
+        store.selectSession(activeInC.id)
+        store.setFocusMembership(empty.id, member: true)
+        store.setFocusMembership(c.id, member: true)
+        store.setFocusEnabled(true)
+        #expect(store.selectedSessionID == activeInC.id)
+
+        // removing `c` leaves the marked set holding only the EMPTY workspace, so nothing is visible and the
+        // pick falls through to the positional walk — outside the set, which is what still drops the flag.
+        store.removeWorkspace(c.id)
+        #expect(store.selectedSessionID == inB.id)
         #expect(!store.focusEnabled)
-        #expect(store.focusedWorkspaceIDs == [a.id])
+        #expect(store.focusedWorkspaceIDs == [empty.id]) // only the flag drops; the mark survives
     }
 
     @Test func addingASessionToANonMemberWorkspaceRevealsIt() {
@@ -696,6 +732,255 @@ struct AppStoreFocusTests {
         #expect(store.selectedSessionID == a.id)
         #expect(store.focusEnabled)
         #expect(store.focusedWorkspaceIDs == [work.id])
+    }
+
+    // MARK: - The other direction: a narrowing keeps the active session VISIBLE
+
+    @Test func focusingAWorkspaceMovesTheSelectionIntoIt() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+        let target = try #require(store.addSession(toWorkspace: work.id, cwd: "/a"))
+        let outside = try #require(store.addSession(toWorkspace: personal.id, cwd: "/b"))
+        store.selectSession(target.id)
+        store.selectSession(outside.id)
+
+        store.setFocusedWorkspace(work.id) // the zoom hides the active session's row
+        #expect(store.selectedSessionID == target.id)
+        #expect(store.focusedWorkspaceIDs == [work.id] && store.focusEnabled)
+    }
+
+    @Test func applyingTheFilterMovesTheSelectionIntoTheVisibleSet() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+        let inSet = try #require(store.addSession(toWorkspace: work.id, cwd: "/a"))
+        let outside = try #require(store.addSession(toWorkspace: personal.id, cwd: "/b"))
+        store.selectSession(inSet.id)
+        store.selectSession(outside.id)
+
+        store.setFocusMembership(work.id, member: true) // marking alone never applies, so nothing moves yet
+        #expect(store.selectedSessionID == outside.id)
+
+        store.setFocusEnabled(true)
+        #expect(store.selectedSessionID == inSet.id)
+        #expect(store.focusedWorkspaceIDs == [work.id] && store.focusEnabled)
+    }
+
+    @Test func unmarkingTheActiveSessionsWorkspaceMovesTheSelectionToASurvivingMember() throws {
+        let store = makeStore()
+        let staying = store.addWorkspace(name: "staying")
+        let leaving = store.addWorkspace(name: "leaving")
+        let survivor = try #require(store.addSession(toWorkspace: staying.id, cwd: "/a"))
+        let active = try #require(store.addSession(toWorkspace: leaving.id, cwd: "/b"))
+        store.setFocusMembership(staying.id, member: true)
+        store.setFocusMembership(leaving.id, member: true)
+        store.setFocusEnabled(true)
+        store.selectSession(active.id)
+
+        store.setFocusMembership(leaving.id, member: false)
+        #expect(store.selectedSessionID == survivor.id)
+        #expect(store.focusedWorkspaceIDs == [staying.id] && store.focusEnabled)
+    }
+
+    @Test func switchingToTheFlaggedViewMovesTheSelectionIntoIt() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let flagged = try #require(store.addSession(toWorkspace: work.id, cwd: "/a"))
+        let plain = try #require(store.addSession(toWorkspace: work.id, cwd: "/b"))
+        store.setFlag(true, forSession: flagged.id)
+        store.selectSession(plain.id)
+
+        store.setSidebarMode(.flagged) // the flat list has no row for `plain`
+        #expect(store.selectedSessionID == flagged.id)
+    }
+
+    @Test func unflaggingTheActiveSessionInFlaggedModeMovesTheSelection() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let survivor = try #require(store.addSession(toWorkspace: work.id, cwd: "/a"))
+        let active = try #require(store.addSession(toWorkspace: work.id, cwd: "/b"))
+        store.setFlag(true, forSession: survivor.id)
+        store.setFlag(true, forSession: active.id)
+        store.selectSession(active.id)
+        store.setSidebarMode(.flagged)
+
+        store.setFlag(false, forSession: active.id) // unflagging IS a narrowing while the flagged view is up
+        #expect(store.selectedSessionID == survivor.id)
+    }
+
+    @Test func batchUnflaggingTheActiveSessionInFlaggedModeMovesTheSelection() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let survivor = try #require(store.addSession(toWorkspace: work.id, cwd: "/a"))
+        let active = try #require(store.addSession(toWorkspace: work.id, cwd: "/b"))
+        let alsoUnflagged = try #require(store.addSession(toWorkspace: work.id, cwd: "/c", select: false))
+        store.setFlag(true, forSessions: [survivor.id, active.id, alsoUnflagged.id])
+        store.selectSession(active.id)
+        store.setSidebarMode(.flagged)
+
+        store.setFlag(false, forSessions: [active.id, alsoUnflagged.id])
+        #expect(store.flaggedSessions.map(\.id) == [survivor.id])
+        #expect(store.selectedSessionID == survivor.id)
+    }
+
+    @Test func switchingToTheFlaggedViewNeverDisablesTheWorkspaceFilter() throws {
+        let store = makeStore()
+        let marked = store.addWorkspace(name: "marked")
+        let other = store.addWorkspace(name: "other")
+        let inSet = try #require(store.addSession(toWorkspace: marked.id, cwd: "/a"))
+        let flaggedOutside = try #require(store.addSession(toWorkspace: other.id, cwd: "/b", select: false))
+        store.setFlag(true, forSession: flaggedOutside.id)
+        store.selectSession(inSet.id)
+        store.setFocusedWorkspace(marked.id)
+
+        // the flat flagged list is cross-workspace and ignores the marked set, so landing outside it there
+        // is not a jump PAST the filter — silently dropping the flag would only be discovered back in tree
+        // mode, with the whole tree unexpectedly on screen.
+        store.setSidebarMode(.flagged)
+        #expect(store.selectedSessionID == flaggedOutside.id)
+        #expect(store.focusedWorkspaceIDs == [marked.id] && store.focusEnabled)
+
+        store.setSidebarMode(.tree) // and back: the filter re-applies, so the tree pick is in-set again
+        #expect(store.selectedSessionID == inSet.id)
+        #expect(store.focusedWorkspaceIDs == [marked.id] && store.focusEnabled)
+    }
+
+    @Test func theNarrowingReselectPrefersTheMostRecentVisibleSession() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+        let first = try #require(store.addSession(toWorkspace: work.id, cwd: "/a"))
+        let recent = try #require(store.addSession(toWorkspace: work.id, cwd: "/b", select: false))
+        let outside = try #require(store.addSession(toWorkspace: personal.id, cwd: "/c"))
+        store.selectSession(first.id)
+        store.selectSession(recent.id)
+        store.selectSession(outside.id)
+
+        // MRU, not positional: a filter-off-then-on round trip must land back where the user was.
+        store.setFocusedWorkspace(work.id)
+        #expect(store.selectedSessionID == recent.id)
+    }
+
+    @Test func theNarrowingReselectFallsBackToTheFirstVisibleSessionWithoutRecency() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+        let first = try #require(store.addSession(toWorkspace: work.id, cwd: "/a", select: false))
+        _ = try #require(store.addSession(toWorkspace: work.id, cwd: "/b", select: false))
+        let outside = try #require(store.addSession(toWorkspace: personal.id, cwd: "/c"))
+        store.selectSession(outside.id)
+
+        store.setFocusedWorkspace(work.id)
+        #expect(store.selectedSessionID == first.id)
+    }
+
+    @Test func aNarrowingWithNoVisibleSessionLeavesTheSelectionAlone() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let empty = store.addWorkspace(name: "empty")
+        let active = try #require(store.addSession(toWorkspace: work.id, cwd: "/a"))
+        store.selectSession(active.id)
+
+        store.setFocusedWorkspace(empty.id) // there is nowhere to move to; deselecting would leave no terminal
+        #expect(store.selectedSessionID == active.id)
+    }
+
+    @Test func markingAPopulatedWorkspaceWhileTheFilterShowsAnEmptyOneMovesTheSelection() throws {
+        let store = makeStore()
+        let home = store.addWorkspace(name: "home")
+        let empty = store.addWorkspace(name: "empty")
+        let populated = store.addWorkspace(name: "populated")
+        let active = try #require(store.addSession(toWorkspace: home.id, cwd: "/a"))
+        let target = try #require(store.addSession(toWorkspace: populated.id, cwd: "/b", select: false))
+        store.selectSession(target.id)
+        store.selectSession(active.id)
+        store.setFocusedWorkspace(empty.id)
+        #expect(store.selectedSessionID == active.id)
+
+        // the WIDENING leg: the visible set was empty (nothing to move to), and filling it repairs the
+        // stranded selection the narrowing had to leave behind.
+        store.setFocusMembership(populated.id, member: true)
+        #expect(store.selectedSessionID == target.id)
+    }
+
+    @Test func flaggingASessionWhileTheFlaggedViewIsEmptyMovesTheSelectionIntoIt() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let active = try #require(store.addSession(toWorkspace: work.id, cwd: "/a"))
+        let other = try #require(store.addSession(toWorkspace: work.id, cwd: "/b", select: false))
+        store.selectSession(active.id)
+        store.setSidebarMode(.flagged)
+        #expect(store.selectedSessionID == active.id) // empty flagged list: the selection stays put
+
+        store.setFlag(true, forSession: other.id)
+        #expect(store.selectedSessionID == other.id)
+    }
+
+    @Test func aBackgroundInsertionIntoAnEmptyVisibleSetDoesNotRepairIt() throws {
+        let store = makeStore()
+        let home = store.addWorkspace(name: "home")
+        let empty = store.addWorkspace(name: "empty")
+        let active = try #require(store.addSession(toWorkspace: home.id, cwd: "/a"))
+        store.selectSession(active.id)
+        store.setFocusedWorkspace(empty.id)
+
+        // a DELIBERATE gap: `session.new --no-select` promises not to touch the selection, and that promise
+        // outranks the repair (a script filling a background workspace must not steal the active terminal).
+        _ = try #require(store.addSession(toWorkspace: empty.id, cwd: "/b", select: false))
+        #expect(store.navigableSessions.count == 1)
+        #expect(store.selectedSessionID == active.id)
+    }
+
+    @Test func clearingEveryFlagInFlaggedModeLeavesTheSelectionAlone() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let active = try #require(store.addSession(toWorkspace: work.id, cwd: "/a"))
+        store.setFlag(true, forSession: active.id)
+        store.selectSession(active.id)
+        store.setSidebarMode(.flagged)
+
+        store.clearFlags() // clearing EVERY flag empties the list, so there is nowhere to move
+        #expect(store.flaggedSessions.isEmpty)
+        #expect(store.selectedSessionID == active.id)
+    }
+
+    @Test func unflaggingInTreeModeDoesNotMoveTheSelection() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        _ = try #require(store.addSession(toWorkspace: work.id, cwd: "/a"))
+        let active = try #require(store.addSession(toWorkspace: work.id, cwd: "/b"))
+        store.setFlag(true, forSession: active.id)
+        store.selectSession(active.id)
+
+        store.setFlag(false, forSession: active.id) // the tree renders every session; nothing was hidden
+        #expect(store.selectedSessionID == active.id)
+    }
+
+    @Test func restoreMovesASelectionThatLandsOutsideTheRestoredSet() {
+        let store = makeStore()
+        let markedSession = SessionSnapshot(id: UUID(), customName: nil, cwd: "/marked")
+        let straySession = SessionSnapshot(id: UUID(), customName: nil, cwd: "/stray")
+        let marked = WorkspaceSnapshot(id: UUID(), name: "marked", sessions: [markedSession])
+        let unmarked = WorkspaceSnapshot(id: UUID(), name: "unmarked", sessions: [straySession])
+        store.restore(from: Snapshot(selectedSessionID: straySession.id, workspaces: [marked, unmarked],
+                                     focusedWorkspaceIDs: [marked.id], focusEnabled: true))
+        #expect(store.selectedSessionID == markedSession.id)
+        #expect(store.focusedWorkspaceIDs == [marked.id] && store.focusEnabled)
+    }
+
+    @Test func restoreReselectsByRecencyNotByTreeOrder() {
+        let store = makeStore()
+        let firstInTree = SessionSnapshot(id: UUID(), customName: nil, cwd: "/first")
+        let mostRecent = SessionSnapshot(id: UUID(), customName: nil, cwd: "/recent")
+        let straySession = SessionSnapshot(id: UUID(), customName: nil, cwd: "/stray")
+        let marked = WorkspaceSnapshot(id: UUID(), name: "marked", sessions: [firstInTree, mostRecent])
+        let unmarked = WorkspaceSnapshot(id: UUID(), name: "unmarked", sessions: [straySession])
+        // the repair runs AFTER the recency stack is re-seeded, or the pick is positional for want of a stack.
+        store.restore(from: Snapshot(selectedSessionID: straySession.id, workspaces: [marked, unmarked],
+                                     focusedWorkspaceIDs: [marked.id], focusEnabled: true,
+                                     sessionRecency: [mostRecent.id, firstInTree.id]))
+        #expect(store.selectedSessionID == mostRecent.id)
     }
 
     // MARK: - Workspace lifecycle
