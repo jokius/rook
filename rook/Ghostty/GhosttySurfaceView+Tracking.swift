@@ -39,4 +39,40 @@ extension GhosttySurfaceView {
         super.updateTrackingAreas()
         setupTrackingArea()
     }
+
+    /// Whether this pane owns the pixel under `point` (window coordinates) — no sibling chrome is drawn over
+    /// it there. `deckVisible` answers a DIFFERENT question ("am I the on-screen pane?"): tracking areas
+    /// ignore sibling overlap (see `updatePointerTracking`), so the on-screen pane keeps receiving `mouseMoved`
+    /// under the sidebar's grab handle, an `NSSplitView` divider, or a floating overlay's margin, and
+    /// re-asserts its shape into the process-global `NSCursor` on every move — beating chrome that sets the
+    /// cursor once on hover entry. Hit-testing resolves ownership the same way the drag that starts in that
+    /// band already does, so no per-divider width is guessed and later chrome is covered without touching
+    /// this file.
+    ///
+    /// Declines for CHROME ONLY: a hit landing on any surface — this one, a descendant, or a sibling pane
+    /// stacked at the same frame in the eager deck — keeps the pre-existing behavior, so a hit test that
+    /// cannot see through the deck can never silence the visible terminal.
+    func ownsPointer(at point: NSPoint) -> Bool {
+        if overOwnSplitDivider(at: point) { return false }
+        guard let hit = window?.contentView?.hitTest(point) else { return true }
+        if hit === self || hit.isDescendant(of: self) { return true }
+        return hit is GhosttySurfaceView
+    }
+
+    /// Whether the point lies in the grab band of the split THIS pane is arranged in — the band that split's
+    /// own drag resolves from, so no width is guessed. Asked BEFORE the window-down hit, which cannot see the
+    /// divider: every session's split is mounted at the full frame, so a window-down hit reaches whichever
+    /// split the deck stacked last, not this pane's — and a hidden entry's split then answers for the
+    /// divider column of the session that IS on screen.
+    private func overOwnSplitDivider(at pointInWindow: NSPoint) -> Bool {
+        guard let split = enclosingSplitView(), let parent = split.superview else { return false }
+        return split.hitTest(parent.convert(pointInWindow, from: nil)) === split
+    }
+
+    /// `ownsPointer(at:)` for the callers with no event in hand (`applyMouseShape`, activation), reading the
+    /// pointer live rather than from possibly-stale state.
+    func ownsPointer() -> Bool {
+        guard let window else { return true }
+        return ownsPointer(at: window.mouseLocationOutsideOfEventStream)
+    }
 }

@@ -40,6 +40,9 @@ struct WindowContentView: View {
     /// Mirror of `GhosttyApp.inactivePaneMuteStrength` (0...10): how strongly `paneDim` mutes the
     /// inactive split pane's text. Refreshed on `.rookAppearanceChanged`, like `toolbarMode`.
     @State private var inactivePaneMute: Int = WindowContentView.resolvedInactivePaneMute()
+    /// Live pointer/drag state for `sidebarDivider`'s grab handle, read by its deferred cursor re-assert.
+    @State private var dividerHovered = false
+    @State private var dividerDragging = false
     /// Mirror of `GhosttyApp.sidebarBackgroundShift` (0...10, 5 = neutral): how much lighter/darker the
     /// sidebar background is than the terminal. Drives `sidebarTintWash`; refreshed on
     /// `.rookAppearanceChanged`, like `inactivePaneMute`.
@@ -121,6 +124,12 @@ struct WindowContentView: View {
         .onChange(of: store.sidebarVisible) { _, visible in
             if visible {
                 DispatchQueue.main.async { NotificationCenter.default.post(name: .rookAppearanceChanged, object: nil) }
+            } else {
+                // hiding mid-drag (⌘⌃S, the palette, `sidebar hide`) removes the divider and cancels its
+                // gesture with no `onEnded`, so these would stay latched: ↔ would survive the next hover exit
+                // and the arrow would never be restored.
+                dividerHovered = false
+                dividerDragging = false
             }
         }
         // when the quick terminal hides, return focus to the active session's terminal — unless THIS
@@ -360,8 +369,19 @@ struct WindowContentView: View {
                 Color.clear
                     .frame(width: 12)
                     .contentShape(Rectangle())
-                    .onHover { inside in
-                        if inside { NSCursor.resizeLeftRight.set() } else { NSCursor.arrow.set() }
+                    // per MOVE, not just on entry: the handle overhangs the terminal, whose surface re-asserts
+                    // its own shape on every move, and one set on entry cannot hold against a per-move writer.
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active:
+                            dividerHovered = true
+                            setDividerCursor()
+                        case .ended:
+                            dividerHovered = false
+                            // a drag past the width clamp leaves the handle under the pointer; the drag's own
+                            // re-assert owns the cursor until release.
+                            if !dividerDragging { NSCursor.arrow.set() }
+                        }
                     }
                     .gesture(
                         // drive width from the absolute cursor X (window coords), NOT accumulated
@@ -369,12 +389,33 @@ struct WindowContentView: View {
                         // feeds back on itself and the line flickers. Absolute position is stable.
                         DragGesture(minimumDistance: 1, coordinateSpace: .global)
                             .onChanged { value in
+                                dividerDragging = true
                                 store.sidebarWidth = min(AppStore.sidebarWidthMax, max(AppStore.sidebarWidthMin, Double(value.location.x)))
+                                // past the clamp the divider stops following the pointer and ends up over live
+                                // terminal, with no hover event left to repaint ↔.
+                                setDividerCursor()
                             }
                             // persist the new width once, on release, not on every drag tick.
-                            .onEnded { _ in store.save() }
+                            .onEnded { _ in
+                                dividerDragging = false
+                                if !dividerHovered { NSCursor.arrow.set() }
+                                store.save()
+                            }
                     )
             }
+    }
+
+    /// Paint ↔ for the sidebar handle, then once more on the next runloop turn: a cursor replacement still
+    /// lands after this synchronous `.set()` returns — SwiftUI hosts the terminal surfaces and resets the
+    /// cursor as the mouse moves (see `GhosttySurfaceView.cursorUpdate`) — so a single set loses the race.
+    /// The deferred pass re-reads the hover/drag state rather than capturing it, so a re-assert arriving after
+    /// the pointer left cannot strand ↔ over live terminal text.
+    private func setDividerCursor() {
+        NSCursor.resizeLeftRight.set()
+        DispatchQueue.main.async {
+            guard dividerHovered || dividerDragging else { return }
+            NSCursor.resizeLeftRight.set()
+        }
     }
 
     @ViewBuilder private var detailColumn: some View {
@@ -471,7 +512,7 @@ struct WindowContentView: View {
                                              isActive: deckInteractive && isActive && !session.splitFocused && !overlaid,
                                              deckVisible: visible)
                                     .overlay { paneDim(session.splitFocused) }
-                                    .id(session.id)
+                                    .id(primarySurfaceID(session))
                             } else {
                                 Color.clear
                                     .id("\(session.id.uuidString)-primary-placeholder")
@@ -481,7 +522,12 @@ struct WindowContentView: View {
                         // clip its divider out of the titlebar strip (see SplitRatioAccessor); a background
                         // on the stable wrapper (not a third pane, not inside the swapped content), so ONE
                         // probe instance survives zoom and its suspend/resume actually flips in place.
-                        .background { SplitRatioAccessor(session: session, titlebarHeight: titlebarHeight, suspended: !deckInteractive, onPersist: { store.save() }) }
+                        .background {
+                            SplitRatioAccessor(session: session, titlebarHeight: titlebarHeight,
+                                               suspended: !deckInteractive,
+                                               deckVisible: visible && !overlaid,
+                                               onPersist: { store.save() })
+                        }
                         ZStack {
                             if deckHostsSurface(session: session, surface: .split) {
                                 TerminalView(session: session, surfaceKeyPath: \.splitSurface, makeSurface: makeSplitSurface,
@@ -512,7 +558,7 @@ struct WindowContentView: View {
                     if deckHostsSurface(session: session, surface: .primary) {
                         TerminalView(session: session, surfaceKeyPath: \.surface, makeSurface: makeSurface,
                                      isActive: deckInteractive && isActive && !overlaid, deckVisible: visible)
-                            .id(session.id)
+                            .id(primarySurfaceID(session))
                     } else {
                         Color.clear
                             .id("\(session.id.uuidString)-primary-placeholder")
@@ -649,6 +695,15 @@ struct WindowContentView: View {
             .padding(.top, 8)
             .padding(.trailing, 8)
         }
+    }
+
+    /// Identity for a host of the PRIMARY surface slot. Stable through lazy surface creation and ordinary
+    /// updates, but changes when one live surface replaces another (split-survivor promotion), so SwiftUI
+    /// remounts the host instead of keeping the torn-down pane: `TerminalView.updateNSView` cannot replace
+    /// the AppKit view `makeNSView` returned, and with the split HIDDEN the surrounding branch doesn't change
+    /// either, so session identity alone leaves the dead primary on screen and the live survivor unhosted.
+    func primarySurfaceID(_ session: Session) -> String {
+        "\(session.id.uuidString)-primary-\(session.primarySurfaceHostRevision)"
     }
 
     /// Mutes the inactive split pane's TEXT so the active pane stands out, WITHOUT darkening the

@@ -366,16 +366,25 @@ paths:
 - **strdup buffer lifetime.**
   `working_directory` (and `initial_input`) `const char*` buffers must outlive `ghostty_surface_new`;
   they are held in a `nonisolated(unsafe)` array and freed only in `destroySurface()`.
-- **Only the ON-SCREEN deck pane sets the process-global cursor — `deckVisible` gates every cursor write.**
+- **A cursor write needs BOTH gates: `deckVisible` ("am I the on-screen pane?") AND `ownsPointer` ("do I own
+  this pixel?"). Never replace one with the other.**
   The eager deck mounts every session's surface with a tracking area, and AppKit tracking ignores SwiftUI
   `.opacity(0)`/overlap exactly like the drag-destination resolution (the `deckVisible` drag note above),
   so several stacked hidden surfaces receive the SAME `mouseMoved` and each calls the process-global
   `NSCursor.set()` — a hidden session cached at a different shape (a mouse-reporting TUI, or an OSC 22
   pointer shape) then paints over the visible terminal (the restored-session arrow↔I-beam flicker, #225).
   `setupTrackingArea` therefore installs the tracking area only while `deckVisible`, and `mouseMoved`,
-  `applyMouseShape`, and `cursorUpdate` each guard `deckVisible`; the tracking + pointer methods live in
-  `GhosttySurfaceView+Tracking.swift`, and `reassertCursorOnActivation` re-asserts the visible pane's
-  cursor on `didBecomeKey`.
+  `applyMouseShape`, `cursorUpdate`, and `reassertCursorOnActivation` each guard it;
+  the tracking + pointer methods live in `GhosttySurfaceView+Tracking.swift`, and
+  `reassertCursorOnActivation` re-asserts the visible pane's cursor on `didBecomeKey`.
+  That gate is about the DECK, not about chrome: the sidebar's grab handle, an `NSSplitView` divider, and a
+  floating overlay's margin are all drawn OVER the on-screen pane, whose tracking area ignores the overlap
+  and keeps re-asserting its I-beam there on every move — beating chrome that paints its cursor on hover
+  entry alone.
+  All four writers therefore also gate on `ownsPointer`, a hit test against the window content view.
+  It declines for CHROME ONLY, treating a hit on any surface (self, a descendant, a sibling pane, a stacked
+  hidden session) as ownership, so a hit test that cannot see through the deck can never silence the visible
+  terminal.
   The shape itself is applied via a `cursorUpdate(with:)` callback + an immediate `NSCursor.set()` on
   change (gated on the pointer being INSIDE the surface), NOT cursor rectangles — the surface is
   SwiftUI-hosted (`TerminalView`), which owns the cursor and resets any `addCursorRect` on every mouse
@@ -383,7 +392,34 @@ paths:
   cursor-STYLE note below, which is the block/bar shape libghostty draws inside the grid).
   `WindowContentView` also feeds `!quickTerminal.isVisible` into the panes'/scratch'/overlay's `deckVisible`
   so a covered pane stops competing for the cursor while the quick terminal covers the deck.
-  Like the cursor-focus and disclosure-triangle cases, this is verified BY EYE, not a UI test.
+- **The split divider is settled BEFORE that hit test, by asking the pane's own `NSSplitView` whether the
+  point is in its grab band (`overOwnSplitDivider`).**
+  Every session's split is mounted at the FULL frame, so a window-down hit answers for whichever split the
+  deck stacked last, not this pane's — and a hidden entry's split reaches the divider column of the session
+  that is on screen.
+  Asking the split itself is also what its own drag resolves from, so no per-divider width is guessed.
+  **Never gate `GhosttySurfaceView.hitTest` on `deckVisible` to fix that** (tried and reverted upstream):
+  refusing while off-screen only promotes the hidden entry's own container — an `NSSplitView` or a pane
+  wrapper — to answer in its place, an `NSSplitView` whose subviews decline returns ITSELF for its whole
+  frame, `ownsPointer` then sees a non-surface and declines everywhere, and the visible terminal loses every
+  shape it paints.
+  (`alphaValue = 0` does not suppress hit testing either, and the deck never sets `isHidden`.)
+- **Both dividers paint ↔ themselves, per move AND once more on the next runloop turn.**
+  The sidebar handle does it from `onContinuousHover` (`WindowContentView.setDividerCursor`), the split from
+  `SplitRatioAccessor.SplitProbeView`'s tracking area over the whole split — which repaints only inside the
+  band and gates on the deck's `visible && !overlaid`, since a background session's split is laid out at the
+  full frame with its area armed.
+  AppKit's own divider cursor stops firing once a second session is mounted, so nothing else writes it.
+  The deferred re-assert is load-bearing (a replacement lands AFTER the synchronous `.set()` returns) and
+  must RE-READ live hover/pointer state rather than capture it, or a re-assert arriving after the pointer
+  left strands ↔ over live terminal text.
+  For the same reason `WindowContentView` clears `dividerHovered`/`dividerDragging` when the sidebar hides:
+  that removes the divider and cancels its gesture with no `onEnded`.
+- What libghostty ASKS for is verified BY EYE (reproduce with stacked sessions and
+  `printf '\033]22;crosshair\007'`), like the cursor-focus and disclosure-triangle cases.
+  The divider writer is not: `rookTests/SplitRatioAccessorTests` drives `mouseMoved` against a real
+  `NSSplitView` and asserts `NSCursor.current`, and `rookTests/GhosttySurfaceViewTrackingTests` pins
+  `ownsPointer`'s chrome/self/descendant/sibling/no-hit/detached/divider cases — keep them that way.
 - **Cursor shape is a config default, not set in code.**
   `rook/Resources/ghostty-defaults.conf` (loaded first in `GhosttyApp.loadConfig`,
   so a user's `~/.config/ghostty/config` still overrides it) pins a steady block cursor with `cursor-style = block`
