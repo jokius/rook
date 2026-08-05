@@ -101,9 +101,24 @@ public final class Session: Identifiable {
     /// is on disk NOW, not the render from before the agent rewrote it). Observed; in-memory only.
     public var markdownRefreshToken: Int = 0
 
+    /// Changes ONLY when one LIVE primary-slot surface is replaced by another. The SwiftUI terminal hosts
+    /// fold this into their identity, so a split-survivor promotion (`closePrimaryPane`) remounts the host
+    /// and SwiftUI drops the torn-down view — `updateNSView` cannot swap the AppKit view `makeNSView`
+    /// returned, so session identity alone keeps hosting the dead pane and the user sees a blank terminal.
+    ///
+    /// The live→live guard is load-bearing, do NOT simplify it to an unconditional `didSet`: lazy creation
+    /// (nil → first surface) and a re-assignment of the SAME instance must leave it at zero, or every host
+    /// remounts right after `makeNSView` and re-parents the surface, which invalidates its Metal drawable.
+    @ObservationIgnored public private(set) var primarySurfaceHostRevision = 0
+
     /// The app-side surface (a `GhosttySurfaceView`). Lazily created on first
     /// display and owned here so it survives sidebar/detail view churn.
-    @ObservationIgnored public var surface: (any TerminalSurface)?
+    @ObservationIgnored public var surface: (any TerminalSurface)? {
+        didSet {
+            guard let oldValue, let surface, oldValue !== surface else { return }
+            primarySurfaceHostRevision &+= 1
+        }
+    }
 
     /// Whether the session is shown as a one-level vertical split (two panes side by
     /// side). Observed, so the detail pane shows/hides the second pane when toggled.
