@@ -155,6 +155,23 @@ paths:
   Persisted by a debounced `save()` ~0.4 s after the drag settles (coalescing one drag's resize ticks
   via a cancel-and-reschedule `DispatchWorkItem`), plus the usual save points and the quit-flush,
   so a force-quit keeps it too, symmetric with the sidebar WIDTH (which saves on the drag's `.onEnded`).
+  **Double-clicking the divider restores `AppStore.splitRatioDefault`** through the SAME `applyRatio()` path
+  `session.resize` posts `.rookApplySplitRatio` for, so the model, the live divider and `tree`'s `splitRatio`
+  read-back can't drift; it persists IMMEDIATELY (one discrete action) instead of through the drag debounce.
+  AppKit offers no hook: `NSSplitView`'s own double-click COLLAPSES a pane through the delegate SwiftUI owns.
+  The gesture therefore comes from ONE shared `SplitProbeView` local mouse monitor (like `PaneShortcuts`,
+  never one per probe), installed with the first split and removed once the last probe leaves its window —
+  a probe freed WITHOUT `viewWillMove(toWindow:)` leaves it installed, which costs nothing since the weak
+  `claimants` table is then empty and every event passes through.
+  It sees the second click only AFTER the first one's divider-drag tracking loop ends, so dragging is
+  untouched; consume that press AND its release, or the unpaired release reaches whatever sat under the
+  swallowed press.
+  The target is `dividerOwns` — the band the resize cursor already uses — so the gesture claims no pixel that
+  could have selected a word.
+  `clickCount == 2` ALSO matches a re-grab that lands close enough in time and space to the last press, so
+  the press counts only when the divider has NOT moved since the previous one; otherwise fine-tuning with a
+  nudge-drag and grabbing again would throw the adjustment away and eat the second drag.
+  Covered by `rookTests/SplitRatioAccessorTests` (a real `NSSplitView` + synthesized `NSEvent`s).
   **`SplitRatioAccessor` ALSO clips the split's divider out of the titlebar strip (`updateDividerClip`).**
   In COMPACT mode (`titlebarHeight` = 30) the SwiftUI `.padding(.top, titlebarHeight)` lands inside the
   window's safe-area band, so the AppKit `NSSplitView` IGNORES it and grows to the FULL window height
