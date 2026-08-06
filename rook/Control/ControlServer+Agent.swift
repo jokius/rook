@@ -72,8 +72,18 @@ extension ControlServer {
         guard let view = surface as? GhosttySurfaceView, let foreground = view.foregroundPid() else {
             return false
         }
-        // the same argv classification `AgentMonitor` runs for the sidebar logo, so both sides agree on
-        // what counts as an agent (and an idle shell reads as no command at all, hence no agent).
+        // `command`, NOT the descending `running` — and this is a DELIBERATE divergence from `AgentMonitor`,
+        // which reads the same pane with `running` for the sidebar logo. The two answer different questions:
+        // the logo only has to NAME the program, while this gate compares the classified process against a
+        // pid. `foregroundPid()` is a process GROUP id, so for the very panes the descent would newly
+        // classify — a `--command` pane, whose program sits in setuid-root `login`'s group — it is LOGIN's
+        // pid, while the hook's `claimed` (`AgentProcess.nearestAgentPid`) is the agent's own. They can never
+        // be equal, so descending here would satisfy condition 2 and then fail condition 3 for the pane's
+        // OWN rightful agent: every status it reports would be silently dropped as foreign. That flips the
+        // documented fail-OPEN default (an unprovable head PASSES) into a fail-CLOSED drop on the one pane
+        // shape that cannot defend itself. Making the comparison descend too is a design change with its own
+        // trade-offs, not a defect fix — see the `session.status --agentPid` note in
+        // `.claude/rules/control-api.md`.
         let shellBasename = ProcessInfo.processInfo.environment["SHELL"].map(CommandRestore.basename)
         let argv = ForegroundProcess.command(for: view, shellBasename: shellBasename)
         guard AgentKind.classify(argv: argv) != nil else { return false }

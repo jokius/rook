@@ -35,6 +35,21 @@ struct ForegroundGroupTests {
             pgid: 100, members: [member(102, 9), member(101, 9)]) == [101, 102])
     }
 
+    /// The sidebar agent logo reads a pane through the SAME descent (`AgentMonitor` → `ForegroundProcess
+    /// .running` → `AgentKind.classify`), and a `--command` pane is exactly where the two meet: measured
+    /// live, `login -flp <user> /bin/bash --noprofile --norc -c 'exec -l <cmd>'` leaves the program in
+    /// login's group with argv[0] dash-marked (`-sleep 900`), so an agent there arrives as `-claude`.
+    /// `classify` matches the argv[0] BASENAME exactly, so the dash is not cosmetic — drop the strip and the
+    /// logo silently goes back to the terminal glyph for every `--command` agent pane.
+    @Test func aDescendedCommandPaneClassifiesOnceTheLoginDashIsStripped() {
+        let raw = ["-claude", "--resume", "6c7aeb7e"]
+        #expect(AgentKind.classify(argv: raw) == nil)
+        #expect(AgentKind.classify(argv: ForegroundGroup.stripLoginDash(raw)) == .claude)
+        #expect(AgentKind.classify(argv: ForegroundGroup.stripLoginDash(["-codex"])) == .codex)
+        // and the descent still reports a plain login shell as the idle shell it is, never an agent.
+        #expect(AgentKind.classify(argv: ForegroundGroup.stripLoginDash(["-/bin/zsh"])) == nil)
+    }
+
     @Test func stripLoginDashDropsOnlyTheMark() {
         #expect(ForegroundGroup.stripLoginDash(["-sleep", "900"]) == ["sleep", "900"])
         #expect(ForegroundGroup.stripLoginDash(["-/bin/zsh"]) == ["/bin/zsh"])

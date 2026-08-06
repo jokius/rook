@@ -150,6 +150,8 @@
             <a href="#workspace" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">workspace</a>
             <a href="#session" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">session</a>
             <a href="#overlay" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">session overlay</a>
+            <a href="#surface" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">surface</a>
+            <a href="#dashboard" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">dashboard</a>
             <a href="#window" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">window</a>
             <a href="#pick" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">pick</a>
             <a href="#quick" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">quick</a>
@@ -491,6 +493,102 @@
             </div>
           </section>
 
+          <!-- EVENTS -->
+          <section id="events" style="scroll-margin-top: 88px; padding-top: 56px">
+            <h2
+              style="
+                font-family: &quot;JetBrains Mono&quot;, monospace;
+                font-weight: 700;
+                font-size: 28px;
+                letter-spacing: -0.02em;
+                margin: 0 0 16px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+              "
+            >
+              events
+            </h2>
+            <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0 0 16px">
+              The other read side of the API, and the one that sees what polling
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span> cannot: a transition that flipped and
+              flipped <em>back</em> between two polls, and a notification's actual text (the session node carries only an unseen
+              count). Events land in one app-wide ring — 4096 entries, one buffer per app <em>run</em>, stamped with a run id and a
+              monotonic <span style="font-family: &quot;JetBrains Mono&quot;, monospace">seq</span>. It is control-native: there is no
+              GUI surface, and no <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--target</span> or
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--window</span> — each event carries its own
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">window</span> field instead.
+            </p>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl events [--kind K] [--run ID --after N] [--limit N] [--json]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">events.read</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Read one page of the ring. The command is a single round trip like every other; the
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">rookctl events</span> subcommand is a
+                <em>client-side</em> poll loop over it, not a pushed stream — it sends the bootstrap read, prints one line per
+                event, feeds each reply's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">next</span> back as the
+                following <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--after</span>, and sleeps 0.25 s only
+                after an <em>empty</em> page, so a burst drains at full speed. It stops on any failure rather than printing as if
+                nothing happened. <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--json</span> prints one bare JSON
+                object per event (NDJSON — pipe it into <span style="font-family: &quot;JetBrains Mono&quot;, monospace">jq</span>);
+                without it each line is a human
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">HH:mm:ss kind name …</span> column.
+                <strong style="color: #bfbab0">Returns</strong>
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.events</span> =
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">{run, next, items[]}</span>, each item
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{seq, ts, kind, window?, workspace?, session?, payload{}}</span>
+                with nil fields omitted.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                Five kinds, selectable with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--kind</span> (repeatable
+                and/or comma-separated): <span style="font-family: &quot;JetBrains Mono&quot;, monospace">status</span> — a status
+                <em>transition</em>, emitted only when the normalized indicator actually changed, so a re-asserted identical status
+                is silent; <span style="font-family: &quot;JetBrains Mono&quot;, monospace">notify</span> — a notification's effective
+                title and body (an empty title falls back to the session name);
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session.created</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session.closed</span>, each carrying the session's
+                display name; and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree.changed</span> — a per-window
+                structural signal, debounced 100 ms, so a batch mutation (a multi-session move, a workspace reopen, a window
+                remove) collapses into one rather than N. <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--limit</span>
+                is 1…1000, default 100.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                <strong style="color: #bfbab0">The cursor is a pair.</strong>
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--run</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--after</span> go together or not at all. Omitting
+                both is the subscribe-from-now bootstrap: it anchors at the tail and returns <em>no</em> history, because replaying
+                up to 4096 stale events at a fresh consumer is worse than useless.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">--run ID --after 0</span> is the
+                opposite intent — replay everything still retained. Feed each reply's
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">next</span> back as the next
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--after</span>: it is the sequence the ring scanned
+                <em>through</em>, including entries the kind filter skipped — except on a
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--limit</span>-truncated page, where it is the last
+                <em>returned</em> match's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">seq</span>, so the matches
+                beyond it are not silently consumed.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                Errors: half a cursor is rejected before the ring is touched —
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">events.read requires --run and --after together</span> —
+                as are <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">invalid event run id</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">invalid event cursor</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">event limit must be between 1 and 1000</span>, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">invalid event kind: &lt;kind&gt;</span>. Three more are
+                ring-level and loud by design: <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">event run changed</span>
+                (a cursor from a previous app run),
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">event cursor is ahead of the current sequence</span>, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">event cursor expired</span> (its
+                events were already evicted). All three still carry the <em>current</em> anchor in
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.events</span>
+                (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">{run, next, items: []}</span>), so a
+                caller that decides to rebaseline can do it from the same reply. The server never rebaselines silently: a consumer
+                that missed events has to <em>learn</em> it missed them, not mistake a fresh anchor for "nothing happened".
+              </p>
+            </div>
+          </section>
+
           <!-- WORKSPACE -->
           <section id="workspace" style="scroll-margin-top: 88px; padding-top: 56px">
             <h2
@@ -710,6 +808,34 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">no such image file</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">unsupported icon image</span>. The GUI equivalent is the
                 row's context menu → Icon… (image files only; there is no SF Symbol picker).
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl workspace root &lt;dir|clear&gt; [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">workspace.root</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Set the workspace's <strong style="color: #bfbab0">start directory</strong>: every new session created in it opens
+                there. The argument is a directory path — a relative or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">~</span> path is absolutized by the CLI, since the app
+                resolves paths in its own working directory — or the literal
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">clear</span>
+                (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">--clear</span> does the same) to unset it.
+                <strong style="color: #bfbab0">Returns</strong>
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.id</span>.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                A root is a <em>hard</em> override of the global new-session directory setting (home / current session / custom);
+                with none set, new sessions fall through to that setting unchanged. Both entry points honor it — the sidebar row's
+                New Session and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session new</span>, whose
+                explicit <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--cwd</span> still wins. Unlike the status
+                tint it is persisted, surviving a relaunch and a close/reopen from Open Recent, and the path is stored verbatim, so
+                it can be set before the directory exists; a root that does not resolve at spawn time falls back to the global
+                logic. Read back per workspace node as
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">root</span> (omitted when none is set). The GUI half is
+                the row's context menu → Set Root Directory… / Clear Root Directory.
               </p>
             </div>
 
@@ -1524,6 +1650,161 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">no hud</span> rather than killing it.
                 ⌘W and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session overlay close</span> also
                 take a hud down, as a courtesy of the shared slot.
+              </p>
+            </div>
+          </section>
+
+          <!-- SURFACE -->
+          <section id="surface" style="scroll-margin-top: 88px; padding-top: 56px">
+            <h2
+              style="
+                font-family: &quot;JetBrains Mono&quot;, monospace;
+                font-weight: 700;
+                font-size: 28px;
+                letter-spacing: -0.02em;
+                margin: 0 0 16px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+              "
+            >
+              surface
+            </h2>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl surface zoom [show|hide|toggle] [--target SURFACE|active|quick] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">surface.zoom</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Fill the target window with <em>one</em> terminal surface, hiding the sidebar and collapsing the title bar to a slim
+                strip (traffic lights plus an exit button) — the control half of ⌘⇧Return and View ▸ Toggle Terminal Zoom.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">toggle</span> is the default. Omitted or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span> resolves the window's active surface (the
+                quick terminal first, else the active session's overlay &gt; scratch &gt; focused split &gt; primary); an explicit
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">surface:&lt;session-id&gt;:&lt;left|right|scratch|overlay&gt;</span>
+                id — from the session node's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">surfaces</span> list in
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span> — zooms that surface, hidden-but-alive
+                splits and scratches included; and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">quick</span>
+                addresses a quick-terminal zoom (the id this command itself returns for one).
+                <strong style="color: #bfbab0">Returns</strong>
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.id</span>, the zoomed surface's control id.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                This is not <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">window zoom</span>: it
+                does not touch the macOS window frame. It is a <em>view</em> mode with hard invariants — it must not mutate split
+                ratios, focus, sidebar state, or split/scratch visibility, and the hidden deck keeps running, so a split, scratch,
+                or overlay opened over the socket still spawns its shell behind the zoom layer. Entering zoom does close the
+                window's transient chrome: an open command palette, an active ⌘F search, and, for a session zoom, a visible quick
+                terminal. A notification-banner reveal exits zoom first, and ⌘W exits it as the topmost cover.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">show</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">hide</span> are idempotent — an explicit-target
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">hide</span> succeeds even if that surface has since
+                vanished, so a script can always get back out.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                While zoomed, <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">quick show</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session search</span> (every mode but
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">close</span>) are refused with
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">terminal zoom active</span>;
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">quick hide</span> stays idempotent,
+                un-zooming a zoomed quick terminal first. Errors:
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">invalid surface: &lt;id&gt;</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">surface not available: &lt;id&gt;</span> (also the answer
+                for <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">surface:&lt;id&gt;:overlay</span> while a
+                hud holds the slot — a hud is not a zoom target),
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">no active surface</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">no open window</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">pick pending</span>. Read the current
+                zoom back from the tree's top-level
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">zoomedSurface</span> (omitted when nothing is zoomed).
+                The per-session <span style="font-family: &quot;JetBrains Mono&quot;, monospace">surfaces</span> nodes are the
+                <em>addressing</em> list, not the state read-back: their
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">visible</span>
+                derive from session flags and read the same zoomed or not.
+              </p>
+            </div>
+          </section>
+
+          <!-- DASHBOARD -->
+          <section id="dashboard" style="scroll-margin-top: 88px; padding-top: 56px">
+            <h2
+              style="
+                font-family: &quot;JetBrains Mono&quot;, monospace;
+                font-weight: 700;
+                font-size: 28px;
+                letter-spacing: -0.02em;
+                margin: 0 0 16px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+              "
+            >
+              dashboard
+            </h2>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl dashboard &lt;ids…&gt; | --mru | --close [--font-size N | --auto-size] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">dashboard</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Open a per-window, view-only <strong style="color: #bfbab0">grid</strong> of live session panes over the window, or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--close</span> the open one. The cell unit is a
+                session <em>plus pane</em>: a non-split session is one cell, a split session expands to two — its
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">&lt;id&gt;:left</span> primary and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">&lt;id&gt;:right</span> split pane — and an id may carry
+                that same suffix to place just one of them. The ids are ordinary session addresses (id, unique prefix, or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span>), deduped by session AND pane — so
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">A A:left</span> collapses to one cell while
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">A:left A:right</span> stays two; the
+                <strong style="color: #bfbab0">9-cell cap counts panes</strong>, laid out
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ceil(sqrt(n))</span>.
+                <strong style="color: #bfbab0">Returns</strong>
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.text</span>, which names anything that did not
+                make it — unresolved ids and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">dropped N pane(s) beyond the 9-cell limit</span>. A drop
+                is never silent.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--mru</span> fills the grid from the window's recency
+                (most recent first, up to 9) instead of naming ids, so it takes none;
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--font-size N</span> sets an absolute cell font in
+                points and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--auto-size</span> scales the cells relative
+                to the Settings default font, shrinking as the grid grows — the two are mutually exclusive, and omitting both leaves
+                each pane's own size untouched. Read back from four top-level
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span> fields, all omitted when no dashboard is
+                open: <span style="font-family: &quot;JetBrains Mono&quot;, monospace">dashboardMembers</span> (the pane refs in grid
+                order), <span style="font-family: &quot;JetBrains Mono&quot;, monospace">dashboardHighlighted</span> (the cell Enter
+                would jump into), <span style="font-family: &quot;JetBrains Mono&quot;, monospace">dashboardFontSize</span>, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">dashboardFontMode</span>
+                (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">auto</span> |
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">fixed</span> |
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">untouched</span>).
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                View-only means no cell takes keyboard or mouse input: once the grid is up the arrows move a highlight, Enter (or a
+                double-click) jumps into that session <em>and</em> focuses that exact pane, and Esc closes it. The window chrome is
+                stripped to a bare title bar with only an exit button, and the Markdown-preview and file-tree panels stay mounted
+                but inert behind it. Terminal zoom and the dashboard are mutually exclusive — opening one closes the other. Closing
+                a member session (or its split pane) prunes that cell, and the dashboard closes itself when the last one is gone.
+                The GUI half is ⌘⇧D, Navigate ▸ Dashboard, and the command palette's Dashboard entry, all of which toggle the
+                most-recently-used grid auto-sized — exactly
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">dashboard --mru --auto-size</span>.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                Errors (rejected at the CLI and re-checked server-side):
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">dashboard --close takes no ids, --mru, or font options</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">dashboard: --font-size is mutually exclusive with --auto-size</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">dashboard --font-size must be a positive number</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">dashboard --mru cannot be combined with explicit session ids</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">dashboard requires at least one session id</span>, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">dashboard: invalid session id '&lt;id&gt;' — use &lt;id&gt;, &lt;id&gt;:left, or &lt;id&gt;:right</span>
+                for a malformed pane suffix (a well-formed ref that resolves to nothing joins the
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">unresolved</span> note instead). Also
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">no recent sessions</span> for
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--mru</span> in a window with none,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">no dashboard sessions resolved</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">pick pending</span>, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">window not open — window.select it first</span>.
               </p>
             </div>
           </section>

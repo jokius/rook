@@ -848,8 +848,10 @@ paths:
   true from its in-process cache.
   Such a test exercises the sandbox, not `validateMenuItem`, so it was removed rather than left red (verified
   instead with a cross-process probe outside the runner).
-  Do not re-add it without an app-target `bundle.unit-test` (the project has only `bundle.ui-testing` today),
-  which could exercise `hasPasteboardText` against a NAMED pasteboard in-process.
+  Do not re-add it as an XCUITest.
+  The app-target `bundle.unit-test` this note used to say we lacked now EXISTS (`rookTests`), and it is the
+  right home: it runs in-process, so it can exercise `hasPasteboardText` against a NAMED pasteboard without
+  the runner's sandbox in the way — which is exactly what defeated the XCUITest version.
   A `NSPasteboard.general` read in the app also LAGS a writer process's `changeCount`, so any UI test that seeds
   the clipboard must POLL rather than read once.
   ⌘C/⌘V/⌘A therefore route through the Edit menu (fixed standard shortcuts, NOT rebindable — the maintainer's
@@ -1170,14 +1172,27 @@ paths:
     `overlay.result` refuses with `OverlayHudError.noResult` (the raw slot would answer the misleading
     "overlay still running" for a painter that will never report a status), and `overlay.resize` takes a
     percent but refuses `--full` (`OverlayHudError.fullResize`).
-    **KNOWN GAP: those two `overlay.resize` arms have no automated coverage at any level** — the `--full`
-    refusal and the rollback that restores the previous size when the body write fails
-    (`OverlayHudError.writeFailed`).
-    Upstream covers them in an app-target `ControlServer` test harness we do not have (ours is
-    `rookTests`, which hosts no `ControlServer` fixture), so building one is its own piece of work rather
-    than part of this feature.
-    Both are one CLI call away from a user, so if that harness ever lands, these are the first two cases
-    to write.
+    Both of those `overlay.resize` arms — the `--full` refusal and the rollback that restores the previous
+    width when the body write fails (`OverlayHudError.writeFailed`) — are covered by
+    `rookTests/ControlServerHudResizeTests`, which stands up the app-target `ControlServer` fixture the
+    former KNOWN GAP note said we lacked.
+    Neither can be hoisted: the dispatcher hands `sizePercent` straight to the `ControlActions` witness, and
+    the arm's two decisions read a LIVE session through `writeHudBody`/`paneMetrics`.
+    Everything host-free underneath them was already covered (`AppStoreHudTests` resizes a HUD through the
+    store's clamp), so the app-target file is the whole of the addition.
+    **The fixture is the reusable part — a `ControlServer` transitively pulls in the whole app graph, and
+    three constraints make it safe to build one inside a test:**
+    (1) root the `WindowLibrary` in a throwaway directory, or it reads and rewrites the user's real
+    `windows.json`;
+    (2) never call `start()`, or the server unlinks-then-binds the default socket path and steals the
+    deployed app's control socket;
+    (3) hand `SettingsModel` the DEFAULT `SettingsStore`, not a throwaway one — its init writes
+    `ghostty-settings.conf` into the STATE dir, a path it resolves from the environment rather than from its
+    store's directory, so a throwaway store loads DEFAULTS and clobbers the user's real generated config,
+    while the real store re-emits byte-identical text and writes nothing.
+    That model is also why a `ControlServer` test is a last resort rather than the default home for a
+    control arm: the dispatcher-first rule still applies, and anything that can answer without a live
+    session belongs in `ControlDispatcher` with a host-free test.
   - **`HudSpinner` owns the spinner — one case per style, each carrying its own FRAMES and tick interval.**
     Both ride the body header, so the helper holds no glyph table, a new style is one edit, and `hud.update`
     switches style with no re-spawn.
@@ -1242,7 +1257,7 @@ paths:
     (`Open` is the default subcommand),
     (4) `HudTests` + `HudHelperTests` (the shipped `hud.sh` run for real) + `ControlDispatcherHudTests` +
     `AppStoreHudTests` + `ControlProtocolHudTests` + `HudCommandsTests` + the app-target `HudDeckGatesTests`
-    + the e2e `ControlHudUITests`.
+    and `ControlServerHudResizeTests` + the e2e `ControlHudUITests`.
 
   `surface.zoom` (mode `show`|`hide`|`toggle`) fills the target window with ONE terminal surface,
   hiding the sidebar and collapsing the title bar to a slim strip (traffic lights + an exit button;
@@ -2164,11 +2179,40 @@ paths:
   `hadForeground`, which preempts `initialCommand` in `CommandRestore.restorePlan`, so a descending
   capture would restore a `--command` session by TYPING its command into a login shell instead of taking
   the exec path — losing the `--wait` hold and close-on-exit.
-  Known limit, deliberately left alone: our OWN two extra callers — `AgentMonitor` (the sidebar agent
-  logo) and `ControlServer+Agent.isForeignAgent` — still call `command`, so a `--command` pane reads as
-  idle for those two.
-  Upstream has no such call sites, so switching them is NEW behavior rather than a port; decide it on its
-  own merits.
+  **Our OWN two extra callers were decided SEPARATELY, and they went opposite ways — on purpose.**
+  They were left on `command` when `running` landed (upstream has no such call sites, so switching them was
+  never part of that port); each was then judged on its own merits, and only one of them was a defect.
+  - **`AgentMonitor` (the sidebar agent logo) now calls `running` — this WAS a defect.**
+    A `--command claude` pane read as idle and wore the plain terminal glyph, the one pane shape where the
+    logo is most wanted (a scripted agent pane nobody typed into).
+    Measured: `login -flp <user> /bin/bash --noprofile --norc -c 'exec -l <cmd>'` leaves the program in
+    login's group as login's direct child with argv[0] DASH-MARKED, and `KERN_PROCARGS2` on the setuid-root
+    leader answers `EINVAL` for a non-root caller.
+    So the dash strip is load-bearing here and not merely cosmetic: `AgentKind.classify` matches the argv[0]
+    basename EXACTLY, so an unstripped `-claude` classifies as nothing — pinned by
+    `ForegroundGroupTests.aDescendedCommandPaneClassifiesOnceTheLoginDashIsStripped`.
+    The extra `sysctl` costs nothing in the steady state: the sweep's per-session pid cache keys on the
+    group id, which does not change while the program runs.
+  - **`isForeignAgent` deliberately STAYS on `command` — descending would flip a documented default.**
+    It is fail-OPEN by design (see the `session.status --agentPid` section): an unprovable head PASSES, and
+    a `--command` pane is unprovable precisely because the leader's argv is unreadable, so today its status
+    reports are ACCEPTED.
+    Descending would satisfy condition 2 (an agent at the head) and then FAIL condition 3, because the pid
+    it compares is `foregroundPid()` — a process GROUP id, i.e. LOGIN's pid — while the hook's `claimed`
+    (`AgentProcess.nearestAgentPid`) is the agent's OWN pid.
+    Those can never be equal, so every status from the pane's own rightful agent would be silently dropped
+    as foreign: a fail-CLOSED regression wearing the shape of a fix, and `ok: true` all the way, so nothing
+    would ever surface it.
+    Making the comparison descend TOO is a real design option, but it is new behavior with its own
+    trade-offs (which member of the group counts as "the pane's agent"), not a debt payoff — a maintainer
+    call, not a silent one.
+  - **A SECOND, independent layer already keeps that gate open on those panes, and it must be weighed with
+    the first.**
+    `AgentProcess.nearestAgentPid` classifies each ancestor's raw argv with NO dash strip, so the hook's own
+    `-claude` ancestor does not classify and NO `agentPid` is reported at all — `isForeignAgent` then returns
+    at its first guard, never reaching the foreground read.
+    Teaching that walk to strip the dash would arm the gate on exactly the panes the paragraph above says it
+    must not judge, so the two changes are one decision, not two.
   It ALSO surfaces `agent` on each node — the coding agent (`claude`/`codex`) detected in the session's
   FOCUSED pane, omitted when it runs anything else.
   This one is a READ-ONLY DERIVED field with NO write command, and that is a deliberate keep-in-sync

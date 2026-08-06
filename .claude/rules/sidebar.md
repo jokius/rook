@@ -303,6 +303,12 @@ paths:
   `ghostty_surface_foreground_pid` read per open session per tick, and the `sysctl(KERN_PROCARGS2)` runs only
   when a pane's foreground pid actually CHANGED (a shell forks a fresh pid per command, so an unchanged pid
   cannot have changed its argv).
+  **The pane is read with `ForegroundProcess.running`, NOT the restore capture `command`** — a pane started
+  with `--command` has no job-control shell, so its program sits in setuid-root `login`'s group and only the
+  descending read can name it; with `command` such a pane wore the plain terminal glyph however plainly it
+  was running an agent.
+  See the `tree` `foreground` section of [[control-api]] for the measurement and for why
+  `isForeignAgent` deliberately did NOT follow.
   The `if session.agentKind != kind` write guard is MANDATORY, not a nicety: `@Observable` notifies on EVERY
   set, equal or not, so an unguarded write would re-run `updateNSView` + the full reconcile diff every 2 s
   forever.

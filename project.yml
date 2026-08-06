@@ -280,6 +280,16 @@ schemes:
       config: Debug
     test:
       config: Debug
+      # ISOLATE THE TEST HOST. Without these, `xcodebuild test` launches rook with no state override: it
+      # reads and rewrites the user's REAL workspaces.json, and its ControlServer.start() unlinks-then-binds
+      # the DEFAULT socket path — stealing the control socket from the deployed daily driver mid-session.
+      # The XCUITests set these themselves at launch, but a HOSTED unit-test bundle (rookTests) gets the
+      # app the SCHEME launches, so the scheme is the only place that can protect it.
+      # The socket path must stay SHORT: sun_path caps at ~104 bytes and a DerivedData-length path silently
+      # fails to bind.
+      environmentVariables:
+        ROOK_STATE_DIR: /tmp/rook-test-state
+        ROOK_CONTROL_SOCKET: /tmp/rook-test.sock
       targets:
         - rookTests
         - rookUITests

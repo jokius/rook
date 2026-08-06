@@ -226,3 +226,15 @@ paths:
   makes a pick e2e readable, since the ids are the test's own strings rather than UUIDs it has to capture.
   A test that queries `command-palette` while a pick is up finds nothing and fails looking like a timing
   problem; it is the wrong identifier, not a slow mount.
+- **`Failed to initialize for UI testing: "System authentication is running."` is ENVIRONMENTAL, not a broken
+  suite.**
+  The XCUITest runner cannot start at all while macOS has a system authentication prompt open — a Touch ID
+  sheet, a keychain or admin password dialog, an App Store / System Settings confirmation — and the failure
+  arrives as `com.apple.LocalAuthentication Code=-4` with `Authentication canceled`, before a single test
+  runs.
+  `xcodebuild` then reports the whole action as `** TEST FAILED **` with ZERO test cases executed, which
+  reads exactly like a suite that blew up on launch.
+  Tell them apart by the count: a real failure names a test case, this one names none.
+  The fix is to dismiss the prompt on screen and re-run; nothing in the test bundle needs touching.
+  Same family as the HazeOver occlusion and the non-latin layout above: check the machine before suspecting
+  the code.

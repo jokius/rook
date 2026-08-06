@@ -3,9 +3,19 @@ import Foundation
 import rookCore
 
 /// AgentMonitor keeps each session's `agentKind` in step with what its focused pane is actually running, so
-/// the sidebar row can show the agent's logo (Claude / OpenAI) instead of the terminal glyph. It reuses the
-/// restore-running-command capture — `GhosttySurfaceView.foregroundPid()` (libghostty) → `ForegroundProcess`
-/// (`sysctl`) → the host-free `AgentKind.classify` — and owns nothing but the sweep.
+/// the sidebar row can show the agent's logo (Claude / OpenAI) instead of the terminal glyph. It reads the
+/// pane the same way the `tree` read-side does — `GhosttySurfaceView.foregroundPid()` (libghostty) →
+/// `ForegroundProcess.running` (`sysctl`) → the host-free `AgentKind.classify` — and owns nothing but the
+/// sweep.
+///
+/// **`running`, NOT the restore capture `command`.** libghostty's foreground pid is a process GROUP id, and
+/// a pane started with `--command` has no job-control shell to put its program in a group of its own: the
+/// program stays in the group led by setuid-root `login`, whose argv `KERN_PROCARGS2` refuses for a non-root
+/// caller (measured: `EINVAL`). Only `running` descends to the readable member and strips the `exec -l` dash
+/// off argv[0] (measured: such a program's argv[0] really is `-claude`, and `AgentKind.classify` matches the
+/// basename EXACTLY, so an unstripped dash classifies as nothing) — so with `command` a `--command claude`
+/// pane read as idle and wore the plain terminal glyph. The restore capture must keep NOT descending, for
+/// the `hadForeground`-preempts-`initialCommand` reason spelled out on `ForegroundProcess.command`.
 ///
 /// **This is the app's only repeating timer, and it is a deliberate exception** to the demand-driven rule
 /// (rendering coalesces libghostty wakeups; there is no poll loop anywhere else). libghostty exposes no
@@ -76,7 +86,7 @@ final class AgentMonitor {
             if let cached = cache[session.id], cached.pid == pid {
                 kind = cached.kind // same process as last tick: its argv cannot have changed, so skip the sysctl
             } else {
-                kind = AgentKind.classify(argv: ForegroundProcess.command(for: view, shellBasename: shellBasename))
+                kind = AgentKind.classify(argv: ForegroundProcess.running(for: view, shellBasename: shellBasename))
             }
 
             live[session.id] = (pid, kind)
