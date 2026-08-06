@@ -90,7 +90,9 @@ final class ControlHudUITests: ControlAPITestCase {
 
         // injected into the surface, so this capture is independent of focus and gives the expected answer
         let sessionTTY = markerDir.appendingPathComponent("hud-session-tty")
-        let expected = try XCTUnwrap(try typeUntilMarker("tty > '\(sessionTTY.path)'", target: session,
+        // the trailing newline is what RUNS the line: `session.type` injects keystrokes verbatim, so without
+        // it the probe sits in the prompt unexecuted and the marker never appears.
+        let expected = try XCTUnwrap(try typeUntilMarker("tty > '\(sessionTTY.path)'\n", target: session,
                                                          file: sessionTTY, select: false),
                                      "the session should report its tty")
 
