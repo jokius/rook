@@ -2206,6 +2206,13 @@ paths:
     Making the comparison descend TOO is a real design option, but it is new behavior with its own
     trade-offs (which member of the group counts as "the pane's agent"), not a debt payoff — a maintainer
     call, not a silent one.
+    **That call was MADE on 2026-08-06: keep `command`, accept the hole.**
+    The accepted cost is that a NESTED agent inside a `--command` pane can still drive that pane's row.
+    The reasoning is which way each option FAILS: staying errs toward showing a status that is not ours,
+    descending errs toward hiding a status that IS ours — and reaches that through a comparison that can
+    never succeed.
+    So this is CLOSED, not outstanding; do not re-open it as a defect.
+    Reopen only as a deliberate feature, and only WITH the comparison and the dash strip below, together.
   - **A SECOND, independent layer already keeps that gate open on those panes, and it must be weighed with
     the first.**
     `AgentProcess.nearestAgentPid` classifies each ancestor's raw argv with NO dash strip, so the hook's own

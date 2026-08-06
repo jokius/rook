@@ -81,9 +81,18 @@ extension ControlServer {
         // be equal, so descending here would satisfy condition 2 and then fail condition 3 for the pane's
         // OWN rightful agent: every status it reports would be silently dropped as foreign. That flips the
         // documented fail-OPEN default (an unprovable head PASSES) into a fail-CLOSED drop on the one pane
-        // shape that cannot defend itself. Making the comparison descend too is a design change with its own
-        // trade-offs, not a defect fix — see the `session.status --agentPid` note in
-        // `.claude/rules/control-api.md`.
+        // shape that cannot defend itself.
+        //
+        // DECIDED (2026-08-06), not an oversight: keep `command` here. The cost is that a NESTED agent
+        // inside a `--command` pane can still drive that pane's row — which errs toward showing a status
+        // that is not ours. Descending errs the other way, toward hiding a status that IS ours, and gets
+        // there through a comparison that can never succeed. Between the two, the safe failure is the one
+        // we keep.
+        // Revisit only WITH the comparison: the gate would have to match `claimed` against the group's
+        // MEMBERS rather than its leader, which first requires deciding which member counts as "the pane's
+        // agent" — and pairs with teaching `AgentProcess.nearestAgentPid` to strip the `exec -l` dash,
+        // since without that no `agentPid` reaches this gate from a `--command` pane at all. One decision,
+        // not two. See the `session.status --agentPid` note in `.claude/rules/control-api.md`.
         let shellBasename = ProcessInfo.processInfo.environment["SHELL"].map(CommandRestore.basename)
         let argv = ForegroundProcess.command(for: view, shellBasename: shellBasename)
         guard AgentKind.classify(argv: argv) != nil else { return false }
