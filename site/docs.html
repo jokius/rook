@@ -1251,8 +1251,11 @@
                 ># create a workspace, capture its id, open a session in it</span
               ><br /><span style="color: #7ece8f">ws</span>=$(rookctl workspace new work)<br />rookctl session new --workspace
               <span style="color: #f2b45c">"$ws"</span> --cwd ~/src/rook<br /><br /><span style="color: #6b727a"
-                ># run a command as the session's process (argv-style; wrap in sh -c for shell syntax)</span
-              ><br />rookctl session new --command <span style="color: #f2b45c">"ssh user@host"</span><br />rookctl session new
+                ># run a command as the session's process (under a login shell: your rc, your PATH, shell operators)</span
+              ><br />rookctl session new --command <span style="color: #f2b45c">"ssh user@host"</span><br />rookctl session new --command
+              <span style="color: #f2b45c">"clear; ssh user@host"</span><br /><span style="color: #6b727a"
+                ># spawn a specific shell (absolute path; defaults to your own $SHELL)</span
+              ><br />rookctl session new --shell <span style="color: #f2b45c">/opt/homebrew/bin/fish</span><br />rookctl session new
               --name <span style="color: #f2b45c">myhost</span> --workspace-name
               <span style="color: #f2b45c">servers</span> --create-workspace<br /><br /><span style="color: #6b727a"
                 ># step / reorder / relocate</span
@@ -1283,6 +1286,35 @@
               <br />rookctl session reveal --target <span style="color: #f2b45c">9f3c</span>
               <span style="color: #6b727a">&nbsp;# reveal the focused pane's cwd in Finder</span>
             </div>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              A session created over the socket runs <em>your</em> shell:
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session new</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">window new</span> and
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">quick</span> take
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--shell</span> as an absolute path,
+              defaulted from the caller's
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">$SHELL</span>, so a session you create
+              from fish comes up fish. Only the shell path is inherited, never your environment — it carries the session and agent
+              ids, and passing those on would make the new session report its agent status onto the old session's row.
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session duplicate</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">split</span> and
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">scratch</span> take no
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--shell</span>; they inherit from the
+              session they belong to. The shell is persisted, survives a relaunch, and reads back as the
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">shell</span> field on the session's
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tree</span> node.
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--command</span> runs under a login
+              shell too, so your rc files run, a Homebrew binary is on
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">PATH</span>, and shell operators work
+              as written — at the cost that an rc file doing a
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">cd</span> overrides
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--cwd</span>. An overlay is the
+              exception: <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session overlay open</span>
+              still runs through <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">sh -c</span> with
+              the app's own <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">PATH</span> and no rc, so
+              a bare Homebrew binary there exits 127 — give it an absolute path or wrap it in
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">zsh -lc '…'</span>.
+            </p>
 
             <h3
               style="

@@ -422,7 +422,10 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">agent</span>, which is merely which agent the pane
                 runs),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">background</span>,
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">unseen</span>, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">unseen</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">shell</span> (the shell the session's panes spawn — the
+                read side of <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session new --shell</span>,
+                persisted, omitted when it uses the app's default), and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">markdownPath</span> (the Markdown file the
                 session's preview panel is rendering, omitted when it is closed).
               </p>
@@ -894,7 +897,7 @@
             <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
                 rookctl session new [--cwd DIR] [--workspace W | --workspace-name NAME [--create-workspace]] [--command CMD]
-                [--name NAME] [--no-select] [--wait] [--after SID | --before SID] [--window W]
+                [--shell PATH] [--name NAME] [--no-select] [--wait] [--after SID | --before SID] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.new</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -932,17 +935,37 @@
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--command</span> runs a program as the session's
-                process instead of the login shell (no echoed command line; the session closes when it exits). It runs
-                <em>argv-style</em> — tokenized with quotes respected, but <strong style="color: #bfbab0">no shell</strong>, so
+                process instead of an interactive shell (no echoed command line; the session closes when it exits). It runs
+                <strong style="color: #bfbab0">under a login shell</strong> —
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">&lt;shell&gt; -l -c '&lt;cmd&gt;'</span> — so your rc
+                files run, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span> is yours (a bare Homebrew
+                binary is found, no exit 127), and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">;</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">&amp;&amp;</span>,
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">$VAR</span>, redirects and globs are not interpreted.
-                It also inherits the app's GUI
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span> (the launchd default — no
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">/opt/homebrew/bin</span>), so a bare Homebrew binary
-                fails with exit 127. Use an absolute path, or wrap it:
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #f2b45c; white-space: nowrap">--command "zsh -lc 'htop'"</span>. The
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">$VAR</span>, redirects and globs all work as written.
+                No wrapper is needed and there is no opt-out flag. One caveat: an rc file that does a
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">cd</span> overrides
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--cwd</span>. The
                 command is persisted and re-runs on restore when <em>Restore running commands on restart</em> is enabled.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--shell</span> picks the shell as an
+                <strong style="color: #bfbab0">absolute path</strong>;
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">rookctl</span> defaults it to the caller's
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">$SHELL</span>, so a session created from fish comes up
+                fish. Only the shell path is inherited, never the caller's environment (it carries the session and agent ids, and
+                inheriting those would make the new session report its agent status onto the old session's row) — the login shell
+                rebuilds the rest from its own rc files.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session split</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session scratch</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session duplicate</span> take no
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--shell</span>: they inherit from the session they
+                belong to. <strong style="color: #bfbab0">Errors</strong>
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">invalid shell (expected an absolute path)</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">shell not found or not executable: &lt;path&gt;</span>,
+                both before anything is created. It is persisted and reads back on the tree node's
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">shell</span> (omitted when the session uses the app's
+                default shell).
               </p>
             </div>
 
@@ -953,8 +976,10 @@
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.duplicate</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
                 Duplicate the target session into a fresh shell rooted at its focused-pane directory, inserted directly
-                after it in the same workspace. Only the directory carries over — a plain shell, no running command or
-                split. <strong style="color: #bfbab0">Returns</strong>
+                after it in the same workspace. Only the directory and the source's shell carry over — a plain shell, no
+                running command or split, but the same shell. There is no
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--shell</span>: a duplicate takes it from the session
+                it copies. <strong style="color: #bfbab0">Returns</strong>
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.id</span>.
               </p>
             </div>
@@ -1195,9 +1220,11 @@
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--command</span> (only when showing) runs a program
-                instead of a login shell — argv-style with the same GUI-<span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span>
-                exit-127 caveat as <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session new --command</span>, and
-                run-once. A scratch is expendable, so passing
+                instead of an interactive shell — under a login shell, exactly like
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session new --command</span> (your rc runs and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span> is yours), and
+                run-once. There is no <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--shell</span>: the scratch
+                inherits the shell of the session it belongs to. A scratch is expendable, so passing
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--command</span> while one is open respawns it.
               </p>
             </div>
@@ -1535,8 +1562,8 @@
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 Unlike <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session new --command</span>, the overlay
-                command runs through <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">sh -c</span>, so shell operators
-                <em>do</em> work — but it still inherits the app's GUI
+                command runs through plain <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">sh -c</span> rather than a
+                login shell: shell operators work, but <em>no rc file runs</em> and it inherits the app's GUI
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span>, so a bare Homebrew binary fails with exit
                 127 (the overlay flashes open then vanishes). Give an absolute path or wrap in
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #f2b45c; white-space: nowrap">"zsh -lc '…'"</span>.
@@ -1832,7 +1859,7 @@
 
             <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
-                rookctl window new [name] [--minimized]
+                rookctl window new [name] [--minimized] [--shell PATH]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">window.new</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1848,6 +1875,11 @@
                 windows without each one flashing on screen and stealing focus. Read back via
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">window list</span>'s
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">minimized</span>.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--shell PATH</span> (absolute; defaulted by
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">rookctl</span> from the caller's
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">$SHELL</span>) spawns the window's first session in
+                that shell, exactly like
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session new --shell</span>.
               </p>
             </div>
 
@@ -2115,7 +2147,7 @@
 
             <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
-                rookctl quick [show|hide|toggle]
+                rookctl quick [show|hide|toggle] [--shell PATH]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">quick</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -2123,6 +2155,13 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">no open window</span> when none is open. Read its
                 visibility back from the tree's top-level
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">quickVisible</span>.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--shell PATH</span> (absolute; defaulted by
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">rookctl</span> from the caller's
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">$SHELL</span>) applies to the NEXT quick shell spawned
+                — a live one is never restarted, so it takes effect after the current one exits. Same errors as
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session new --shell</span>.
               </p>
             </div>
 

@@ -108,7 +108,11 @@ the read side of `font --pane`; each omitted when that pane isn't realized. `fon
 default/left target (the main pane — including a promoted split survivor, which moves INTO the main slot
 once the primary exits; the same pane `font --pane left` writes); only the main pane's size survives a
 relaunch, so the split/scratch sizes are live-only — read them back here rather than from the snapshot),
-and `surfaces` (array
+`shell` (the shell the session's panes spawn, an absolute path — the read side of `session new --shell`,
+omitted when the session runs the app's default. Persisted, so it survives a relaunch and a script can
+record which sessions run a non-default shell and re-create them with the same one. Reported verbatim from
+the persisted value, so a malformed one still reads back as what is stored even though the spawn falls back
+to the default), and `surfaces` (array
 of `{id, kind, active, visible}` where `kind` is `left`|`right`|`scratch`|`overlay`).
 The surface `id` is the address for `surface zoom`; hidden-but-alive split/scratch surfaces are included
 so a script can zoom them without changing split/scratch visibility first. Caveat: `active`/`visible`
@@ -376,18 +380,29 @@ bare event object (NDJSON — pipe it straight into `jq`).
 
 ## session
 
-- `session new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--name NAME] [--no-select] [--wait] [--after SID | --before SID] [--window W]`
+- `session new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--shell PATH] [--name NAME] [--no-select] [--wait] [--after SID | --before SID] [--window W]`
   — create a session and focus it; returns the new id. `--cwd` sets the start directory (default
   `$HOME`). The destination workspace is addressed one of two mutually-exclusive ways: `--workspace`
   (id / unique prefix / `active`, the default) or `--workspace-name` (the sidebar label) — the latter
   errors if no workspace has that name unless `--create-workspace` is also passed, which reuses an
   existing one or creates it when absent (idempotent). `--command` runs that command as the session's
-  process instead of the login shell (no echoed command line; the session closes when the command
-  exits). It runs argv-style (tokenized, quotes respected, but NO shell), so shell operators (`;`,
-  `&&`, `$VAR`, redirects, globs) are not interpreted, and it inherits the app's GUI `PATH` (the launchd
-  default — no `/opt/homebrew/bin`), so a bare Homebrew or other non-default binary fails with exit 127.
-  Wrap in a login shell for both — `--command "zsh -lc 'htop'"` — or give an absolute path
-  (`/opt/homebrew/bin/htop`).
+  process instead of an interactive shell (no echoed command line; the session closes when the command
+  exits). It runs UNDER A LOGIN SHELL — `<shell> -l -c '<cmd>'` — so your rc files run, `PATH` is yours
+  (a bare Homebrew binary like `htop` is found, no exit 127), and shell operators (`;`, `&&`, `|`,
+  `$VAR`, redirects, globs) work as written: `--command "clear; ssh user@host"` clears and then connects.
+  No wrapper needed and no opt-out flag. (`session overlay open` is the exception — it does NOT run rc
+  and keeps the app's `PATH`; see its entry.) One caveat: an rc file that does a `cd` overrides `--cwd`,
+  since it runs after the shell starts there.
+  `--shell PATH` picks the shell, as an ABSOLUTE path; `rookctl` defaults it to the caller's `$SHELL`, so
+  a session created from a fish shell comes up fish rather than in whatever shell the app inherited.
+  Only the shell path is inherited, never your environment — it carries `ROOK_SESSION_ID`/`ROOK_PANE` and
+  an agent's session ids, and inheriting those would make the new session report its agent status onto
+  the old session's row. The login shell rebuilds the rest from its own rc files.
+  Errors: `invalid shell (expected an absolute path)` for a malformed value, and
+  `shell not found or not executable: <path>` when the path does not resolve to an executable file;
+  both reject before anything is created. The shell must understand `-l -c` (zsh, bash and fish do).
+  It is persisted and reads back on the `tree` node's `shell` (omitted when the session runs the app's
+  default), so a fish session comes back fish after a relaunch.
   The command is persisted (`SessionSnapshot.initialCommand`) and re-runs on restore when **Restore
   running commands on restart** is on (default off → a restored session is a plain shell); a live
   captured foreground takes precedence over it. `--name`
@@ -411,8 +426,10 @@ bare event object (NDJSON — pipe it straight into `jq`).
 - `session select [--target] [--window W]`.
 - `session rename <name> [--target] [--window W]`.
 - `session duplicate [--target] [--window W]` — duplicate the target session into a FRESH shell rooted at
-  its focused-pane cwd, inserted directly after it in the same workspace; returns the new id. ONLY the
-  directory carries over (a plain shell — no running command, no split/scratch). The GUI twins are the
+  its focused-pane cwd, inserted directly after it in the same workspace; returns the new id. Only the
+  directory and the source's SHELL carry over (a plain shell — no running command, no split/scratch —
+  but the same shell, so duplicating a fish session gives you fish). There is no `--shell`: a duplicate
+  takes it from the session it copies, never from the caller. The GUI twins are the
   sidebar row's Duplicate Session, the menu bar, the ⌃⇧P palette, and a `duplicate_session` keymap action.
 - `session reveal [--target] [--window W]` — select the target session's focused-pane working
   directory in Finder. Errors when that directory no longer exists.
@@ -493,15 +510,17 @@ bare event object (NDJSON — pipe it straight into `jq`).
   (or `ok` on close / an empty bar).
 - `session split [on|off|toggle] [--target] [--window W]` — side-by-side second shell. `off` HIDES it
   but keeps the shell alive (mirrors ⌘D); the pane's surface is torn down only when its shell exits.
-  Unknown mode errors.
+  Unknown mode errors. No `--shell`: the split inherits the shell of the session that owns it, since half
+  a session in a different shell is exactly the divergence `--shell` exists to avoid.
 - `session scratch [on|off|toggle] [--command CMD] [--target] [--window W]` — a third, full-coverage
   shell that renders like a full overlay but behaves like the split. `off` hides it keep-alive; typing
   `exit` in it closes it and the next `on` spawns a fresh shell. `on` selects the target first (the
   scratch is full-coverage and owns focus). `--command` (only when showing) runs that program as the
-  scratch's process instead of a login shell — argv-style (no shell, and inheriting the app's GUI
-  `PATH`, so the same exit-127 caveat as `session new --command`: wrap in `"zsh -lc '…'"` or use an
-  absolute path) and RUN-ONCE like `session new --command` (after it exits, the next `on` is a plain
-  shell). A scratch is expendable, so passing `--command` while one is already open respawns it. Not
+  scratch's process instead of an interactive shell — under a LOGIN SHELL (`<shell> -l -c '<cmd>'`) like
+  `session new --command`, so rc files run, `PATH` is yours and shell operators work; a bare Homebrew
+  binary needs no wrapper. RUN-ONCE, also like `session new --command` (after it exits, the next `on` is
+  a plain shell). No `--shell`: the scratch inherits the shell of the session it belongs to.
+  A scratch is expendable, so passing `--command` while one is already open respawns it. Not
   persisted. Unknown mode errors. The tree's `scratch` flag tracks visibility.
 - `session filetree [on|off|toggle|refresh|reroot <path>] [--target] [--window W]` — show/hide the file-tree panel (`refresh` re-roots it to the session's current cwd and re-reads it, visibility unchanged; `reroot <path>` re-roots it to an arbitrary directory instead of the cwd — a missing/non-directory path errors). Read the current root back from the tree node's `fileTreeRoot`.
 - `session markdown [open|close|toggle] [<path>] [--target] [--window W]` — render a Markdown file in
@@ -681,6 +700,8 @@ bare event object (NDJSON — pipe it straight into `jq`).
   `/opt/homebrew/bin`), so a bare Homebrew or other non-default binary fails with exit 127 — the overlay
   flashes open then vanishes and `overlay result` reports 127; give an absolute path or wrap in
   `"zsh -lc '…'"`.
+  UNLIKE `session new --command` / `session scratch --command`, the overlay does NOT run under a login
+  shell: no rc file runs here, so the wrapper is still required.
   Full-size by default (hides the session); `--size-percent N` (1–100) makes it a floating framed panel
   with the session visible behind. **By default the overlay does NOT switch the active session** — full
   and floating both open on `--target` and run their program in the background, appearing when the user
@@ -765,12 +786,15 @@ shell (no controlling terminal — `/dev/tty` errors). See examples.md for usage
 
 ## window
 
-- `window new [name] [--minimized]` — create and open a window; returns its id. It waits for the window
+- `window new [name] [--minimized] [--shell PATH]` — create and open a window; returns its id. It waits for the window
   to actually attach before replying, so an immediate `window resize`/`move`/`zoom` on the returned id
   works instead of racing it. `--minimized` parks the new window in the Dock right after creating it and
   hands frontmost back to a still-visible window — so a script can build a set of project windows without
   each one flashing on screen and stealing focus, and untargeted commands do not route into the Dock.
   Read it back from `window list`'s `minimized`.
+  `--shell PATH` (absolute; `rookctl` defaults it to the caller's `$SHELL`) spawns the window's first
+  session in that shell, exactly like `session new --shell` — same two errors, and the same `shell` field
+  on the session's `tree` node reads it back.
 - `window list` — `result.windows`, each with `id`, `name`, `open`, `active`, `autoFollowMs` (the
   window's Auto-follow timeout in milliseconds, omitted when the setting is Disabled), and
   `sidebarVisible` (whether that window's sidebar is shown, read from the open window's store — omitted
@@ -1013,9 +1037,12 @@ than the `--window` you passed), and, over the raw socket where the id is not a 
 
 ## quick
 
-`rookctl quick [show|hide|toggle]` — the frontmost window's quick terminal (a single scratch
+`rookctl quick [show|hide|toggle] [--shell PATH]` — the frontmost window's quick terminal (a single scratch
 terminal at 90% of the window, not in the tree; its shell stays alive across hides). Errors with
 `no open window` when none is open. Read its visibility back from the tree's top-level `quickVisible`.
+`--shell` (absolute; defaults to the caller's `$SHELL`) picks the shell for the NEXT quick shell spawned —
+a live one is never restarted, so it takes effect after the current one exits. Same two errors as
+`session new --shell`.
 While terminal zoom is active, `show` errors with `terminal zoom active`; `hide` always succeeds (a
 zoomed quick terminal exits its zoom first), so cleanup scripts can dismiss it unconditionally.
 

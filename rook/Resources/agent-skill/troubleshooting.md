@@ -91,11 +91,26 @@ of silently double-binding.
 ### "An overlay or --command session opens then instantly closes"
 
 The program exited immediately. Check `rookctl session overlay result --json` — `exitCode: 127` is
-"command not found": `session overlay open`, `session scratch --command`, and `session new --command`
-run the program with the app's GUI `PATH` (the launchd default — no `/opt/homebrew/bin`), NOT your login
-shell's PATH, so a bare Homebrew or other non-default binary isn't found. Fix: give an absolute path
-(`/opt/homebrew/bin/htop`) or wrap in a login shell (`zsh -lc 'htop'`). Any OTHER exit code just means
-the program ran and exited on its own — the overlay/session closes when its command finishes, by design.
+"command not found", and which command form you used decides whether that can even happen.
+`session overlay open` runs its program with the app's GUI `PATH` (the launchd default — no
+`/opt/homebrew/bin`) and reads no rc file, so a bare Homebrew or other non-default binary isn't found:
+give an absolute path (`/opt/homebrew/bin/htop`) or wrap in a login shell (`zsh -lc 'htop'`).
+`session new --command` and `session scratch --command` do NOT have that problem — they run under a login
+shell (`<shell> -l -c '<cmd>'`), so your rc files run and `PATH` is yours; a 127 there means the command
+really is missing from your own login `PATH` (check the same command in a normal session), not that rook
+stripped it. Any OTHER exit code just means the program ran and exited on its own — the overlay/session
+closes when its command finishes, by design.
+
+A `--command` session that starts in the wrong directory is the same mechanism seen from the other side:
+the login shell runs your rc, and an rc that does a `cd` overrides `--cwd`. Nothing in rook can win that
+race — move the `cd` behind an interactive-shell guard in your rc if you need `--cwd` honored.
+
+`invalid shell (expected an absolute path)` from `session new --shell` / `window new --shell` / `quick
+--shell` means the value wasn't an absolute path (`fish` instead of `/opt/homebrew/bin/fish`, or a value
+carrying a control character); `shell not found or not executable: <path>` means the path doesn't point at
+an executable file (a directory counts as not executable here). Both reject before anything is created, so
+nothing was half-made. Since `rookctl` fills `--shell` from your `$SHELL` by default, a broken `$SHELL` in
+the calling shell produces these too — check `echo "$SHELL"` before blaming the flag.
 
 ⌘C/⌘V/⌘A copy/paste/select-all on any layout by default, via two layers.
 

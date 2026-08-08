@@ -123,15 +123,23 @@ best-effort with an honest count: `result.affected` is how many sessions actuall
 partial failure answers `ok: false` while still carrying that count — so read `affected` instead of
 assuming all-or-nothing. `--flagged` with nothing flagged is a successful `affected: 0`.
 
-Run a command AS the session's process (closes when it exits, no echoed command line):
+Run a command AS the session's process (closes when it exits, no echoed command line). It runs under a
+login shell, so your rc files run, `PATH` is yours, and shell operators work as written:
 
 ```bash
-rookctl session new --command "ssh host -p 22"     # a default-PATH binary: argv-split (quotes respected), no shell, no echo
-rookctl session new --command "zsh -lc 'htop'"     # Homebrew/non-default binary: --command has the app's GUI PATH, so wrap in a login shell (or use an absolute path); bare "htop" exits 127
-rookctl session new --command "zsh -lc 'make test'" --wait  # hold the session on the press-any-key prompt after the command exits (--wait needs --command)
+rookctl session new --command "ssh host -p 22"     # no echoed command line; the session closes when it exits
+rookctl session new --command "htop"               # a Homebrew binary needs no wrapper: the login shell's PATH finds it
+rookctl session new --command "clear; ssh user@host"        # shell operators work — this really does clear, then connect
+rookctl session new --command "make test" --wait            # hold the session on the press-any-key prompt after the command exits (--wait needs --command)
+rookctl session new --shell /opt/homebrew/bin/fish          # spawn a specific shell (absolute path); rookctl defaults it to YOUR $SHELL
 rookctl session new --cwd "$HOME/project" --no-select       # background create: appended, but the current session stays selected/focused
-rookctl session duplicate                                   # duplicate the current session into a fresh shell in its cwd, right after it (directory only)
+rookctl session duplicate                                   # duplicate the current session into a fresh shell in its cwd, right after it (directory + shell)
 ```
+
+`session new`, `window new` and `quick` send your `$SHELL` by default, so a session you create from fish
+comes up fish. `session duplicate`, `session split` and `session scratch` take no `--shell` — they inherit
+from the session they belong to. Read the result back from the tree node's `shell` (omitted on the app
+default), and note that an rc file doing a `cd` overrides `--cwd`.
 
 Create a session pre-named (label set at creation, no follow-up rename):
 
@@ -251,7 +259,7 @@ Floating panel variant (session stays visible behind it). Like a full overlay it
 without switching the user; add `--follow` when you want the user pulled to the overlay:
 
 ```bash
-rookctl session overlay open "zsh -lc 'htop'" --target "$ROOK_SESSION_ID" --size-percent 70   # login shell so Homebrew's htop is on PATH; bare "htop" flashes open then vanishes (exit 127)
+rookctl session overlay open "zsh -lc 'htop'" --target "$ROOK_SESSION_ID" --size-percent 70   # the OVERLAY still runs no rc (unlike session new --command): wrap it in a login shell so Homebrew's htop is on PATH; bare "htop" flashes open then vanishes (exit 127)
 # tint the overlay pane so it stands out from the session behind it:
 rookctl session overlay open "revdiff HEAD~3" --target "$ROOK_SESSION_ID" --size-percent 80 --background-color "#2a1a3a"
 # switch the user to the target as it opens:
@@ -329,7 +337,7 @@ A third per-session full-coverage shell. Hide keeps it alive; `exit` in it recre
 rookctl session scratch on        # show (selects the target)
 rookctl session scratch off       # hide, shell stays alive
 rookctl session scratch toggle
-rookctl session scratch on --command "zsh -lc 'lazygit'"   # run a program instead of a shell (run-once); login-shell wrap so Homebrew's PATH is found (bare "lazygit" exits 127)
+rookctl session scratch on --command "lazygit"   # run a program instead of a shell (run-once); it runs under a login shell, so Homebrew's lazygit is found without a wrapper
 ```
 
 ## Toggle, refresh, or re-root the file-tree panel

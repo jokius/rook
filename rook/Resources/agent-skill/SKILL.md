@@ -104,7 +104,9 @@ Separately, each window has one **quick terminal** (a scratch overlay at 90% of 
 of the tree).
 
 Inspect the live tree any time with `rookctl tree --json` (workspaces → sessions, each with
-`id`, `name`, `cwd`, `title`, `active`, `split`, `overlay`, `hud`, `scratch`, `status`, `background`, `surfaces`). `title` is the raw OSC
+`id`, `name`, `cwd`, `title`, `active`, `split`, `overlay`, `hud`, `scratch`, `status`, `background`, `shell`, `surfaces`).
+`shell` is the session's shell path, omitted when it runs the app's default — the read side of
+`session new --shell`, persisted, so a script can re-create a session in the same shell. `title` is the raw OSC
 terminal title (e.g. a remote host over SSH), omitted when none was reported — read it when a
 session's local `cwd` is stale because it's connected to a remote. `surfaces[].id` is the
 control address for `surface zoom` (`left`, `right`, `scratch`, or `overlay`), including
@@ -243,12 +245,16 @@ of `sidebar collapse`/`sidebar expand`, honoring `--window`; read back from the 
 `collapsed` flag, which is `true` when collapsed and omitted when expanded).
 
 **session**
-- `new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--name NAME] [--no-select] [--wait] [--after SID | --before SID]` —
+- `new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--shell PATH] [--name NAME] [--no-select] [--wait] [--after SID | --before SID]` —
   create (and focus) a session. Target the workspace by id/prefix (`--workspace`) OR by name
   (`--workspace-name`, mutually exclusive); add `--create-workspace` to reuse-or-create the named
-  workspace when absent. `--command` runs that program as the session process instead of a login shell
-  (argv-only, and with the app's GUI `PATH` — a Homebrew/non-default binary needs an absolute path or a
-  `zsh -lc '…'` wrapper, else exit 127; same caveat for `scratch --command` and `overlay open` below);
+  workspace when absent. `--command` runs that program as the session process instead of an interactive
+  shell — it runs UNDER a login shell (`<shell> -l -c '<cmd>'`), so your rc files run, `PATH` is yours (a
+  bare Homebrew binary is found), and shell operators (`;`, `&&`, `|`, `$VAR`, redirects, globs) work as
+  written. `--shell` picks the shell, as an absolute path, and defaults to the caller's `$SHELL`, so a
+  session created from fish comes up fish; read it back on the `tree` node's `shell` (omitted on the app
+  default) and it survives a relaunch. (`overlay open` is the exception and still has the exit-127 caveat —
+  see below.)
   `--name` seeds the sidebar label (default: the auto basename). `--after`/`--before` place it directly
   after/before an anchor session (id/prefix/`active`) instead of appending — the anchor carries its own
   workspace, so it's mutually exclusive with `--workspace`/`--workspace-name`. `new --after active` =
@@ -257,7 +263,7 @@ of `sidebar collapse`/`sidebar expand`, honoring `--window`; read back from the 
   press-any-key prompt after it exits, persists, and reads back on the `tree` node's `commandWait`.
 - `close [--target T ...]` — close one session, or repeat `--target` to close a batch with one
   grace-period undo.
-- `select` · `rename <name>` · `duplicate` (fresh shell in the session's cwd, right after it) · `reveal` (select the focused pane's cwd in Finder).
+- `select` · `rename <name>` · `duplicate` (fresh shell in the session's cwd — and its shell — right after it) · `reveal` (select the focused pane's cwd in Finder).
 - `go --to next|prev|first|last|next-attention|prev-attention` — move the selection between sessions.
 - `move <workspace>` (relocate) or `move --to up|down|top|bottom` (reorder within the workspace) or
   `move --after SID | --before SID` (place after/before an anchor session; the anchor carries its own
@@ -282,8 +288,9 @@ of `sidebar collapse`/`sidebar expand`, honoring `--window`; read back from the 
 - `search [needle] [--next|--prev|--close]` — search the terminal scrollback; prints the "N of M" counter.
 - `split [on|off|toggle]` — side-by-side second shell (hide keeps it alive).
 - `scratch [on|off|toggle] [--command CMD]` — full-coverage third shell (hide keeps it alive; `exit`
-  recreates). `--command` (when showing) runs a program instead of a shell, run-once like `session new
-  --command` (respawns the scratch if one is open). Target your own session with
+  recreates). `--command` (when showing) runs a program instead of a shell, run-once and under a login
+  shell like `session new --command` (respawns the scratch if one is open). It takes no `--shell`: the
+  scratch inherits the shell of the session it belongs to, as the split does. Target your own session with
   `--target "$ROOK_SESSION_ID"` (see Addressing).
 - `filetree [on|off|toggle|refresh|reroot <path>]` — show/hide the session's file-tree panel (`refresh` re-roots it to the session's current cwd and re-reads it; `reroot <path>` re-roots it to an arbitrary directory instead).
 - `markdown [open|close|toggle] [<path>]` — render a Markdown file in the session's preview panel (the
@@ -369,7 +376,7 @@ of `sidebar collapse`/`sidebar expand`, honoring `--window`; read back from the 
   and `surface zoom` will not address it. `hud update`/`hud close` with none up answer `no hud`. Read it
   back from the tree node's `hud` object; nothing announces it as an event, so poll `tree`.
 
-**window** — `new [name] [--minimized]` · `list` · `select <id>` · `close <id>` · `rename <id> <name>` ·
+**window** — `new [name] [--minimized] [--shell PATH]` · `list` · `select <id>` · `close <id>` · `rename <id> <name>` ·
 `delete <id>` · `resize <id> --width W --height H` · `move <id> --x X --y Y [--display N]` ·
 `zoom <id>` (maximize-to-screen toggle, the double-click-header gesture; a plain green-button click does full screen) ·
 `fullscreen <id>` (toggle native macOS full screen, the green-button / ⌃⌘F action) ·
@@ -377,7 +384,8 @@ of `sidebar collapse`/`sidebar expand`, honoring `--window`; read back from the 
 back from `window list`'s `minimized`. Minimizing a natively full-screen window is REJECTED with an error
 rather than answered ok, because AppKit silently ignores it there).
 `new --minimized` creates the window already parked, so a script can build a set of project windows
-without each one flashing on screen and stealing focus.
+without each one flashing on screen and stealing focus. `new --shell PATH` spawns the window's first
+session in that shell (absolute path; defaults to the caller's `$SHELL`), like `session new --shell`.
 
 **surface** — `zoom [show|hide|toggle] [--target surface:<session-id>:left|right|scratch|overlay|quick] [--window W]`
 — zoom a terminal surface to fill the window (sidebar hidden; a slim title-bar strip with an exit
@@ -425,7 +433,9 @@ One picker per window — a second `open` there errors `pick already pending`; r
 tree's top-level `pickPending`.
 Esc, ⌘W, closing the window, and quitting Rook all answer `cancelled` rather than leaving you waiting.
 
-**quick** — `[show|hide|toggle]` (visibility; read back from the tree's `quickVisible`) ·
+**quick** — `[show|hide|toggle] [--shell PATH]` (visibility; read back from the tree's `quickVisible`.
+`--shell` defaults to the caller's `$SHELL` and applies to the NEXT quick shell spawned — a live one is
+not restarted) ·
 `type TEXT` (or `--stdin`) inject keystrokes into the frontmost window's quick terminal ·
 `text [--all] [--lines N]` read its screen back — the twins of `session type`/`session text`,
 frontmost-window-only (no `--target`/`--window`/`--pane`).

@@ -87,6 +87,7 @@ paths:
   The read field is populated in `AppStore.controlTree` and, like the other optionals, omitted from the
   JSON when nil.
   Existing pairs to mirror: `session.background`/`background`, `notify`+`session.seen`/`unseen`,
+  `session.new --shell`/`shell` (omitted when the session runs the app's default shell),
   `session.status`/`status`+`statusPane`
   (+`statusBlink`/`statusColor`/`statusShape` for `--blink`/`--color`/`--shape`),
   `session.agent`/`agentSession`+`splitAgentSession`,
@@ -645,7 +646,7 @@ paths:
   The app-side `createSession` resolves the anchor, takes its `(workspace, index)`, and inserts via
   `AppStore.addSession(…, at: before ? index : index + 1)` (the new optional `at index:`, clamped).
   `rookctl session new --after active` = create right after the current session in one round-trip.
-  `args.command` runs that command AS the session's process instead of the login shell (like kitty's
+  `args.command` runs that command AS the session's process instead of an interactive shell (like kitty's
   `launch <cmd>` / ghostty's `command`) — NO echoed command line, and the session closes when the command
   exits (the normal single-pane `onExit` → `closePrimaryPane`).
   `Session.initialCommand` is `@ObservationIgnored` but PERSISTED via `SessionSnapshot.initialCommand`, so it
@@ -654,27 +655,92 @@ paths:
   restored one honors the toggle (default off → a restored session is a plain shell); a live captured
   foreground preempts it, and `closePrimaryPane` clears it when a command pane exits into a promoted split.
   The arm threads `request.args?.command` into `AppStore.addSession(…, command:)`,
-  which `makeSurface` passes to `GhosttySurfaceView(command:)` → `config.command` RAW (`strdup`,
-  NO wrapper). libghostty tokenizes it into argv (shell-like word-splitting that RESPECTS quotes) and
-  execs argv[0] DIRECTLY — there is NO `sh -c`, so shell operators (`;`,
-  `&&`, `|`, `$VAR`, redirects, globs) are NOT interpreted: `ssh host -p 22 -t "ssh inner"` works (the
-  nested command rides as one quoted arg, runs with no echo — verified empirically),
-  but `clear; ssh …` execs a program literally named `clear;` and fails.
-  This is NOT the overlay's path — `makeOverlaySurface` explicitly wraps its command in `sh -c '…'` (so
-  the overlay DOES get shell semantics); a session `--command` that needs shell features must wrap ITSELF,
-  e.g. `--command "sh -c '…'"`.
-  Either way the command runs under the app's GUI environment, whose `PATH` is the launchd default (no
-  `/opt/homebrew/bin`), NOT a login shell's PATH, so a bare Homebrew or other non-default binary is not
-  found and exits 127 — the session/overlay opens then vanishes and `session.overlay.result` reports 127.
-  The fix is an absolute path or a LOGIN-shell wrapper (`zsh -lc '…'`); a plain `sh -c` gets shell
-  operators but NOT the login PATH, so the overlay's built-in `sh -c` wrapper does not by itself solve it
-  (the bundled agent-skill documents this caveat on the three `--command`/overlay entries).
+  which `makeSurface` hands — together with the session's own `Session.shell` — to the host-free
+  `SurfaceCommand.resolve(shell:command:defaultShell:)`,
+  whose result becomes `GhosttySurfaceView(command:)` → `config.command`.
+  **A `--command` session runs under a LOGIN SHELL: `<shell> -l -c '<cmd>'`** — the session's own `--shell`
+  when one was sent, else `GhosttyApp.defaultShell` (`$SHELL` when it passes `isValidShellPath`, else
+  `/bin/sh`, because an app launched from the Dock inherits launchd's environment where `SHELL` may not
+  exist at all and an empty default would build ` -l -c '<cmd>'`).
+  So the user's rc files DO run, `PATH` is the login shell's rather than launchd's, a bare Homebrew binary
+  resolves instead of exiting 127, and shell operators (`;`, `&&`, `|`, `$VAR`, redirects, globs) work as
+  written — `--command "clear; ssh host"` clears and then connects.
+  This is a DELIBERATE behavior change with NO opt-out flag: the old form was a trap documented in three
+  places, not a feature.
+  **The OVERLAY is deliberately UNCHANGED** — `makeOverlaySurface` still wraps its command in `sh -c '…'`,
+  so it gets shell operators but runs NO rc and keeps the app's GUI `PATH` (the launchd default, no
+  `/opt/homebrew/bin`): a bare Homebrew binary in `session.overlay.open` still exits 127, the overlay
+  flashes open then vanishes, `session.overlay.result` reports 127, and the fix is still an absolute path or
+  a LOGIN-shell wrapper (`zsh -lc '…'`).
+  Whether the overlay should follow the session is an open question for the maintainer — do NOT harmonize
+  the two in passing.
+  **The pre-feature note here was WRONG on three counts; do not re-introduce them.**
+  It claimed there was NO `sh -c`, that shell operators were NOT interpreted, and that libghostty execs
+  argv[0] DIRECTLY.
+  Checked against the pinned libghostty source: `src/apprt/embedded.zig` maps the C-API `command` string
+  ALWAYS to `.shell` (`config.command = .{ .shell = cmd }`, upstream comment "This command always run in a
+  shell"), and `src/termio/Exec.zig`'s `execCommand` routes BOTH command forms through
+  `/usr/bin/login -flp <user>` on macOS.
+  The real pre-feature spawn was therefore
+  `login -flp <user> /bin/bash --noprofile --norc -c 'exec -l <cmd>'` — a shell was always in the picture.
+  What WAS true is the consequence: that trampoline bash is `--noprofile --norc` and the command itself
+  became the login shell, so no rc ran, `PATH` stayed the launchd default, and a bare Homebrew binary
+  exited 127.
+  And `clear; ssh …` broke not because operators were ignored but because bash ran `exec -l clear`, which
+  REPLACED the shell — nothing after the `;` could ever run.
+  That also fixes the tokenization budget for the new form: our string passes through exactly ONE round of
+  parsing (that trampoline bash), which is why `SurfaceCommand` single-quotes the command and only quotes a
+  shell path that needs it.
+  **`args.shell` (`--shell <absolute path>`) makes a spawned session run the CALLER's shell.**
+  Three commands carry it — `session.new`, `window.new`, `quick` — and `rookctl` fills it from the caller's
+  own `$SHELL` by default (`CallerShellOptions.resolved(env:)`, applied on the SEND path in
+  `requestCarryingCallerShell`; an unset or blank `$SHELL` sends NOTHING, so the request stays
+  byte-identical to a pre-feature one).
+  That is what makes a session created from fish come up fish instead of inheriting whatever shell the APP's
+  environment happens to name.
+  ONLY the shell path travels — never the caller's environment: it carries `ROOK_SESSION_ID`/`ROOK_PANE` and
+  the agent's session ids, so inheriting it would make the new session report its agent status onto the OLD
+  session's row.
+  The login shell rebuilds everything else from its own rc files.
+  **Routing: `session.duplicate`, `session.split` and `session.scratch` take NO `--shell`** — they inherit
+  from the OWNING (or source) session, because half a session in a different shell is exactly the invisible
+  divergence the feature closes.
+  Validation splits like `session.background`'s: the DISPATCHER owns the host-free format check
+  (`SurfaceCommand.isValidShellPath` — absolute path, no control characters) in ONE shared `parseShell`
+  helper used by all three arms (`dispatchSessionCommand`/`dispatchWindowCommand`/`dispatchAppCommand`, so
+  three copies can't drift apart on the error text), error `invalid shell (expected an absolute path)`;
+  the app side owns the filesystem leg (`ControlServer+Shell.rejectUnusableShell` — exists, not a directory,
+  executable), error `shell not found or not executable: <path>`.
+  Both reject BEFORE anything is created, so a rejected shell leaves the state untouched.
+  **Over the wire it is LOUD, from a snapshot it is SILENT — the asymmetry is deliberate.**
+  `SurfaceCommand.resolve` degrades a malformed shell to the default without a word, because a restored
+  `workspaces.json` reaches it PAST the dispatcher and nobody is left to repair the value: opening a working
+  session on the default shell beats refusing to start.
+  A caller who just mistyped, by contrast, has to hear about it.
+  `SurfaceEnvironment` exports `SHELL=<path>` for a session running a shell of its own, gated on the same
+  `isValidShellPath`, since `login -flp` would otherwise leave the passwd shell in `SHELL` and every
+  subprocess would believe the wrong one.
+  READ-BACK: `Session.shell` (`@ObservationIgnored`) persists via `SessionSnapshot.shell` (an Optional field,
+  NO `Snapshot` version bump — the `WorkspaceSnapshot.colorHex` precedent) and reads back on
+  `ControlSessionNode.shell`, omitted when the session is on the app default, so a fish session comes back
+  fish after a relaunch instead of silently reverting.
+  The decode is LOSSY on purpose: a wrong-typed value falls to nil rather than throwing the whole workspace
+  file out over one bad field, and a hostile but well-typed string is kept and degrades later at spawn, where
+  `resolve` already handles it.
+  **Known limitation, documented rather than fixed: a login shell whose rc does a `cd` overrides the
+  session's starting directory** — `--cwd` is where the shell starts, not necessarily where it lands.
+  The shell must also understand `-l -c`; zsh, bash and fish do.
   Keep-in-sync: the `.sessionNew` case carries `ControlArgs.command` plus `ControlArgs.name` (custom
   name) and `ControlArgs.workspaceName` + `ControlArgs.createWorkspace` (name-addressing + ensure);
   the arm pre-validates the mutual-exclusion / create-needs-name rules and shares `makeSessionResponse`
   across the id- and name-addressed paths; the `session new` CLI carries `--command`/`--name`/`--workspace-name`/`--create-workspace`
   (the last two also `validate()`-guarded); and round-trip + e2e (`testSessionNewWithCommandRunsAsProcess`,
   `testSessionNewWithName`, `testSessionNewWorkspaceNameCreatesThenReuses`) cover them.
+  `ControlArgs.shell` rides the SAME `.sessionNew` case (an argument, NOT a new `Command` — the catalog
+  count does not move), with the `--shell` option shared by `session new`/`window new`/`quick` via
+  `CallerShellOptions`, and `SurfaceCommandTests` + `ShellInheritanceCommandsTests` +
+  `ControlProtocolTests`/`PersistenceTests` (round-trip, omit-when-nil, legacy snapshot with no key)
+  covering the build, the CLI default and the read-back.
   `session.new` ALSO takes `--no-select` and `--wait` (ports of upstream bdc3684 + 8220978 — NO new
   `Command` case for the flags — the catalog bump to 66 is `session.duplicate` below).
   `ControlArgs.noSelect` + `ControlSessionCreateOptions.noSelect` create the session in the BACKGROUND:
@@ -694,8 +760,11 @@ paths:
   its read-back is the new `ControlSessionNode.commandWait` (gated `initialCommand != nil && commandWait`).
   `session.duplicate` (target = the source session) duplicates it into a FRESH shell rooted at the source's
   focused-pane cwd (`Session.focusedCwd`), inserted directly AFTER it in the same workspace via the host-free
-  `AppStore.duplicateSession` → `addSession(toWorkspace:cwd:at:)`; ONLY the directory carries over (no
-  command/name/split/scratch — a plain shell).
+  `AppStore.duplicateSession` → `addSession(toWorkspace:cwd:at:shell:)`; only the directory AND the source's
+  `shell` carry over (no command/name/split/scratch — a plain shell, but the SAME shell: coming up in a
+  different one is exactly the divergence `--shell` exists to close, and an invisible one).
+  A source on the app default duplicates as nil rather than resolving eagerly, so the copy does not freeze
+  today's default into its own persisted state.
   It is a NEW `Command` case (catalog 65 → 66).
   Five callers share the one `AppStore.duplicateSession` seam: the control arm (`ControlActions.duplicateSession`,
   which focuses only when the target store is the active one, like `session.new`), and — via
