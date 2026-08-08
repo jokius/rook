@@ -420,7 +420,12 @@ public final class AppStore {
     @discardableResult
     public func duplicateSession(_ id: UUID) -> Session? {
         guard let session = session(withID: id), let location = sessionLocation(ofSession: id) else { return nil }
-        return addSession(toWorkspace: location.workspace, cwd: session.focusedCwd, at: location.index + 1)
+        // The shell rides along, unlike the command and the name: a duplicate is meant to BE the same
+        // session again, and one that came up in a different shell would diverge invisibly until it
+        // behaved differently. nil stays nil, so a default-shell session does not freeze today's
+        // default into its own persisted state.
+        return addSession(toWorkspace: location.workspace, cwd: session.focusedCwd, at: location.index + 1,
+                          shell: session.shell)
     }
 
     /// Selects a session (or clears the selection when passed nil) and persists.
