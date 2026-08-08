@@ -375,11 +375,13 @@ public final class AppStore {
     /// `session.new --no-select`). An optional `name` seeds `customName` (trimmed; blank = the auto
     /// basename, matching `renameSession`). `wait` holds a `--command` session open after the command
     /// exits (`session.new --command … --wait`). `at` nil appends (default); `at` set inserts at the
-    /// clamped index (`0...count`), backing `session.new --after`/`--before`. Returns nil if no workspace matches.
+    /// clamped index (`0...count`), backing `session.new --after`/`--before`. `shell` is the caller's own
+    /// shell (`session.new --shell`), persisted so the session's panes keep spawning it across a relaunch;
+    /// nil leaves the session on the app's default shell. Returns nil if no workspace matches.
     @discardableResult
     public func addSession(toWorkspace workspaceID: UUID, cwd: String, command: String? = nil,
                            name: String? = nil, wait: Bool = false, at index: Int? = nil,
-                           select: Bool = true) -> Session? {
+                           select: Bool = true, shell: String? = nil) -> Session? {
         guard let wsIndex = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return nil }
         // Both seed values reach a custom-command token that expands unquoted into /bin/sh -c: cwd via
         // initialCwd → effectiveCwd → {AGT_SESSION_PWD} until OSC 7 reports, and name via customName →
@@ -388,6 +390,7 @@ public final class AppStore {
                               customName: name.map(TerminalText.sanitized)?.trimmedOrNil)
         session.initialCommand = command
         session.commandWait = wait
+        session.shell = shell
         if let index {
             let destination = max(0, min(index, workspaces[wsIndex].sessions.count))
             workspaces[wsIndex].sessions.insert(session, at: destination)

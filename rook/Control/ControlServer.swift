@@ -509,7 +509,8 @@ final class ControlServer {
     /// insertion slot for `--after`/`--before` (clamped in `AppStore`); nil appends. With `options.noSelect`
     /// the session is created in the background — `addSession` skips selecting it and the focus call is
     /// suppressed, leaving the current selection and focus untouched. `options.wait` holds a `--command`
-    /// session open after the command exits.
+    /// session open after the command exits. `options.shell` is persisted on the session, so every pane it
+    /// ever spawns — main, split, scratch, and the same panes after a relaunch — runs the caller's shell.
     func makeSessionResponse(in store: AppStore, workspaceID: UUID,
                              options: ControlSessionCreateOptions, at index: Int? = nil) -> ControlResponse {
         // an explicit --cwd wins; else the destination workspace's root (when set and still a real
@@ -519,7 +520,7 @@ final class ControlServer {
         guard let session = store.addSession(toWorkspace: workspaceID, cwd: cwd,
                                              command: options.command, name: options.name,
                                              wait: options.wait ?? false, at: index,
-                                             select: !options.noSelect) else {
+                                             select: !options.noSelect, shell: options.shell) else {
             return ControlResponse(ok: false, error: "could not create session")
         }
         if !options.noSelect, store === library.activeStore { actions.focusActiveSession() }

@@ -17,9 +17,11 @@ extension ControlServer {
     /// polls — a window that never renders times out and the command still replies ok.
     ///
     /// `minimized` creates the window and THEN parks it in the Dock, so a script can build a set of
-    /// project windows and be left on one it can still see.
-    func windowNew(name: String?, minimized: Bool) async -> ControlResponse {
-        let info = library.newWindow(name: trimmed(name))
+    /// project windows and be left on one it can still see. `shell` is the caller's own shell, carried by
+    /// the window's seeded session; an unusable one is refused before the window exists.
+    func windowNew(name: String?, minimized: Bool, shell: String?) async -> ControlResponse {
+        if let rejection = rejectUnusableShell(shell) { return rejection }
+        let info = library.newWindow(name: trimmed(name), shell: shell)
         actions.openWindow?(info.id)
         await pollUntil { WindowRegistry.shared.isRegistered(info.id) }
         if minimized { await park(info.id) }

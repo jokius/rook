@@ -34,7 +34,9 @@ struct WindowContentView: View {
     /// nil builds the session-wide overlay surface, `left`/`right` the pane-scoped one reading that pane's slot.
     let makeOverlaySurface: (Session, OverlayPane?) -> GhosttySurfaceView
     let makeScratchSurface: (Session) -> GhosttySurfaceView
-    let quickTerminalEnv: (WindowInfo.ID) -> [String: String]
+    /// The quick terminal's spawn environment for this window; the second argument is the shell it was
+    /// asked to run (`quick --shell`), which the builder exports as `SHELL`.
+    let quickTerminalEnv: (WindowInfo.ID, String?) -> [String: String]
     let actions: AppActions
     let palette: PaletteController
     let sessionSwitcher: SessionSwitcher
@@ -280,7 +282,7 @@ struct WindowContentView: View {
             store.activeSession?.effectiveCwd ?? FileManager.default.homeDirectoryForCurrentUser.path
         }
         // the quick terminal's shell sees this window's ROOK_* env (scratch: ENABLED + WINDOW_ID + SOCKET).
-        quickTerminal.envProvider = { [quickTerminalEnv, windowID] in quickTerminalEnv(windowID) }
+        quickTerminal.envProvider = { [quickTerminalEnv, windowID] shell in quickTerminalEnv(windowID, shell) }
         // typing in the quick terminal counts as activity, so an idle auto-follow fire can't change this
         // window's selected session behind the overlay while the user types (mirrors the overlay/scratch).
         quickTerminal.onUserInput = { [store] in store.noteUserActivity() }

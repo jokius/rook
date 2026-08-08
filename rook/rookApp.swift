@@ -107,7 +107,7 @@ struct rookApp: App {
                                                    suppressAutoFocus: session.programOverlayActive || qtVisible,
                                                    library: library)
                 },
-                quickTerminalEnv: { quickTerminalEnv(for: $0) },
+                quickTerminalEnv: { quickTerminalEnv(for: $0, shell: $1) },
                 actions: actions,
                 palette: palette,
                 sessionSwitcher: sessionSwitcher
@@ -276,8 +276,14 @@ struct rookApp: App {
                                                     hadForeground: hadForeground, foregroundInput: restoreInput,
                                                     initialCommand: session.initialCommand,
                                                     restoreOverride: session.takePendingRestoreOverride(pane: .left)))
+        // the session's own shell (`session.new --shell`) and the command are resolved together: with no
+        // command the shell IS the surface's command, and with one the command is wrapped in that shell as
+        // a login shell (`<shell> -l -c '<cmd>'`) so the user's rc files run and PATH is theirs.
+        let command = SurfaceCommand.resolve(shell: session.shell, command: plan.command,
+                                             defaultShell: GhosttyApp.defaultShell)
         let view = GhosttySurfaceView(workingDirectory: session.initialCwd, fontSize: session.fontSize.map(Float.init),
-                                      command: plan.command, initialInput: plan.initialInput,
+                                      command: command, initialInput: plan.initialInput,
+                                      runsCommand: plan.command != nil,
                                       waitAfterCommand: session.commandWait, env: env)
         view.session = session
         let sessionID = session.id
@@ -462,8 +468,13 @@ struct rookApp: App {
             restoreEnabled: GhosttyApp.shared.restoreRunningCommand,
             restoreOverride: session.takePendingRestoreOverride(pane: .right),
             capturedInput: captured)
+        // a split of a fish session must be fish: the shell comes from the OWNING session, never the caller
+        // of whatever opened the split. A split never carries a command, so `resolve` yields just the path.
         let view = GhosttySurfaceView(workingDirectory: session.initialSplitCwd ?? session.effectiveCwd,
-                                      fontSize: session.fontSize.map(Float.init), initialInput: restoreInput, env: env)
+                                      fontSize: session.fontSize.map(Float.init),
+                                      command: SurfaceCommand.resolve(shell: session.shell, command: nil,
+                                                                      defaultShell: GhosttyApp.defaultShell),
+                                      initialInput: restoreInput, runsCommand: false, env: env)
         view.session = session
         view.isSplitPane = true
         let sessionID = session.id
@@ -604,9 +615,13 @@ struct rookApp: App {
         // scratchCommand is run-once: read it for this spawn, then clear so a post-exit respawn is a shell.
         let command = session.scratchCommand
         session.scratchCommand = nil
+        // like the split, the scratch runs the OWNING session's shell — and a `--command` scratch wraps
+        // that command in it as a login shell, the same way the main pane does.
         let view = GhosttySurfaceView(workingDirectory: session.effectiveCwd,
                                       fontSize: session.fontSize.map(Float.init),
-                                      command: command,
+                                      command: SurfaceCommand.resolve(shell: session.shell, command: command,
+                                                                      defaultShell: GhosttyApp.defaultShell),
+                                      runsCommand: command != nil,
                                       autoFocus: !suppressAutoFocus, env: env)
         view.watermarkSession = session
         let sessionID = session.id
@@ -632,6 +647,8 @@ struct rookApp: App {
     /// `start()` binds still sees it), honoring a test's `ROOK_CONTROL_SOCKET` override. `pane` injects the
     /// matching `ROOK_PANE` (`left`=main, `right`=split, `scratch`) so the hook wrapper forwards `--pane`
     /// and a status set from a background pane records which surface blocked; the overlay passes nil (no pane).
+    /// `SHELL` rides along for the panes that actually spawn the session's shell — the overlay (the same
+    /// nil pane) runs its command through the app's own shell, so advertising the session's would be a lie.
     @MainActor
     private func surfaceEnv(for session: Session, pane: StatusPane? = nil) -> [String: String] {
         var windowID: WindowInfo.ID?
@@ -648,14 +665,16 @@ struct rookApp: App {
         return SurfaceEnvironment.session(sessionID: session.id, windowID: windowID,
                                           workspaceID: workspaceID, socketPath: controlServer.resolvedSocketPath,
                                           programVersion: Self.terminalProgramVersion,
-                                          pane: pane, paneToken: pane == nil ? nil : UUID().uuidString)
+                                          pane: pane, paneToken: pane == nil ? nil : UUID().uuidString,
+                                          shell: pane == nil ? nil : session.shell)
     }
 
     /// The environment a window's quick terminal exposes — scratch, not in the tree, so its `ROOK_*`
     /// values carry only enabled, window, and socket facts (no workspace/session ids), plus app identity.
+    /// `shell` is the one `quick --shell` asked for, exported as `SHELL` since that terminal really runs it.
     @MainActor
-    func quickTerminalEnv(for windowID: WindowInfo.ID) -> [String: String] {
+    func quickTerminalEnv(for windowID: WindowInfo.ID, shell: String?) -> [String: String] {
         SurfaceEnvironment.quickTerminal(windowID: windowID, socketPath: controlServer.resolvedSocketPath,
-                                         programVersion: Self.terminalProgramVersion)
+                                         programVersion: Self.terminalProgramVersion, shell: shell)
     }
 }

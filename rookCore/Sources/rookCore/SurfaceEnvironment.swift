@@ -9,11 +9,16 @@ public enum SurfaceEnvironment {
     /// `paneToken`, when non-empty, adds `ROOK_PANE_ID` — the surface's STABLE spawn identity (see
     /// `TerminalSurface.paneToken`), which the hook forwards as `--pane-id` so the status handler resolves
     /// the surface's LIVE role instead of the stale baked `ROOK_PANE` after a promote + re-split.
+    /// `shell`, when the session runs one of its own, exports `SHELL` — libghostty spawns through
+    /// `login -flp`, which sets `SHELL` from the passwd entry, so without this every subprocess would
+    /// believe the shell is the account default rather than the one actually running.
     public static func session(sessionID: UUID, windowID: UUID?, workspaceID: UUID?,
                                socketPath: String, programVersion: String,
-                               pane: StatusPane? = nil, paneToken: String? = nil) -> [String: String] {
+                               pane: StatusPane? = nil, paneToken: String? = nil,
+                               shell: String? = nil) -> [String: String] {
         var env = terminalIdentity(programVersion: programVersion)
         env["ROOK_ENABLED"] = "1"
+        shellVariable(shell).map { env["SHELL"] = $0 }
         env["ROOK_SESSION_ID"] = sessionID.uuidString
         env["ROOK_SOCKET"] = socketPath
         if let windowID {
@@ -31,14 +36,23 @@ public enum SurfaceEnvironment {
         return env
     }
 
-    /// Environment for a window's quick terminal, which is not part of the session tree.
+    /// Environment for a window's quick terminal, which is not part of the session tree. `shell` carries
+    /// the caller's own shell (`quick --shell`) and exports `SHELL` for the same reason as above.
     public static func quickTerminal(windowID: UUID, socketPath: String,
-                                     programVersion: String) -> [String: String] {
+                                     programVersion: String, shell: String? = nil) -> [String: String] {
         var env = terminalIdentity(programVersion: programVersion)
         env["ROOK_ENABLED"] = "1"
         env["ROOK_WINDOW_ID"] = windowID.uuidString
         env["ROOK_SOCKET"] = socketPath
+        shellVariable(shell).map { env["SHELL"] = $0 }
         return env
+    }
+
+    /// The `SHELL` value for a surface, or nil to leave the inherited one alone. Gated on the same
+    /// `isValidShellPath` check `SurfaceCommand.resolve` degrades on, so a restored snapshot carrying a
+    /// broken path can't advertise a shell the surface never actually spawns.
+    private static func shellVariable(_ shell: String?) -> String? {
+        shell.flatMap { SurfaceCommand.isValidShellPath($0) ? $0 : nil }
     }
 
     private static func terminalIdentity(programVersion: String) -> [String: String] {

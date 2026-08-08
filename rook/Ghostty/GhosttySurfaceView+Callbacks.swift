@@ -64,9 +64,11 @@ extension GhosttySurfaceView {
     /// Whether a child-exit should close this surface immediately (suppressing ghostty's "press any key"
     /// prompt). True only for a command surface (the overlay) that did NOT opt into the wait prompt; a
     /// `waitAfterCommand` overlay keeps the prompt and closes via `close_surface_cb` after the keypress.
+    /// A surface whose `command` is only its own shell (`session.new --shell`) is NOT a command surface —
+    /// it keeps the prompt like a default-shell session, so a shell that dies on spawn is readable.
     /// `nonisolated` so the C action callback can read it without a main-actor hop; both backing fields
     /// are immutable `let`s set in `init`, so the read is data-race-free.
-    nonisolated var shouldCloseOnChildExitAction: Bool { command != nil && !waitAfterCommand }
+    nonisolated var shouldCloseOnChildExitAction: Bool { runsCommand && !waitAfterCommand }
 
     /// Types `text` into this surface's pty (the control channel's `session.type`) as literal keystrokes,
     /// the same path the keyboard uses (`ghostty_surface_key` with `.text` set — see `insertText`). It does

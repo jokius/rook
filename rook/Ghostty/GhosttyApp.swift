@@ -86,6 +86,13 @@ final class GhosttyApp {
     /// (seeded with the terminal multiplexers). The surface factories read it via
     /// `CommandRestore.shouldRestore`; `SettingsModel` parses the file and writes it. Read at launch only.
     private(set) var restoreDenylist: Set<String> = []
+    /// The shell a surface wraps a `--command` in when no caller shell was named — the app's own `$SHELL`,
+    /// or `/bin/sh` when it is absent or malformed. The fallback is not defensive politeness: an app
+    /// launched from the Dock inherits launchd's environment, where `SHELL` may not exist at all, and an
+    /// empty value would build ` -l -c '<cmd>'` — an attempt to execute `-l`. Resolved once at launch, like
+    /// the environment it reads.
+    static let defaultShell: String = ProcessInfo.processInfo.environment["SHELL"]
+        .flatMap { SurfaceCommand.isValidShellPath($0) ? $0 : nil } ?? "/bin/sh"
     /// Inactive-split-pane text mute strength on the 0...10 scale. NOT ghostty-resolved: the detail
     /// pane's `paneDim` overlay reads it (via `AppSettings.muteOpacity`), `SettingsModel` writes it. The
     /// re-render rides the `.rookAppearanceChanged` notification, like `toolbarMode`.

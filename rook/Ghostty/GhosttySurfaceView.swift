@@ -22,6 +22,13 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     /// surface to run one program (e.g. a TUI) whose exit closes the overlay.
     let command: String?
 
+    /// Whether `command` is a PROGRAM this surface was created to run, rather than the shell it spawns.
+    /// `SurfaceCommand.resolve` also expresses "spawn THIS session's shell" as a `command`, so the two
+    /// meanings can no longer be told apart by `command != nil` — and both readers below mean the program
+    /// sense only: a shell's exit must leave ghostty's "press any key" prompt up (nothing else would report
+    /// why it died), and `initialInput` must still reach a shell that arrived as a `command`.
+    let runsCommand: Bool
+
     /// Text fed to the pty as if typed at startup (libghostty `initial_input`), or nil for none. Used by
     /// the restore-running-command feature: the captured foreground command line + `\n`, so a restored
     /// login shell re-runs it and returns to a prompt on exit (UNLIKE `command`, which replaces the shell).
@@ -330,10 +337,12 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     var lastReportedMousePoint: NSPoint?
 
     init(workingDirectory: String, fontSize: Float? = nil, command: String? = nil, initialInput: String? = nil,
-         waitAfterCommand: Bool = false, autoFocus: Bool = false, env: [String: String] = [:]) {
+         runsCommand: Bool? = nil, waitAfterCommand: Bool = false, autoFocus: Bool = false,
+         env: [String: String] = [:]) {
         self.workingDirectory = workingDirectory
         self.initialFontSize = fontSize
         self.command = command
+        self.runsCommand = runsCommand ?? (command != nil)
         self.initialInput = initialInput
         self.waitAfterCommand = waitAfterCommand
         self.autoFocus = autoFocus
@@ -476,9 +485,10 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
         }
         // restore-running-command: feed the captured command line to the login shell as if typed, so it
         // re-runs and exits back to a prompt. Same strdup'd-buffer lifetime as working_directory. Mutually
-        // exclusive with `command` (which REPLACES the shell): a command surface ignores initialInput, so
-        // the invariant is enforced here, not just by caller discipline.
-        if command == nil, let initialInput, let p = strdup(initialInput) {
+        // exclusive with a PROGRAM `command` (which REPLACES the shell): such a surface ignores
+        // initialInput, so the invariant is enforced here, not just by caller discipline. A `command` that
+        // is merely this session's own shell still takes the input — there is a shell to type it at.
+        if !runsCommand, let initialInput, let p = strdup(initialInput) {
             configCStrings.append(p)
             config.initial_input = UnsafePointer(p)
         }

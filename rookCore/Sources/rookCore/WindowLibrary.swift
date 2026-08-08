@@ -349,14 +349,16 @@ public final class WindowLibrary {
 
     /// Creates a fresh window seeded with one default workspace ("workspace 1") and one session
     /// at $HOME (the seeding that used to live in the app's `restoredStore()`), opens it (loads
-    /// its store), and persists the index. Defaults the name to "window N".
+    /// its store), and persists the index. Defaults the name to "window N". `shell` is the caller's own
+    /// shell (`window.new --shell`), carried by that seeded session like `session.new --shell`.
     @discardableResult
-    public func newWindow(name: String? = nil) -> WindowInfo {
+    public func newWindow(name: String? = nil, shell: String? = nil) -> WindowInfo {
         // {AGT_WINDOW_NAME} expands unquoted into /bin/sh -c; strip control chars as the OSC path does (TerminalText).
         let info = WindowInfo(name: name.map(TerminalText.sanitized)?.trimmedOrNil ?? defaultWindowName)
         let store = makeStore(for: info.id, persistence: persistenceStore(for: info.id))
         let workspace = store.addWorkspace(name: "workspace 1")
-        store.addSession(toWorkspace: workspace.id, cwd: FileManager.default.homeDirectoryForCurrentUser.path)
+        store.addSession(toWorkspace: workspace.id, cwd: FileManager.default.homeDirectoryForCurrentUser.path,
+                         shell: shell)
         windows.append(info)
         stores[info.id] = store
         // a newly created window is the active one: mark it frontmost so the seams that key off the

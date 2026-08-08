@@ -22,10 +22,10 @@ struct ContentView: View {
     /// `left`/`right` the pane-scoped one covering that split pane.
     let makeOverlaySurface: (Session, AppStore, OverlayPane?) -> GhosttySurfaceView
     let makeScratchSurface: (Session, AppStore) -> GhosttySurfaceView
-    /// The `ROOK_*` environment a window's quick terminal exposes (ENABLED + WINDOW_ID + SOCKET),
-    /// resolved per window id. Threaded down so `WindowContentView` can bind its quick terminal's
-    /// `envProvider` with its own window id.
-    let quickTerminalEnv: (WindowInfo.ID) -> [String: String]
+    /// The `ROOK_*` environment a window's quick terminal exposes (ENABLED + WINDOW_ID + SOCKET, plus
+    /// `SHELL` when it was asked for one), resolved per window id and requested shell. Threaded down so
+    /// `WindowContentView` can bind its quick terminal's `envProvider` with its own window id.
+    let quickTerminalEnv: (WindowInfo.ID, String?) -> [String: String]
     let actions: AppActions
     let palette: PaletteController
     let sessionSwitcher: SessionSwitcher

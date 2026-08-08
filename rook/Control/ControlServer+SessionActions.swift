@@ -191,9 +191,11 @@ extension ControlServer: ControlActions {
     /// The destination workspace is addressed one of two mutually-exclusive ways: `workspace`
     /// (id / unique prefix / `active`, the default) or `workspaceName` (the sidebar label),
     /// the latter optionally with `createWorkspace` to add it when absent. create needs a name —
-    /// there is nothing to create by id. cwd/command/name are applied in makeSessionResponse.
+    /// there is nothing to create by id. cwd/command/name/shell are applied in makeSessionResponse; the
+    /// shell is checked for existence/executability FIRST, so a bad one creates nothing.
     func createSession(_ options: ControlSessionCreateOptions) -> ControlResponse {
-        resolver.resolvePlacementStore(options.window) { store in
+        if let rejection = rejectUnusableShell(options.shell) { return rejection }
+        return resolver.resolvePlacementStore(options.window) { store in
             // anchor-relative placement (`--after`/`--before`): the anchor sid names its own workspace,
             // so this bypasses the `--workspace`/`--workspace-name` addressing entirely. `before` inserts
             // at the anchor's slot, `after` just past it (clamped in `AppStore.addSession`).
@@ -806,13 +808,18 @@ extension ControlServer: ControlActions {
     /// Show / hide / toggle the frontmost window's quick terminal (each window owns its own),
     /// flipping only when the requested state differs from the current `isVisible`. An unknown mode
     /// is an error, not a silent no-op; no open window is an error rather than a silent no-op.
-    func setQuickTerminal(mode: String?) -> ControlResponse {
+    /// `shell` is the caller's own shell, remembered for the next surface this controller spawns.
+    func setQuickTerminal(mode: String?, shell: String?) -> ControlResponse {
         guard let controller = QuickTerminalRegistry.shared.controller(for: library.activeWindowID) else {
             return ControlResponse(ok: false, error: "no open window")
         }
         guard let parsedMode = ControlToggleMode.parse(mode, on: "show", off: "hide") else {
             return ControlResponse(ok: false, error: "invalid quick mode: \(mode ?? "toggle")")
         }
+        if let rejection = rejectUnusableShell(shell) { return rejection }
+        // a creation input, so it only takes effect on the next surface this controller spawns — the
+        // existing one outlives hide/show (see `QuickTerminalController.shell`).
+        if let shell { controller.shell = shell }
         let want = parsedMode.desiredValue(current: controller.isVisible)
         if want, !controller.isVisible,
            PickRegistry.shared.controller(for: library.activeWindowID)?.pending != nil {

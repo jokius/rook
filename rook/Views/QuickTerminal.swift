@@ -27,9 +27,15 @@ final class QuickTerminalController {
     @ObservationIgnored var cwdProvider: () -> String = { FileManager.default.homeDirectoryForCurrentUser.path }
 
     /// The `ROOK_*` environment a freshly-created quick terminal exposes to its shell (ENABLED +
-    /// WINDOW_ID + SOCKET — scratch, so no workspace/session ids). Read once, when the surface is
-    /// created. Set by the owning `WindowContentView` so the var carries this window's id.
-    @ObservationIgnored var envProvider: () -> [String: String] = { [:] }
+    /// WINDOW_ID + SOCKET — scratch, so no workspace/session ids), plus `SHELL` when `shell` is set.
+    /// Read once, when the surface is created. Set by the owning `WindowContentView` so the var carries
+    /// this window's id.
+    @ObservationIgnored var envProvider: (String?) -> [String: String] = { _ in [:] }
+
+    /// The shell a freshly-created quick terminal spawns (`quick --shell`, the caller's own), or nil for
+    /// the app's default. Like `cwdProvider`, it is a CREATION input: the surface outlives hide/show, so a
+    /// later `--shell` applies to the next one spawned after this shell exits, not to the live terminal.
+    @ObservationIgnored var shell: String?
 
     /// Notes a keystroke in the quick terminal as user activity on the owning window's `AppStore`, so
     /// typing here resets that window's auto-follow idle timer (an idle fire must NOT change the selection
@@ -57,7 +63,10 @@ final class QuickTerminalController {
     /// afterwards. Recreated after the shell exits.
     func surface() -> GhosttySurfaceView {
         if let surfaceView { return surfaceView }
-        let view = GhosttySurfaceView(workingDirectory: cwdProvider(), env: envProvider())
+        let view = GhosttySurfaceView(workingDirectory: cwdProvider(),
+                                      command: SurfaceCommand.resolve(shell: shell, command: nil,
+                                                                      defaultShell: GhosttyApp.defaultShell),
+                                      runsCommand: false, env: envProvider(shell))
         view.onExit = { [weak self] in self?.handleShellExit() }
         view.onUserInput = onUserInput // note activity so typing here resets the window's auto-follow timer
         surfaceView = view
