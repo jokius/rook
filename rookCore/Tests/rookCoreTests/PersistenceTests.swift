@@ -22,6 +22,15 @@ final class PersistenceTests {
 
     private var fileURL: URL { directory.appendingPathComponent("workspaces.json") }
 
+    /// The first workspace's sessions exactly as they sit in the file. The honest read for a field with no
+    /// typed accessor yet — and the same bytes the next launch decodes, so an omitted key reads as omitted
+    /// rather than as a nil property.
+    private func persistedSessions() throws -> [[String: Any]] {
+        let root = try JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any]
+        let workspaces = root?["workspaces"] as? [[String: Any]]
+        return workspaces?.first?["sessions"] as? [[String: Any]] ?? []
+    }
+
     @Test func snapshotRoundTripsThroughDisk() throws {
         let original = Snapshot(selectedSessionID: UUID(), workspaces: [
             WorkspaceSnapshot(id: UUID(), name: "work", sessions: [
@@ -855,6 +864,67 @@ final class PersistenceTests {
         let restored = AppStore(persistence: store)
         restored.restore(from: store.load())
         #expect(restored.workspaces.first { $0.id == ws.id }?.root == "/Users/me/proj")
+    }
+
+    @Test func sessionShellRoundTripsThroughDisk() throws {
+        // the persistence leg of `session.new --shell`: a fish session must come back fish after a relaunch,
+        // not on the app's own shell. Read on the WIRE (the file's own JSON) rather than through a typed
+        // field — what the next launch decodes IS the bytes on disk, so a save that quietly drops the shell
+        // is exactly the failure this guards.
+        let ws = UUID()
+        let session = UUID()
+        let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": "# +
+            #"[ { "id": "\#(session.uuidString)", "cwd": "/a", "shell": "/opt/homebrew/bin/fish" } ] } ] }"#
+        try Data(json.utf8).write(to: fileURL)
+
+        let app = AppStore(persistence: store)
+        app.restore(from: store.load())
+        app.save()
+
+        let persisted = try #require(persistedSessions().first, "the session must survive the round trip")
+        #expect(persisted["shell"] as? String == "/opt/homebrew/bin/fish")
+        #expect(persisted["cwd"] as? String == "/a", "the shell must not disturb the fields around it")
+    }
+
+    @Test func legacySessionWithoutShellDecodesAndStaysKeyless() throws {
+        // the forward-compat contract `colorHex`/`root` already follow, on the session side: an existing
+        // workspaces.json has no `shell` key, so it must decode (never throw and wipe the tree) as "the
+        // app's default shell" — and re-save WITHOUT inventing one, so nothing about the file changes for a
+        // user who never asked for a per-session shell.
+        let ws = UUID()
+        let session = UUID()
+        let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": "# +
+            #"[ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ] }"#
+        try Data(json.utf8).write(to: fileURL)
+        let loaded = store.load()
+        #expect(loaded.workspaces.map(\.id) == [ws])
+        #expect(loaded.workspaces[0].sessions.map(\.id) == [session])
+
+        let app = AppStore(persistence: store)
+        app.restore(from: loaded)
+        app.save()
+        let persisted = try #require(persistedSessions().first)
+        #expect(persisted["shell"] == nil, "a default-shell session must omit the key, not write one")
+        #expect(persisted["cwd"] as? String == "/a")
+    }
+
+    @Test func aPoisonedSessionShellDoesNotWipeTheTree() throws {
+        // the shell's defense-in-depth lives at SPAWN time, not at load: a nonsense value (a hand edit, a
+        // downgrade, the wrong JSON type) must still LOAD, because the alternative — throwing — fails the
+        // whole `workspaces` array and costs the user every workspace and session over one broken field.
+        let ws = UUID()
+        let session = UUID()
+        let cases = [#""shell": "  ""#, #""shell": "zsh""#, #""shell": "/bin/zsh\nrm -rf /""#, #""shell": 42"#]
+        for bad in cases {
+            let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": "# +
+                #"[ { "id": "\#(session.uuidString)", "cwd": "/a", \#(bad) } ] } ] }"#
+            try Data(json.utf8).write(to: fileURL)
+            let loaded = store.load()
+            #expect(loaded.workspaces.map(\.id) == [ws], "\(bad) wiped the tree")
+            let restored = try #require(loaded.workspaces.first?.sessions.first, "\(bad) wiped the sessions")
+            #expect(restored.id == session)
+            #expect(restored.cwd == "/a", "\(bad) must not disturb the fields around it")
+        }
     }
 
     @Test func explicitCollapsedFalseDecodesExpanded() throws {

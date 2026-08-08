@@ -280,7 +280,8 @@ public final class AppStore {
                                           fontSize: fontSize(session),
                                           splitFontSize: splitFontSize(session),
                                           scratchFontSize: scratchFontSize(session),
-                                          surfaces: surfaces)
+                                          surfaces: surfaces,
+                                          shell: session.shell)
             }
             return ControlWorkspaceNode(id: workspace.id.uuidString, name: workspace.name,
                                         active: workspace.id == activeWorkspaceID,
@@ -867,7 +868,8 @@ public final class AppStore {
                         fileTreeVisible: session.fileTreeVisible ? true : nil,
                         markdownPath: session.markdownPath,
                         restoreCommand: session.restoreCommand,
-                        splitRestoreCommand: session.splitRestoreCommand)
+                        splitRestoreCommand: session.splitRestoreCommand,
+                        shell: session.shell)
     }
 
     func workspaceSnapshot(_ workspace: Workspace) -> WorkspaceSnapshot {
@@ -896,6 +898,7 @@ public final class AppStore {
         session.markdownPath = snapshot.markdownPath
         session.restoreCommand = snapshot.restoreCommand
         session.splitRestoreCommand = snapshot.splitRestoreCommand
+        session.shell = snapshot.shell
         // A restored-visible panel has no "first show" edge to seed its root, and the view falls back to the
         // LIVE effectiveCwd whenever fileTreeRoot is nil — which would make the tree chase every cd (and lose
         // expansion/scroll on each). So pin the root to the restored cwd here; a hidden panel stays nil and

@@ -596,6 +596,27 @@ struct ControlProtocolTests {
         #expect(decoded.commandWait == nil)
     }
 
+    @Test func treeSessionNodeRoundTripsWithShell() throws {
+        // the read-back leg of `session.new --shell`: a session spawned on a non-default shell reports the
+        // path, so a script can record it and re-create the session on the same shell. Asserted on the WIRE
+        // (decode → re-encode) because the typed node does not carry the field yet — a node that drops the
+        // key silently comes back without it.
+        let json = #"{"id":"s1","name":"build","cwd":"/tmp","active":true,"split":false,"# +
+            #""overlay":false,"scratch":false,"flagged":false,"shell":"/opt/homebrew/bin/fish"}"#
+        let node = try JSONDecoder().decode(ControlSessionNode.self, from: Data(json.utf8))
+        let wire = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(node)) as? [String: Any])
+        #expect(wire["shell"] as? String == "/opt/homebrew/bin/fish")
+    }
+
+    @Test func treeSessionNodeOmitsShellWhenNil() throws {
+        // a session on the app's own default shell reports no path — the key is omitted entirely, like every
+        // other post-v1 optional. `name` is deliberately NOT "shell" here, so the substring check cannot
+        // pass (or fail) on the label instead of the field.
+        let session = ControlSessionNode(id: "s1", name: "build", cwd: "/tmp", active: true, split: false)
+        let json = String(data: try JSONEncoder().encode(session), encoding: .utf8) ?? ""
+        #expect(!json.contains("\"shell\""), "a nil shell must be omitted from the JSON; got \(json)")
+    }
+
     @Test func treeSessionNodeRoundTripsWithTitle() throws {
         let session = ControlSessionNode(id: "s1", name: "build", cwd: "/tmp", title: "user@web1: ~",
                                          active: true, split: false)

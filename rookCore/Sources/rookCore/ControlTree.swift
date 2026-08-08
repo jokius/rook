@@ -196,6 +196,12 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// addition uses, keeping Codable synthesized). Hidden-but-alive surfaces are included so control
     /// clients can zoom them without mutating split/scratch visibility first.
     public let surfaces: [ControlSurfaceNode]?
+    /// The shell this session's panes spawn (an absolute path), or nil when it uses the app's default
+    /// (omitted from the JSON). The read side of `session.new --shell` — persisted, so a script can record
+    /// which sessions run a non-default shell and re-create them with the same one. Reported VERBATIM from
+    /// the persisted value: a shell `SurfaceCommand.resolve` would degrade still reads back as what is
+    /// stored, so a script sees the field it would have to fix rather than a default it never set.
+    public let shell: String?
 
     public init(id: String, name: String, cwd: String, title: String? = nil, active: Bool, split: Bool,
                 splitRatio: Double? = nil, splitFocused: Bool? = nil,
@@ -211,7 +217,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 statusShape: String? = nil,
                 background: BackgroundWatermark? = nil, unseen: Int? = nil,
                 fontSize: Double? = nil, splitFontSize: Double? = nil, scratchFontSize: Double? = nil,
-                surfaces: [ControlSurfaceNode]? = nil) {
+                surfaces: [ControlSurfaceNode]? = nil, shell: String? = nil) {
         self.id = id
         self.name = name
         self.cwd = cwd
@@ -248,6 +254,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.splitFontSize = splitFontSize
         self.scratchFontSize = scratchFontSize
         self.surfaces = surfaces
+        self.shell = shell
     }
 }
 

@@ -498,6 +498,35 @@ struct AppStorePaneTests {
         #expect(node.commandWait == nil)
     }
 
+    /// A tree node as it goes over the wire — the honest read for a field the typed node does not carry yet,
+    /// and the same shape a control client actually sees.
+    private func nodeWire(_ node: ControlSessionNode) throws -> [String: Any] {
+        try JSONSerialization.jsonObject(with: JSONEncoder().encode(node)) as? [String: Any] ?? [:]
+    }
+
+    @Test func controlTreeReportsShell() throws {
+        // the read side of `session.new --shell`: a session running a non-default shell reports the path, so
+        // a script can record it and re-create the session on the same shell. Seeded from a restored
+        // snapshot decoded off the wire (the persisted shell is what a script reads back after a relaunch)
+        // and asserted on the wire, so neither leg needs a typed accessor.
+        let store = makeStore()
+        let ws = UUID()
+        let fish = UUID()
+        let plain = UUID()
+        let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ "# +
+            #"{ "id": "\#(fish.uuidString)", "cwd": "/a", "shell": "/opt/homebrew/bin/fish" }, "# +
+            #"{ "id": "\#(plain.uuidString)", "cwd": "/b" } ] } ] }"#
+        store.restore(from: try JSONDecoder().decode(Snapshot.self, from: Data(json.utf8)))
+
+        let nodes = store.controlTree().workspaces[0].sessions
+        #expect(nodes.map(\.id) == [fish.uuidString, plain.uuidString])
+        let fishWire = try nodeWire(nodes[0])
+        let plainWire = try nodeWire(nodes[1])
+        #expect(fishWire["shell"] as? String == "/opt/homebrew/bin/fish")
+        // a session on the app's default shell has nothing to report — the key is omitted, not null.
+        #expect(plainWire["shell"] == nil)
+    }
+
     @Test func controlTreeReportsSplitRatio() throws {
         let store = makeStore()
         let ws = store.addWorkspace(name: "work")

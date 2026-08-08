@@ -274,6 +274,14 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
     public var restoreCommand: String?
     /// The split (right) pane's restore-command override, the split analogue of `restoreCommand`.
     public var splitRestoreCommand: String?
+    /// The shell the session's panes spawn (`Session.shell`), or nil for the app's default. Optional so a
+    /// snapshot already on disk before this field was added still decodes (missing → nil → the default
+    /// shell) instead of failing the load and wiping the saved tree, like the fields above; optionality IS
+    /// the forward-compat, so the `Snapshot` version is deliberately NOT bumped. A session with no shell
+    /// writes NO key at all — an all-default tree serializes byte-identically to a legacy snapshot.
+    /// The value is stored VERBATIM, never validated here: a malformed one costs a default shell at spawn
+    /// (`SurfaceCommand.resolve` degrades), where rejecting it at load would cost the whole session tree.
+    public var shell: String?
 
     public init(id: UUID, customName: String?, cwd: String, isSplit: Bool? = nil, fontSize: Double? = nil,
                 splitCwd: String? = nil, splitRatio: Double? = nil, flagged: Bool? = nil,
@@ -282,7 +290,8 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
                 initialCommand: String? = nil, commandWait: Bool? = nil,
                 backgroundWatermark: BackgroundWatermark? = nil,
                 fileTreeVisible: Bool? = nil, markdownPath: String? = nil,
-                restoreCommand: String? = nil, splitRestoreCommand: String? = nil) {
+                restoreCommand: String? = nil, splitRestoreCommand: String? = nil,
+                shell: String? = nil) {
         self.id = id
         self.customName = customName
         self.cwd = cwd
@@ -302,13 +311,14 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         self.markdownPath = markdownPath
         self.restoreCommand = restoreCommand
         self.splitRestoreCommand = splitRestoreCommand
+        self.shell = shell
     }
 
     enum CodingKeys: String, CodingKey {
         case id, customName, cwd, isSplit, fontSize, splitCwd, splitRatio, flagged
         case foregroundCommand, splitForegroundCommand, agentSession, splitAgentSession
         case initialCommand, commandWait, backgroundWatermark, fileTreeVisible
-        case markdownPath, restoreCommand, splitRestoreCommand
+        case markdownPath, restoreCommand, splitRestoreCommand, shell
     }
 
     /// Custom decode so every optional is LOSSY (see `lossy(_:_:)` at the top), matching
@@ -341,5 +351,6 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         markdownPath = c.lossy(String.self, .markdownPath)
         restoreCommand = c.lossy(String.self, .restoreCommand)
         splitRestoreCommand = c.lossy(String.self, .splitRestoreCommand)
+        shell = c.lossy(String.self, .shell)
     }
 }

@@ -236,6 +236,14 @@ public final class Session: Identifiable {
     /// watermark re-renders its PNG on restore).
     @ObservationIgnored public var backgroundWatermark: BackgroundWatermark?
 
+    /// The shell this session's panes spawn (an absolute path), inherited from whoever asked for the
+    /// session over the control channel (`session.new --shell`); nil means the app's own default shell.
+    /// Spawn identity like `initialCommand`, not observable UI state, so `@ObservationIgnored`. Persisted
+    /// via `SessionSnapshot.shell` so a fish session comes back fish after a relaunch — which is also why
+    /// `SurfaceCommand.resolve` re-checks the path: this reaches a surface straight from disk, past the
+    /// dispatcher that validated it on the way in.
+    @ObservationIgnored public var shell: String?
+
     /// A command to run as the session's process instead of the login shell (like kitty's `launch
     /// <cmd>` / ghostty's `command`), set at creation via `session.new --command`. The surface factory
     /// reads it once; on the command exiting the session closes (the normal single-pane exit path).
