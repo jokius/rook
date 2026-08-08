@@ -127,10 +127,15 @@ struct Quick: ParsableCommand {
         static let configuration = CommandConfiguration(commandName: "visibility", abstract: "Quick terminal visibility (show|hide|toggle).")
         @Argument(help: "Mode: show, hide, or toggle (default).") var mode: String = "toggle"
         // the quick terminal is always the frontmost window's, so this carries no `--window` selector.
+        @OptionGroup var callerShell: CallerShellOptions
         @OptionGroup var options: BasicOptions
 
         func makeRequest() throws -> ControlRequest {
-            ControlRequest(cmd: .quick, args: ControlArgs(mode: mode))
+            ControlRequest(cmd: .quick, args: ControlArgs(mode: mode, shell: callerShell.shell))
+        }
+
+        func requestForSending(env: [String: String]) throws -> ControlRequest {
+            try requestCarryingCallerShell(callerShell, env: env)
         }
     }
 
@@ -483,7 +488,7 @@ struct Pick: ParsableCommand {
             output: (String) -> Void,
             errorOutput: (String) -> Void = Pick.writeStandardError
         ) throws {
-            let response = try send(makeRequest())
+            let response = try send(requestForSending())
             guard response.ok else {
                 Pick.writeResponse(response, json: options.json, output: output, errorOutput: errorOutput)
                 throw ExitCode.failure

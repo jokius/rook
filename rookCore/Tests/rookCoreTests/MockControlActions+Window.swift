@@ -3,7 +3,11 @@ import Foundation
 
 // The mock's window witnesses — see `MockControlActions`.
 extension MockControlActions {
-    func windowNew(name: String?, minimized: Bool) async -> ControlResponse {
+    /// `shell` is accepted but deliberately NOT recorded on the `Call`: no test asserts it reaches the
+    /// host yet, and folding it into the payload would rewrite every existing `.windowNew` expectation.
+    /// Add it to the case the day a test needs it — `sessionNew` already carries it for free, inside
+    /// `ControlSessionCreateOptions`.
+    func windowNew(name: String?, minimized: Bool, shell: String?) async -> ControlResponse {
         calls.append(.windowNew(name, minimized: minimized))
         return nextWindowNewResponse
     }

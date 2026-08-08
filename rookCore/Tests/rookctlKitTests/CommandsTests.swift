@@ -1653,3 +1653,73 @@ struct CommandsTests {
         #expect(req.args?.agentPid == nil)
     }
 }
+
+/// `session new` / `window new` / `quick` spawn a NEW shell FOR the caller, so they carry the caller's
+/// shell — defaulted from the CLI process's own `$SHELL`, overridable with `--shell`.
+///
+/// The three session-owned spawns (`session duplicate`/`split`/`scratch`) deliberately do NOT: their shell
+/// comes from the OWNING session, because a fish session's split has to be fish whoever asked for it.
+///
+/// The environment is a PARAMETER on the send path (`requestForSending(env:)`), so every case here passes
+/// its own dictionary: no `setenv`, no ambient `$SHELL`, nothing process-global to serialize against.
+struct ShellInheritanceCommandsTests {
+    /// The commands that carry the CALLER's shell.
+    private let spawning = [["session", "new"], ["window", "new"], ["quick"]]
+    /// The commands whose shell comes from the owning session instead.
+    private let sessionOwned = [["session", "duplicate"], ["session", "split"], ["session", "scratch"]]
+
+    private let fish = "/opt/homebrew/bin/fish"
+
+    /// The request as `defaultRun()` would SEND it, built against `env` instead of the process environment.
+    private func sent(_ argv: [String], env: [String: String]) throws -> ControlRequest {
+        let parsed = try Rookctl.parseAsRoot(argv)
+        guard let command = parsed as? any RequestCommand else {
+            throw SocketClientError("parsed \(argv) is not a RequestCommand")
+        }
+        return try command.requestForSending(env: env)
+    }
+
+    @Test func spawningCommandsDefaultTheShellFromTheEnvironment() throws {
+        for argv in spawning {
+            #expect(try sent(argv, env: ["SHELL": fish]).args?.shell == fish, "\(argv) dropped $SHELL")
+        }
+    }
+
+    @Test func anExplicitShellOptionWinsOverTheEnvironment() throws {
+        for argv in spawning {
+            let request = try sent(argv + ["--shell", fish], env: ["SHELL": "/bin/zsh"])
+            #expect(request.args?.shell == fish, "\(argv) ignored --shell")
+        }
+    }
+
+    @Test func anAbsentOrEmptyShellIsNotSentAtAll() throws {
+        // nil, never "": a caller with no usable $SHELL must produce a request byte-identical to today's, so
+        // the key has to be off the WIRE and not merely empty.
+        for env in [[:], ["SHELL": ""], ["SHELL": "  \t "]] as [[String: String]] {
+            for argv in spawning {
+                let request = try sent(argv, env: env)
+                #expect(request.args?.shell == nil, "\(argv) sent a shell for \(env)")
+                let encoded = try #require(String(data: JSONEncoder().encode(request), encoding: .utf8))
+                #expect(!encoded.contains("shell"), "\(argv) put a shell key on the wire for \(env): \(encoded)")
+            }
+        }
+    }
+
+    @Test func sessionOwnedSpawnsNeitherTakeNorInheritAShell() throws {
+        for argv in sessionOwned {
+            #expect(throws: (any Error).self, "\(argv) must not accept --shell") {
+                try CommandsTests().request(argv + ["--shell", fish])
+            }
+            #expect(try sent(argv, env: ["SHELL": fish]).args?.shell == nil, "\(argv) inherited the caller's shell")
+        }
+    }
+
+    /// The design guard: the ambient default lives on the SEND path, so `makeRequest()` — which takes no
+    /// environment at all — must produce a shell-less request even for a command that defaults one.
+    @Test func makeRequestNeverCarriesAnAmbientShell() throws {
+        for argv in spawning {
+            #expect(try CommandsTests().request(argv).args?.shell == nil, "\(argv) read the environment while building")
+            #expect(try sent(argv, env: ["SHELL": fish]).args?.shell == fish, "\(argv) lost the send-path default")
+        }
+    }
+}

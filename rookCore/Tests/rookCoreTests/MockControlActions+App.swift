@@ -69,7 +69,8 @@ extension MockControlActions {
         return nextCollapseResponse
     }
 
-    func setQuickTerminal(mode: String?) -> ControlResponse {
+    /// `shell` accepted but not recorded — see the note on `windowNew`.
+    func setQuickTerminal(mode: String?, shell: String?) -> ControlResponse {
         calls.append(.quick(mode))
         return nextQuickResponse
     }

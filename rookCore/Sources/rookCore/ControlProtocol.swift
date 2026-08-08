@@ -242,6 +242,15 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// line `session.restore` pins for the next launch (mode `set` only, typed verbatim — never re-quoted,
     /// which is what lets a pipeline or a compound `&&` line restore at all).
     public var command: String?
+    /// The CALLER's own shell (an absolute path), forwarded by `session.new` / `window.new` / `quick` so a
+    /// session spawned over the control channel runs the shell of whoever asked for it instead of the app's
+    /// default. `rookctl` fills it from its process `$SHELL`; an unset/empty one omits the field entirely,
+    /// keeping the request byte-identical to a pre-feature one. Validated for FORM in the dispatcher
+    /// (`SurfaceCommand.isValidShellPath`) — existence and executability are app-side.
+    ///
+    /// Deliberately NOT carried by `session.duplicate`/`session.split`/`session.scratch`: those take the
+    /// shell from the session they belong to, so a fish session's split is fish no matter who asked.
+    public var shell: String?
     /// Whether a command surface keeps its "press any key to close" prompt after the command exits instead
     /// of closing immediately: `session.overlay.open --wait` (the overlay) and `session.new --command …
     /// --wait` (the primary session surface, held via `Session.commandWait`).
@@ -345,7 +354,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 createWorkspace: Bool? = nil, collapsed: Bool? = nil, minimized: Bool? = nil,
                 noSelect: Bool? = nil, text: String? = nil, select: Bool? = nil, flagged: Bool? = nil,
                 mode: String? = nil,
-                command: String? = nil, wait: Bool? = nil, sizePercent: Int? = nil, full: Bool? = nil,
+                command: String? = nil, shell: String? = nil,
+                wait: Bool? = nil, sizePercent: Int? = nil, full: Bool? = nil,
                 follow: Bool? = nil, message: String? = nil, detail: String? = nil, spinner: String? = nil,
                 items: [ControlPickItem]? = nil, prompt: String? = nil,
                 query: String? = nil, allowCustom: Bool? = nil, window: String? = nil,
@@ -377,6 +387,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.flagged = flagged
         self.mode = mode
         self.command = command
+        self.shell = shell
         self.wait = wait
         self.sizePercent = sizePercent
         self.full = full

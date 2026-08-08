@@ -92,7 +92,9 @@ public protocol ControlActions {
     func setSidebarViewMode(_ mode: ControlSidebarViewMode) -> ControlResponse
     func expandSidebar(window: String?) -> ControlResponse
     func collapseSidebar(window: String?) -> ControlResponse
-    func setQuickTerminal(mode: String?) -> ControlResponse
+    /// Shows/hides the frontmost window's quick terminal. `shell` is the caller's own shell (already
+    /// validated for form), used only when the quick terminal's surface is spawned for the first time.
+    func setQuickTerminal(mode: String?, shell: String?) -> ControlResponse
     func typeQuick(text: String) async -> ControlResponse
     func readQuickText(all: Bool, lines: Int?) async -> ControlResponse
     func typeSession(_ target: String?, window: String?, options: ControlSessionTypeOptions) async -> ControlResponse
@@ -124,7 +126,9 @@ public protocol ControlActions {
     func setSessionBackground(_ target: String?, window: String?,
                               options: ControlSessionBackgroundOptions) -> ControlResponse
     func readSessionText(_ target: String?, window: String?, options: ControlSessionTextOptions) -> ControlResponse
-    func windowNew(name: String?, minimized: Bool) async -> ControlResponse
+    /// Creates a window with its first session. `shell` is the caller's own shell (already validated for
+    /// form), which that first session spawns instead of the app's default.
+    func windowNew(name: String?, minimized: Bool, shell: String?) async -> ControlResponse
     func windowList() -> ControlResponse
     func windowSelect(_ target: String?) async -> ControlResponse
     func windowClose(_ target: String?) async -> ControlResponse
@@ -298,6 +302,30 @@ public struct ControlDispatcher {
         case rejected(ControlResponse)
     }
 
+    /// The outcome of validating a caller-supplied `--shell`: the path (nil when absent), or the rejection
+    /// the arm returns as-is.
+    enum ShellSelection {
+        case shell(String?)
+        case rejected(ControlResponse)
+    }
+
+    /// The shared `--shell` check for the three commands that carry the CALLER's shell (`session.new`,
+    /// `window.new`, `quick`), which live in three different dispatch arms — one helper, so the error text
+    /// cannot drift apart at the first edit. Validation happens BEFORE any host action runs, so a typo
+    /// leaves the app untouched instead of half-applying the call.
+    ///
+    /// Deliberately LOUDER than `SurfaceCommand.resolve`, which silently degrades the same bad value: over
+    /// the wire there is a caller who just made a typo and must hear about it, while `resolve` also sees
+    /// restored snapshots, where nobody is left to fix the value and a working default shell beats refusing
+    /// to spawn.
+    func parseShell(_ raw: String?) -> ShellSelection {
+        guard let raw else { return .shell(nil) }
+        guard SurfaceCommand.isValidShellPath(raw) else {
+            return .rejected(ControlResponse(ok: false, error: "invalid shell (expected an absolute path)"))
+        }
+        return .shell(raw)
+    }
+
     /// The shared `--pane` role selector (`session.status`, `session.restore`): nil when absent, the parsed
     /// pane when valid, and the pinned rejection when the token names no pane.
     func parsePane(_ raw: String?) -> PaneSelection {
@@ -429,7 +457,10 @@ public struct ControlDispatcher {
             return actions.font(request.target, window: request.args?.window,
                                 pane: request.args?.pane, action: "reset_font_size")
         case .quick:
-            return actions.setQuickTerminal(mode: request.args?.mode)
+            switch parseShell(request.args?.shell) {
+            case .rejected(let rejection): return rejection
+            case .shell(let shell): return actions.setQuickTerminal(mode: request.args?.mode, shell: shell)
+            }
         case .keymapReload:
             return actions.reloadKeymap()
         case .keymapList:
@@ -495,7 +526,12 @@ public struct ControlDispatcher {
     private func dispatchWindowCommand(_ request: ControlRequest) async -> ControlResponse {
         switch request.cmd {
         case .windowNew:
-            return await actions.windowNew(name: request.args?.name, minimized: request.args?.minimized ?? false)
+            switch parseShell(request.args?.shell) {
+            case .rejected(let rejection): return rejection
+            case .shell(let shell):
+                return await actions.windowNew(name: request.args?.name,
+                                               minimized: request.args?.minimized ?? false, shell: shell)
+            }
         case .windowList:
             return actions.windowList()
         case .windowSelect:

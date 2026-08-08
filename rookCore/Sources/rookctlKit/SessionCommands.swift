@@ -37,6 +37,7 @@ struct Session: ParsableCommand {
         @Option(name: .long, help: "Place the new session right AFTER this anchor session (id/prefix/active); the anchor carries its own workspace, replacing --workspace.") var after: String?
         @Option(name: .long, help: "Place the new session right BEFORE this anchor session (id/prefix/active); mirror of --after.") var before: String?
         @Flag(name: .long, help: "Create the session in the background without selecting or focusing it (leaves the current selection untouched).") var noSelect = false
+        @OptionGroup var callerShell: CallerShellOptions
         @OptionGroup var options: ClientOptions
         var echoesResultID: Bool { true }
 
@@ -63,7 +64,12 @@ struct Session: ParsableCommand {
             ControlRequest(cmd: .sessionNew, args: options.withWindow(
                 ControlArgs(name: name, cwd: cwd, workspace: workspace, workspaceName: workspaceName,
                             createWorkspace: createWorkspace ? true : nil, noSelect: noSelect ? true : nil,
-                            command: command, wait: wait ? true : nil, after: after, before: before)))
+                            command: command, shell: callerShell.shell,
+                            wait: wait ? true : nil, after: after, before: before)))
+        }
+
+        func requestForSending(env: [String: String]) throws -> ControlRequest {
+            try requestCarryingCallerShell(callerShell, env: env)
         }
     }
 

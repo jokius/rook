@@ -15,11 +15,17 @@ struct Window: ParsableCommand {
         @Argument(help: "Window name (defaults to the auto-generated name).") var name: String?
         @Flag(name: .long, help: "Park it in the Dock once created, leaving frontmost on a visible window.")
         var minimized = false
+        @OptionGroup var callerShell: CallerShellOptions
         @OptionGroup var options: BasicOptions
         var echoesResultID: Bool { true }
 
         func makeRequest() throws -> ControlRequest {
-            ControlRequest(cmd: .windowNew, args: ControlArgs(name: name, minimized: minimized ? true : nil))
+            ControlRequest(cmd: .windowNew, args: ControlArgs(name: name, minimized: minimized ? true : nil,
+                                                              shell: callerShell.shell))
+        }
+
+        func requestForSending(env: [String: String]) throws -> ControlRequest {
+            try requestCarryingCallerShell(callerShell, env: env)
         }
     }
 

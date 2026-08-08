@@ -79,6 +79,28 @@ struct BatchTargetOptions: ParsableArguments {
     var batchTargets: [String]? { targets.count > 1 ? targets : nil }
 }
 
+/// The caller's shell, carried by the commands that spawn a session for WHOEVER ASKED
+/// (`session new`, `window new`, `quick`) so the new shell matches the one the request came from.
+/// `session duplicate`/`split`/`scratch` deliberately do NOT take it — those inherit the shell of the
+/// session they belong to.
+struct CallerShellOptions: ParsableArguments {
+    @Option(name: .long, help: "Shell to spawn, as an absolute path (defaults to the caller's $SHELL).")
+    var shell: String?
+
+    /// The value to put on the wire: the explicit flag, else `$SHELL` from the passed environment. An
+    /// unset, empty, or blank `$SHELL` sends NOTHING, so the request stays byte-identical to a pre-feature
+    /// one instead of tripping the server's format check on an environment the caller never set.
+    ///
+    /// The environment is a parameter, never read here from `ProcessInfo`: this runs on the SEND path
+    /// (`requestForSending`), not while `makeRequest()` builds, so a test can build a request without the
+    /// runner's own `$SHELL` leaking into it.
+    func resolved(env: [String: String]) -> String? {
+        if let shell { return shell }
+        let inherited = env["SHELL"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (inherited?.isEmpty == false) ? inherited : nil
+    }
+}
+
 /// Options for commands that address an individual terminal surface from `tree`.
 struct SurfaceTargetOptions: ParsableArguments {
     @Option(name: .long, help: "Target surface id from tree, 'quick' (the quick terminal), or 'active'.")
@@ -105,7 +127,15 @@ public struct Rookctl: ParsableCommand {
 protocol RequestCommand: ParsableCommand {
     associatedtype Options: ParsableArguments & ConnectionOptions
     var options: Options { get }
+    /// Build the request from the PARSED FLAGS ALONE. Pure: it must never read the process environment,
+    /// so a test can assert the exact wire form without the runner's own environment leaking into it —
+    /// an environment-derived default belongs in `requestForSending(env:)`.
     func makeRequest() throws -> ControlRequest
+    /// The request as actually SENT: `makeRequest()` plus any environment-derived default. The default
+    /// implementation is `makeRequest()` verbatim; only the commands that spawn a shell for the caller
+    /// override it, to fold in `$SHELL`. The environment is a parameter for the same reason
+    /// `ConnectionOptions.socketPath(env:)` takes one.
+    func requestForSending(env: [String: String]) throws -> ControlRequest
     /// Whether the human-readable output should echo `result.id`. Default false — the id is just noise
     /// when the caller already named the target; the create commands (`*.new`) override it to true,
     /// since the new id isn't known until the command runs. The id is always present under `--json`.
@@ -116,10 +146,33 @@ extension RequestCommand {
     var echoesResultID: Bool { false }
     public func run() throws { try defaultRun() }
 
+    func requestForSending(env: [String: String]) throws -> ControlRequest { try makeRequest() }
+
+    /// The send-path entry point, filling in the process environment.
+    func requestForSending() throws -> ControlRequest {
+        try requestForSending(env: ProcessInfo.processInfo.environment)
+    }
+
+    /// Stamp the caller's shell onto the built request — the whole body of the three overrides, so the
+    /// "explicit `--shell`, else `$SHELL`, else nothing" rule has one home.
+    ///
+    /// The bag is MATERIALIZED rather than reached through `args?.shell`, which would silently drop the
+    /// shell for a command that built no bag. Nothing to stamp still leaves `args` exactly as it was, so a
+    /// bag-less request keeps its compact wire form instead of growing an empty `args` object.
+    func requestCarryingCallerShell(_ callerShell: CallerShellOptions,
+                                    env: [String: String]) throws -> ControlRequest {
+        var request = try makeRequest()
+        guard let shell = callerShell.resolved(env: env) else { return request }
+        var args = request.args ?? ControlArgs()
+        args.shell = shell
+        request.args = args
+        return request
+    }
+
     /// The default behavior: send the request once and print the response. Named separately so a command
     /// that overrides `run()` (the `--block` overlay path) can still reach the single-round-trip path.
     func defaultRun() throws {
-        let request = try makeRequest()
+        let request = try requestForSending()
         let client = SocketClient(path: options.socketPath())
         let response = try client.send(request)
         SocketClient.printResponse(response, json: options.json, echoID: echoesResultID)

@@ -73,7 +73,7 @@ extension Session {
                 // open via the same `makeRequest()` the non-block path uses (DRY): in block mode `validate()`
                 // guarantees `!wait`, so its `wait` is nil — identical to opening non-wait, and the floating
                 // `--size-percent` is carried through the single source instead of a duplicated ControlArgs.
-                let opened = try client.send(makeRequest())
+                let opened = try client.send(requestForSending())
                 guard opened.ok, let id = opened.result?.id else {
                     SocketClient.printResponse(opened, json: options.json)
                     throw ExitCode.failure

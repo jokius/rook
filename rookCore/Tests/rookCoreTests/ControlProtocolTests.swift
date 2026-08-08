@@ -14,6 +14,16 @@ struct ControlProtocolTests {
         return try JSONDecoder().decode(ControlResponse.self, from: data)
     }
 
+    /// The WIRE view of a request's args: decode the JSON, re-encode it, and read the object back.
+    /// Used for a field the typed `ControlArgs` does not carry yet, so the assertion is about the wire
+    /// contract rather than about a property that must exist for this file to compile.
+    private func rewrittenArgs(_ json: String) throws -> [String: Any] {
+        let request = try JSONDecoder().decode(ControlRequest.self, from: Data(json.utf8))
+        let encoded = try JSONEncoder().encode(request)
+        let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        return object["args"] as? [String: Any] ?? [:]
+    }
+
     @Test func treeRequestRoundTrips() throws {
         let request = ControlRequest(cmd: .tree)
         #expect(try roundTrip(request) == request)
@@ -1818,5 +1828,26 @@ struct ControlProtocolTests {
         let decoded = try JSONDecoder().decode(ControlSessionNode.self, from: Data(json.utf8))
         #expect(decoded.restoreCommand == nil)
         #expect(decoded.splitRestoreCommand == nil)
+    }
+
+    /// The caller's shell rides the three commands that spawn a NEW shell FOR the caller. The
+    /// session-owned spawns (`session.duplicate`/`.split`/`.scratch`) take theirs from the owning session,
+    /// so they never carry the field — a fish session's split must be fish, not the caller's.
+    @Test func spawningCommandsRoundTripTheCallerShell() throws {
+        let wire = [
+            #"{"cmd":"session.new","args":{"cwd":"/tmp","shell":"/opt/homebrew/bin/fish"}}"#,
+            #"{"cmd":"window.new","args":{"shell":"/opt/homebrew/bin/fish"}}"#,
+            #"{"cmd":"quick","args":{"mode":"show","shell":"/opt/homebrew/bin/fish"}}"#,
+        ]
+        for json in wire {
+            let shell = try rewrittenArgs(json)["shell"] as? String
+            #expect(shell == "/opt/homebrew/bin/fish", "the shell was dropped re-encoding \(json)")
+        }
+    }
+
+    @Test func controlArgsOmitsShellWhenNil() throws {
+        // an absent shell must stay OFF the wire, so every pre-feature request stays byte-identical.
+        let json = String(decoding: try JSONEncoder().encode(ControlArgs(cwd: "/tmp")), as: UTF8.self)
+        #expect(!json.contains("shell"), "a nil shell must be omitted from the JSON; got \(json)")
     }
 }

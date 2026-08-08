@@ -28,6 +28,11 @@ extension ControlDispatcher {
             if args?.wait == true, args?.command == nil {
                 return ControlResponse(ok: false, error: "--wait requires --command")
             }
+            let shell: String?
+            switch parseShell(args?.shell) {
+            case .shell(let parsed): shell = parsed
+            case .rejected(let rejection): return rejection
+            }
             return actions.createSession(ControlSessionCreateOptions(
                 window: args?.window,
                 cwd: args?.cwd,
@@ -39,7 +44,8 @@ extension ControlDispatcher {
                 name: args?.name,
                 after: args?.after,
                 before: args?.before,
-                noSelect: args?.noSelect == true
+                noSelect: args?.noSelect == true,
+                shell: shell
             ))
         case .sessionDuplicate:
             // no options: the source session names its own workspace AND its cwd, so a duplicate is fully

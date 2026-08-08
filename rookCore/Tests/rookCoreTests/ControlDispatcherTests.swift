@@ -1936,5 +1936,4 @@ struct ControlDispatcherTests {
         #expect(actions.calls == [.sessionRestore(target: "s", window: nil,
                                                   ControlSessionRestoreUpdate(pin: .pin("")))])
     }
-
 }
