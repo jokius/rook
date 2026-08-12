@@ -67,7 +67,7 @@ Work down this list:
 3. **Reserved chords.** `ctrl+tab` / `ctrl+shift+tab` (the session switcher) and `ctrl+1` / `ctrl+2` (pane focus) are reserved and cannot be bound.
 4. **Modifier-less keys are rejected.** A custom chord needs at least one modifier so it cannot shadow a plain terminal key. `command "x" g …` is palette-only; `command "x" cmd+g …` binds.
 5. **Focus.** A custom chord fires only while a terminal pane holds keyboard focus. When the sidebar, the inline rename field, a Settings field, or a palette has focus, the chord passes through. Click into the terminal first.
-6. **The command runs in a plain `/bin/sh -c`, not your login shell.** It does not load `~/.zshrc` or `~/.bashrc`, so shell aliases and functions are not available and `PATH` may be shorter than in your terminal. Use absolute paths, or wrap the body in `$SHELL -lc '…'`.
+6. **The command runs in a plain `/bin/sh -c`, not your login shell.** It does not load `~/.zshrc` or `~/.bashrc`, so shell aliases and functions are not available. `PATH` is the app's GUI one — the launchd default, widened with the bundled `rookctl`, `/usr/local/bin` and `/opt/homebrew/bin` — so a bare `rookctl` and a bare Homebrew binary both resolve. What is still missing is everything your shell profile adds: a `~/bin` script, a version-manager shim, or a Homebrew in a custom prefix fails with exit 127. Give those an absolute path, or wrap the body in `zsh -lc '…'` — `zsh -ilc '…'` when that `PATH` is set in `~/.zshrc`, which `-lc` does not read.
 7. **Exit status.** A non-zero exit posts a failure banner with the code. No banner and no effect usually means the chord never fired (causes above). A banner means it ran and failed, which points at the command itself, its `PATH`, or its arguments.
 8. **Token quoting.** `{AGT_SELECTION}` and the other `{AGT_*}` tokens expand raw into the shell line. For content that may contain shell metacharacters, use the `$AGT_SELECTION` environment form, which is already quoted. The token list is in the keymap section of the README.
 
@@ -102,6 +102,8 @@ The full ghostty key reference is at <https://ghostty.org/docs/config>.
 ⌘C and ⌘V copy and paste on any keyboard layout, non-Latin ones (Russian, Greek, and so on) included, because Rook binds them to the physical key positions rather than to the character a layout prints. The physical C and V keys then work no matter what those keys produce in the active layout.
 
 The reason is that ghostty's own copy/paste binds match the produced character: on a Russian layout the physical V key yields `м`, so the built-in `super+v` bind never fires. The bundled Rook defaults add physical-key binds (`super+key_c`, `super+key_v`) that match by position instead.
+
+Those binds always consume the key, even when there is nothing to act on: ⌘C with no selection does nothing at all, rather than reaching the running program. That is deliberate. The Edit menu disables Copy without a selection and Paste without pasteable content — on every layout — so those presses fall to the terminal's own bind, and a bind that declined them would let the chord through to key encoding. A plain shell shows nothing either way, but under the kitty keyboard protocol, which Claude Code and other TUIs turn on, the program receives the chord as a key report and renders it as text — a stray `с` or `^[[1089;9u` in the prompt. If you rebind copy or paste yourself, do not add ghostty's `performable:` prefix for the same reason.
 
 The same distinction lets you remap any shortcut for your layout:
 

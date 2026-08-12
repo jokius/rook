@@ -51,10 +51,12 @@ custom command and was dropped to palette-only (it still runs from `⌃⇧P`, ta
 chord (`ctrl+tab`, `ctrl+1`/`ctrl+2`); a modifier-less key (rejected — a custom chord needs a
 modifier); it does not fire while a text field (rename/palette/Settings) has focus, though it DOES fire
 from a terminal pane or even an emptied window (a launcher command with no session token still works once
-every session is closed); it runs in a non-interactive
-`/bin/sh -c` (no aliases/functions, a smaller `PATH` — use absolute paths or `$SHELL -lc '…'`); a
-non-zero exit posts a failure banner (meaning it DID fire and failed). Reload after edits:
-`rookctl keymap reload`.
+every session is closed); it runs in a non-interactive `/bin/sh -c` (no aliases/functions, and the app's
+GUI `PATH` — the launchd default widened with the bundled `rookctl`, `/usr/local/bin` and
+`/opt/homebrew/bin`, so a bare `rookctl` or Homebrew binary resolves but a `~/bin` script, a
+version-manager shim or a custom Homebrew prefix still needs an absolute path or `zsh -lc '…'`, and
+`zsh -ilc '…'` when that `PATH` comes from `~/.zshrc`, which `-lc` does not read); a non-zero exit posts
+a failure banner (meaning it DID fire and failed). Reload after edits: `rookctl keymap reload`.
 
 ### "The chord is right in keymap.conf but pressing it does nothing"
 
@@ -127,10 +129,14 @@ Rook's bundled ghostty defaults are the **fallback**, binding all three to the p
 (`super+key_c`/`super+key_v`/`super+key_a`), matched by keycode regardless of the character the layout
 prints. They fire whenever the menu equivalent does not: on a Russian/Greek/etc. layout the physical C key
 yields `с`, so the menu's ⌘C never matches and the keycode bind runs instead; likewise a ⌘C with no
-selection leaves the menu item disabled, so the key falls through (and ghostty's `performable:` prefix makes
-it a no-op). This is why copy, paste, and select-all all keep working on a non-Latin layout. (ghostty's own
-`super+c`/`super+v`/`super+a` match the produced CHARACTER, so alone they would miss there — `super+key_a`
-in particular exists because without it ⌘A would silently do nothing on a Cyrillic layout.)
+selection, or a ⌘V with nothing pasteable, leaves the menu item disabled and reaches the bind on ANY layout.
+The three binds deliberately omit ghostty's `performable:` prefix so they always consume the key, and one
+that cannot act simply does nothing. With that prefix the unperformed press fell through to key encoding —
+invisible under legacy encoding, which drops ⌘ chords on macOS, but the kitty keyboard protocol reports them
+and the program renders a stray `^[[…u` as text. This is why copy, paste, and select-all all keep working on
+a non-Latin layout. (ghostty's own `super+c`/`super+v`/`super+a` match the produced CHARACTER, so alone they
+would miss there — `super+key_a` in particular exists because without it ⌘A would silently do nothing on a
+Cyrillic layout.)
 
 To remap a shortcut ghostty still owns: a physical key name (`key_c`, `key_v`, …) matches by position on
 any layout; a bare letter (`c`, `v`) matches the produced character. Edit `~/.config/rook/ghostty.conf`,
