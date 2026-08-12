@@ -248,8 +248,12 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   the e2e leaves it alive.
   But state + socket are PATH-based (NOT bundle-id-derived, both default to `~/Library/Application Support/rook/`),
   so the `ROOK_STATE_DIR`/`ROOK_CONTROL_SOCKET` env overrides are STILL required for a manual dev
-  launch even with the distinct id — otherwise the dev instance reads/writes the user's real `workspaces.json`
-  AND steals the deployed app's socket (its `start()` unlinks-then-binds the default path).
+  launch even with the distinct id — otherwise the dev instance reads/writes the user's real `workspaces.json`.
+  It no longer STEALS the deployed app's socket: `ControlServer` takes an exclusive `flock` on `<socket>.lock`
+  at init, so a second instance refuses to bind and advertises an unbindable `<socket>.unavailable` in
+  `ROOK_SOCKET` instead.
+  That protects the socket, NOT the state — and a BARE `rookctl` still resolves the default path and reaches
+  the DEPLOYED app, so isolate anyway.
   **The socket override must be a SHORT path** (unix sockets cap the path at ~104 bytes):
   a long temp dir (e.g. a Claude session scratchpad) fails with `socket path too long` and the control
   server never binds, while the app itself launches fine — so keep the state dir wherever,

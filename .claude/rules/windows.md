@@ -173,9 +173,10 @@ never two bundles in one window.
   a scrub that misses it leaves a stale token the status handler will happily resolve.
   The quick terminal (`quickTerminalEnv(for:)`) gets only `ROOK_ENABLED` + `ROOK_WINDOW_ID` + `ROOK_SOCKET`
   (scratch, not in the tree).
-  `ROOK_SOCKET` is the path `ControlServer` *actually bound* (`ControlServer.boundSocketPath`,
-  nil before bind → the var is omitted), so a test-overridden `ROOK_CONTROL_SOCKET` and the injected
-  env agree.
+  `ROOK_SOCKET` is `ControlServer.resolvedSocketPath` and is ALWAYS emitted, never omitted: an absent
+  variable reads as "resolve the default", which for a refused instance is another app's socket.
+  An instance that does not own the path advertises `<socket>.unavailable`, which nothing ever creates,
+  so a test-overridden `ROOK_CONTROL_SOCKET` and the injected env still agree.
 - **`window.zoom` (maximize-to-screen toggle, control + double-click-header GUI).** `WindowRegistry.zoom(_:)`
   drives the standard `NSWindow.zoom(nil)` — toggles between the normal frame and the screen's visible frame
   (NOT native fullscreen); a second call restores.

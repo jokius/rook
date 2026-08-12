@@ -6,7 +6,8 @@ Full detail for every `rookctl` command. See `SKILL.md` for the model and addres
 ## Connection and output
 
 - **Socket resolution** (when `--socket` is omitted): `ROOK_SOCKET` is the path the running app
-  bound; rookctl resolves the same rendezvous: `<ROOK_STATE_DIR>/rook.sock`, else
+  bound, or `<socket>.unavailable` when this instance was refused the path because another one owns it;
+  rookctl resolves the same rendezvous: `<ROOK_STATE_DIR>/rook.sock`, else
   `<$HOME>/Library/Application Support/rook/rook.sock`. Passing `--socket "$ROOK_SOCKET"` is the
   safe explicit form.
 - **`--json`**: prints the raw response object. Without it, ordinary mutations print `ok`, batch

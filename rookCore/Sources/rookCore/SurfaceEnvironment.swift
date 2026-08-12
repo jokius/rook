@@ -9,6 +9,9 @@ public enum SurfaceEnvironment {
     /// `paneToken`, when non-empty, adds `ROOK_PANE_ID` — the surface's STABLE spawn identity (see
     /// `TerminalSurface.paneToken`), which the hook forwards as `--pane-id` so the status handler resolves
     /// the surface's LIVE role instead of the stale baked `ROOK_PANE` after a promote + re-split.
+    /// `socketPath` is always emitted, never omitted: consumers read an absent `ROOK_SOCKET` as "resolve
+    /// the default", which is another instance's — `ControlServer` supplies an unbindable path when it
+    /// does not own one.
     /// `shell`, when the session runs one of its own, exports `SHELL` — libghostty spawns through
     /// `login -flp`, which sets `SHELL` from the passwd entry, so without this every subprocess would
     /// believe the shell is the account default rather than the one actually running.

@@ -30,16 +30,30 @@ final class ControlServer {
     /// The listening socket fd, or -1 when not listening. `start()` is idempotent on this.
     private var listenFD: Int32 = -1
 
+    /// The held ownership-lock fd, or -1 when this process does not own `socketPath`.
+    private var lockFD: Int32 = -1
+
+    /// Set when another live instance owns `socketPath`, so this one will never bind or advertise it.
+    private var refused = false
+
     /// The socket path the listener actually bound, or nil when it isn't listening (bind failed or
     /// not started).
     var boundSocketPath: String? { listenFD >= 0 ? socketPath : nil }
 
-    /// The path the listener will bind (it's resolved at init via `defaultSocketPath()`, honoring a
-    /// test's `ROOK_CONTROL_SOCKET` override). The surface factories read this into `ROOK_SOCKET` so a
-    /// shell spawned BEFORE `start()` binds (the launch window's surfaces can materialize first) still
-    /// sees the socket it will be able to reach — `boundSocketPath` would be nil for those, leaking
-    /// ROOK_SOCKET permanently. Equal to `boundSocketPath` once bound.
-    var resolvedSocketPath: String { socketPath }
+    /// Suffix marking the stand-in path a refused instance advertises. Nothing ever creates it, so every
+    /// connection to it fails.
+    static let unavailableSuffix = ".unavailable"
+
+    /// The path spawned surfaces point `ROOK_SOCKET` at (resolved at init via `defaultSocketPath()`,
+    /// honoring a test's `ROOK_CONTROL_SOCKET` override). Once this instance has REFUSED the real path
+    /// because another one owns it, this becomes an unbindable sibling: a shell here must not reach the
+    /// other app, which for a second instance sharing state is the user's live terminal (persisted session
+    /// ids resolve there too). Leaving the variable UNSET is worse than a dead value — the shipped status
+    /// hooks drop `--socket` when it is absent, and `rookctl` then resolves the very default the other
+    /// instance is serving. Not `boundSocketPath`: a shell spawned BEFORE `start()` binds (the launch
+    /// window's surfaces can materialize first) would get a nil there, leaking ROOK_SOCKET permanently.
+    /// Equal to `boundSocketPath` once bound.
+    var resolvedSocketPath: String { refused ? socketPath + ControlServer.unavailableSuffix : socketPath }
     /// The background queue running the blocking accept loop.
     private let acceptQueue = DispatchQueue(label: "com.rook.app.control.accept")
 
@@ -117,6 +131,12 @@ final class ControlServer {
         self.settingsModel = settingsModel
         self.resolver = ControlTargetResolver(library: library)
         self.socketPath = socketPath ?? ControlServer.defaultSocketPath()
+        // ownership is decided HERE, not in `start()`. The launch window's surfaces are built during the
+        // initial render pass and SNAPSHOT `ROOK_SOCKET` into the pty environment (`GhosttySurfaceView.env`
+        // is a `let` read at spawn), while `start()` only runs from the scene's `.task` afterwards. Deciding
+        // late would hand that first shell the owner's live socket, which is the one thing this guard exists
+        // to prevent. Binding stays in `start()`; this only answers who owns the path.
+        _ = acquireOwnership()
         // keep the read cache's `active` flag fresh across async frontmost changes (this server lives
         // for the app's lifetime, so the observer doesn't need removal).
         NotificationCenter.default.addObserver(forName: .rookWindowFrontmostChanged, object: nil, queue: .main) { [weak self] _ in
@@ -178,13 +198,23 @@ final class ControlServer {
             return
         }
 
+        // normally taken at init; retried here for the instance refused while the owner was still alive,
+        // which reaches this again on a later window. `lockFD >= 0` first because flock is per open file
+        // description: a second `open` of a file THIS process already locked conflicts with itself.
+        guard lockFD >= 0 || acquireOwnership() else { return }
+
+        // every failure below KEEPS the lock. Releasing it would let another instance bind the path while
+        // this one still advertises it — the very leak the lock exists to close — and it buys nothing: the
+        // next window's `start()` retries the bind through the `lockFD >= 0` arm above.
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else {
             log("control socket() failed: \(String(cString: strerror(errno)))")
             return
         }
 
-        // unlink any stale socket file first (a force-quit that skipped applicationWillTerminate leaves one).
+        // unlink the stale socket file (a force-quit that skipped applicationWillTerminate leaves one).
+        // Holding the lock is what makes this safe: nobody else is serving the path, so whatever sits on
+        // disk is a leftover.
         unlink(socketPath)
 
         var addr = sockaddr_un()
@@ -225,10 +255,52 @@ final class ControlServer {
 
     /// Close the listener and unlink the socket file.
     func stop() {
+        // outside the guard: the lock is taken in `init`, so an instance that never bound (path too long,
+        // a failed bind, or a refusal) still holds one and would otherwise keep it for the whole process.
+        defer { releaseOwnership() }
         guard listenFD >= 0 else { return }
         close(listenFD)
         listenFD = -1
         unlink(socketPath)
+    }
+
+    /// Take the exclusive advisory lock that marks this process the owner of `socketPath` — held from init
+    /// until `stop()` — and set `refused` when another live instance holds it.
+    ///
+    /// `connect` cannot answer the ownership question on Darwin: a live listener whose backlog is full
+    /// refuses with the same `ECONNREFUSED` a socket nobody listens on returns (the backlog is 8, and one
+    /// stalled client parks the serial accept loop for up to `readDeadlineSeconds`, so saturation is
+    /// reachable), and a blocking `connect` against it returns immediately rather than stalling. `flock`
+    /// carries no such ambiguity, is atomic against a second instance launching in the same moment, and the
+    /// kernel releases it when a force-quit kills the holder — which is exactly the case the `unlink` in
+    /// `start()` exists for.
+    private func acquireOwnership() -> Bool {
+        let lockPath = socketPath + ".lock"
+        let fd = open(lockPath, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+        guard fd >= 0 else {
+            log("control lock open(\(lockPath)) failed: \(String(cString: strerror(errno)))")
+            return false
+        }
+        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
+            close(fd)
+            refused = true
+            log("control socket \(socketPath) is already served by another instance — not binding")
+            return false
+        }
+        lockFD = fd
+        // clear it: `start()` re-runs from every window scene's task, so an instance refused while the owner
+        // was alive reaches this line once the owner quits, and a stale `refused` would leave it advertising
+        // the unavailable path forever on a socket it now serves.
+        refused = false
+        return true
+    }
+
+    /// Drop the ownership lock. The lock FILE is deliberately left behind: unlinking it would let the next
+    /// instance create a fresh inode and lock that instead, which excludes nobody.
+    private func releaseOwnership() {
+        guard lockFD >= 0 else { return }
+        close(lockFD)
+        lockFD = -1
     }
 
     // MARK: - Accept / read loop

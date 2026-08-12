@@ -644,7 +644,8 @@ struct rookApp: App {
     /// The window id comes from the open store that owns the session (split/overlay/scratch inherit it
     /// via the same session); the workspace from the session's owning workspace; `ROOK_SOCKET` is the path
     /// `ControlServer` will bind (resolved at init, so a launch-window shell that materializes before
-    /// `start()` binds still sees it), honoring a test's `ROOK_CONTROL_SOCKET` override. `pane` injects the
+    /// `start()` binds still sees it), honoring a test's `ROOK_CONTROL_SOCKET` override and replaced by an
+    /// unbindable path when this instance refused it to another live one. `pane` injects the
     /// matching `ROOK_PANE` (`left`=main, `right`=split, `scratch`) so the hook wrapper forwards `--pane`
     /// and a status set from a background pane records which surface blocked; the overlay passes nil (no pane).
     /// `SHELL` rides along for the panes that actually spawn the session's shell — the overlay (the same

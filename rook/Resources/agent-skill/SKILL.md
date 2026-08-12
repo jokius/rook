@@ -52,7 +52,9 @@ the control channel is available:
 - `ROOK_ENABLED=1` — this shell runs inside rook.
 - `ROOK_SESSION_ID` — the current session's UUID (the session this shell belongs to).
 - `ROOK_WINDOW_ID` / `ROOK_WORKSPACE_ID` — the owning window / workspace UUIDs.
-- `ROOK_SOCKET` — the absolute path to the control socket this app bound.
+- `ROOK_SOCKET` — the absolute path to the control socket this app bound. A second instance that found the
+  path already owned advertises `<socket>.unavailable` here, which never connects: that is the diagnosis for
+  a connection refused against a path ending in `.unavailable`.
 - `ROOK_PANE` — which pane this shell runs in: `left` (main), `right` (split), or `scratch`. It is the
   shell's ROLE at spawn time and can go stale (a split survivor promoted into the main slot keeps its
   baked `right`); unset in an overlay and in the quick terminal.

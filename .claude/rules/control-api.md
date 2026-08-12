@@ -313,6 +313,34 @@ paths:
   it is best-effort (a bind failure logs and the app still launches).
   Lifecycle is asymmetric: started from the scene `.task`, stopped from `AppDelegate.applicationWillTerminate`;
   a force-quit that skips that leaves a stale socket file, which the next launch's unlink-first handles.
+- **Ownership is a `flock`, taken at INIT — a second instance refuses the path instead of stealing it.**
+  `ControlServer.init` opens `<socketPath>.lock` and takes an exclusive non-blocking `flock`;
+  `start()` refuses to bind while another process holds it.
+  Nothing on disk distinguishes a live socket from a force-quit leftover, and unlinking a live one strands
+  its owner: it keeps its listening fd, never learns it is unreachable, and only a restart recovers it.
+  The decision happens at INIT, not in `start()`, because the launch window's surfaces are built during the
+  initial render pass and SNAPSHOT `ROOK_SOCKET` into the pty environment, while `start()` only runs from
+  the scene's `.task` afterwards — deciding there would hand the first shell the owner's live socket.
+  `start()` retries acquisition for the instance refused while the owner was still alive, guarding on the
+  held fd first: `flock` is per open file description, so re-opening a file this process already locked
+  conflicts with itself.
+  Every failure path in `start()` KEEPS the lock (releasing it while still advertising the path is the leak
+  the lock exists to close); `stop()` is the only release site, and it releases in a `defer` ABOVE the
+  `listenFD >= 0` guard so an instance that never bound does not hold the path for its whole life.
+  The lock FILE is never unlinked — the next instance would lock a fresh inode and exclude nobody.
+  Do NOT swap the lock for a `connect` probe: on Darwin a live listener whose backlog is full refuses with
+  the same `ECONNREFUSED` a socket nobody listens on returns, so one stalled client parking the serial
+  accept loop would make a running instance read as stale.
+- **A refused instance advertises `<socketPath>.unavailable` through `resolvedSocketPath`**,
+  so its shells and `{AGT_SOCKET}` carry a path nothing serves rather than the resolved default,
+  which would point them at the other instance — the user's live terminal, where shared state makes
+  persisted session ids resolve too.
+  Do NOT omit the variable instead: `rook-agent-status.sh` drops `--socket` when it is absent and `rookctl`
+  then resolves that same default, so an unset value routes agent status onto the live app.
+  `refused` clears on a later successful acquire, since `start()` re-runs per window scene and the owner may
+  have quit in between.
+  A refused instance's `stop()` returns early without unlinking, leaving the owner's socket intact.
+  Covered by `rookTests/ControlServerTests`.
 - **Protocol shape.**
   One request per connection, newline-delimited JSON: `{"cmd":…,"target":…,"args":{…}}` → one `{"ok":…,"result":…|"error":…}`
   → close.
@@ -1253,8 +1281,9 @@ paths:
     three constraints make it safe to build one inside a test:**
     (1) root the `WindowLibrary` in a throwaway directory, or it reads and rewrites the user's real
     `windows.json`;
-    (2) never call `start()`, or the server unlinks-then-binds the default socket path and steals the
-    deployed app's control socket;
+    (2) never call `start()` on the DEFAULT socket path — the lock guard keeps it from displacing a running
+    app, but with none running it would bind the real path and answer the user's next `rookctl`;
+    `start()` on an explicit short `/tmp` path is fine, which is what `ControlServerTests` does;
     (3) hand `SettingsModel` the DEFAULT `SettingsStore`, not a throwaway one — its init writes
     `ghostty-settings.conf` into the STATE dir, a path it resolves from the environment rather than from its
     store's directory, so a throwaway store loads DEFAULTS and clobbers the user's real generated config,

@@ -12,8 +12,9 @@ import XCTest
 /// The fixture is deliberately narrow, because a `ControlServer` transitively pulls in the whole app graph:
 /// - `WindowLibrary` is rooted in a throwaway directory, so the user's real `windows.json` is untouched and
 ///   `bootstrap()` seeds exactly one window with one workspace and one session.
-/// - The server is NEVER `start()`ed. Binding would unlink-then-bind the default socket path and steal the
-///   deployed app's control socket; the constructor alone binds nothing.
+/// - The server is NEVER `start()`ed on the DEFAULT socket path. The ownership lock keeps it from displacing
+///   a running app, but with none running it would bind the real path and answer the user's next `rookctl`;
+///   the constructor alone binds nothing.
 /// - `SettingsModel` takes the DEFAULT `SettingsStore` on purpose. Its init is a launch-time side-effect
 ///   engine: it writes `ghostty-settings.conf` into the STATE dir — a path it resolves from the
 ///   environment, not from its store's directory — and pushes ~15 values into the process-global
