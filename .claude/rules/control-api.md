@@ -152,7 +152,9 @@ paths:
   path (`Bundle.main.url(forAuxiliaryExecutable:)`) into the wrapper so the hooks fire even without the
   CLI on PATH, appends a marker-guarded `source` line to `~/.zshrc` + `~/.bashrc`,
   merges four Claude Code hooks into `~/.claude/settings.json` with a `.bak` (UserPromptSubmit→`active --blink`,
-  PostToolUse→`active --blink`, Stop→`completed --auto-reset`, Notification[`permission_prompt`]→`blocked`;
+  PostToolUse→`active --blink --drainable`, Stop→`completed --auto-reset`, Notification[`permission_prompt`]→`blocked`;
+  the `--drainable` flag is what lets the quit-time drain reach a mid-turn agent, and it belongs to
+  `PostToolUse` alone — see [[notifications]];
   the unmatched PostToolUse re-asserts `active` after every tool so a `blocked` permission prompt clears
   back to active when work resumes — Claude Code has no "permission answered" event,
   and the gated tool's own PreToolUse fires BEFORE `blocked` is set, so the approved tool's PostToolUse

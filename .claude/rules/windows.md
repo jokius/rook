@@ -119,6 +119,34 @@ never two bundles in one window.
   (sub-~4 s after launch) allows termination rather than deadlocking.
   Keep-in-sync EXEMPT — a quit-confirm modal is GUI-only chrome with nothing to drive over the socket
   (there is no `app.quit` control command).
+  **A SYSTEM-initiated quit skips the confirmation entirely.**
+  `isSystemInitiatedQuit()` reads `kAEQuitReason` off `NSAppleEventManager.currentAppleEvent`
+  (`kAELogOut`/`kAEReallyLogOut`/`kAEShutDown`/`kAERestart`); a ⌘Q carries no such attribute.
+  The user already answered the question in the system's own dialog, and the blocking `runModal` used to
+  park loginwindow on a prompt nobody asked for — it stalled the whole logout.
+- **Quit-time agent drain (`ShutdownDrainController`).**
+  When any open session has a mid-turn agent (`Session.agentIndicator.status == .active`) and the budget
+  is positive, `applicationShouldTerminate` returns `.terminateLater` instead of `.terminateNow`,
+  and `rook/ShutdownDrainController.swift` runs a bounded wait before
+  `NSApp.reply(toApplicationShouldTerminate: true)`.
+  Host-free half is `ShutdownDrain` in rookCore (predicate, flag path, every string);
+  the app target owns only the timer, the sheet, and the file.
+  The budget is `AppSettings.effectiveAgentQuitGraceSeconds` (default 5, `0` disables).
+  The channel is a one-line flag file next to the control socket, which the installed `PostToolUse` hook
+  reads — see [[notifications]] for why that hook is the ONLY thing a mid-turn agent can observe.
+  Three things are load-bearing and easy to break:
+  (1) the drain runs even when `counts.windows == 0`,
+  because a close-the-last-window exit reaches `applicationShouldTerminate` too and gating on the count
+  would silently skip the feature on ⌘W of the final window;
+  (2) the timer is added to the runloop in `.common` mode, NOT `scheduledTimer` —
+  the sheet puts the runloop in modal-panel mode, where a default-mode timer stops firing;
+  (3) `reply(toApplicationShouldTerminate:)` must fire exactly once, hence the `finished` latch —
+  the Close Now button and the timer both reach it.
+  `.terminateLater` keeps the runloop spinning, so the control socket keeps serving the
+  `session.status completed` that the agents' own `Stop` hooks send — that is what ends the drain EARLY.
+  `applicationWillTerminate`'s order is untouched and still runs afterwards.
+  Keep-in-sync EXEMPT like the confirmation above, and the SETTING is exempt too:
+  `ControlProtocol.swift` exposes no settings at all, so this one would be the odd exception, not parity.
 - **`WindowRegistry`**
   (`rook/WindowRegistry.swift`, app-side, `@MainActor` singleton) maps a `WindowInfo.ID` to its live `NSWindow`
   — `WindowLibrary` is host-free (no AppKit), so the NSWindow handles live app-side.

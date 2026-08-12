@@ -231,8 +231,28 @@ paths:
   and the interrupt itself fires no hook (verified by a status-hook probe:
   an Esc-cancel logs no hook at all; a manual decline fires neither `Stop` nor `PostToolUse`) — the keystroke
   clear is the only signal.
-  The `PostToolUse→active --blink` install hook covers the answer-then-resume case (the agent's next
+  The `PostToolUse→active --blink --drainable` install hook covers the answer-then-resume case (the agent's next
   tool re-asserts `active`).
+- **`--drainable` rides `PostToolUse` ALONE — the quit-drain channel.**
+  On quit `AppDelegate` writes a one-line flag next to the control socket (`ShutdownDrain.flagPath`),
+  and the wrapper answers it with the message on stderr plus `exit 2`, which Claude Code feeds back to the
+  MODEL as a blocking result.
+  That hook is the ONLY channel a mid-turn agent observes: an `events.read` poll, a `notify`,
+  and a `session.type` into the pty all reach nobody until the turn ends.
+  The flag is gated on the argument and NOT on the payload's `hook_event_name` because `PostToolUse` and
+  `UserPromptSubmit` are otherwise argv-identical, and reading stdin on the per-tool-call hot path is exactly
+  what the wrapper was tuned to stop doing.
+  It must never spread to the other events: on `UserPromptSubmit` an `exit 2` ERASES the user's prompt,
+  and on `Stop` it FORBIDS the agent from stopping — the precise opposite of draining.
+  Cost when idle is one `[` and one `read`, both builtins; the flag carries no deadline because reading a
+  clock would need a `date` fork (macOS ships bash 3.2, which has no `$EPOCHSECONDS`).
+- **`mergeClaudeSettings` REWRITES a stale rook hook instead of skipping it.**
+  The idempotency probe used to match on the script PATH alone and `continue`,
+  so an argument change never reached a user who already had the hook installed —
+  `--drainable` would have shipped to nobody.
+  It now compares the whole command and rewrites the entry IN PLACE (never appends a duplicate,
+  never touches a foreign hook).
+  Any future change to `claudeHooks` args depends on this.
 - **A Claude Code SUBAGENT's turn MOVES the row again — the wrapper's `agent_type` filter is GONE.**
   Claude Code fires the SAME status hooks INSIDE a subagent (the Task tool) as on the main thread and stamps
   them with the SAME `session_id`; the only discriminator is the hook payload's top-level `agent_type`, ABSENT

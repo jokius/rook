@@ -2361,6 +2361,9 @@
               matching <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ROOK_AGENT_RE</span> runs;
               the default set is gemini, cursor-agent, aider, opencode, crush, goose), and four Claude Code hooks (prompt → active,
               tool run → active, Stop → completed, permission prompt → blocked). Six Codex lifecycle events run a dedicated adapter.
+              Re-running now also rewrites a Rook hook whose arguments an older version installed — the merge used to recognize its
+              own hook by script path alone and skip it, so a change to what the hook is called with never reached anyone who
+              already had it.
               A permission request is only a candidate because it fires before Auto Review; the adapter keeps automatic decisions
               active and changes the row to blocked only after a real approval or structured question appears in that pane.
               On Codex's Stop event the adapter also reads the turn's final assistant message: a question mark anywhere in it
@@ -2406,6 +2409,23 @@
               pane's foreground process, and the pids differ. Flagging another session from an orchestrator keeps working, and
               so does an agent running under tmux or ssh — there the pane's foreground process is the wrapper rather than the
               agent, so Rook cannot judge ownership and does not try. Losing a blocked is worse than one stray active.
+            </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              <strong style="color: #e6e1d7">Quitting gives a working agent a moment to wrap up.</strong> Closing Rook kills every
+              session's shell outright, and an agent mid-task loses whatever it had not written down — no signal reaches it,
+              because the pty's session leader is the surviving
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">login</span>, so not even a SIGHUP
+              arrives. So on quit, if any session has an agent mid-turn, Rook drops a one-line flag next to its control socket, and
+              the already-installed <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">PostToolUse</span>
+              hook — the one thing a busy agent runs between every tool call — reads it and hands the agent a blocking message: the
+              terminal is closing, wrap up. Rook waits up to
+              <strong style="color: #e6e1d7">Settings ▸ Agent Status ▸ Let agents wrap up before quitting</strong> (5s by default,
+              0 turns it off) and closes as soon as every agent has finished rather than sitting out the whole budget. What the
+              agent does with the warning is its own call — a short handoff note, or just stopping cleanly. A system logout skips
+              the quit confirmation entirely and drains silently, so Rook no longer parks your logout on a dialog.
+              Be clear-eyed about the reach: the warning rides the agent's own hook, so it arrives only <em>between</em> tool calls.
+              An agent sitting inside one long call — a ten-minute build — never sees it, and neither does a session with no hooks
+              installed, nor Codex or Pi. A forced power-off runs none of this at all.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               <strong style="color: #e6e1d7">Resume agent conversations.</strong> A restored pane that was running an agent gets

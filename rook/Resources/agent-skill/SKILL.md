@@ -495,6 +495,27 @@ Do NOT print graphics escapes to your own tool stdout (the agent harness escapes
 and do NOT run an image viewer in your tool shell (no controlling terminal). The overlay is what makes
 it render. Outside Rook (`ROOK_ENABLED` unset) there is no overlay — fall back to `open <image>`.
 
+## When Rook tells you it is closing
+
+If a tool call comes back with a blocking error saying Rook is closing this terminal, that is **not a
+broken tool and not something to retry or work around**. It is Rook shutting down — your session's
+shell is about to be killed — and it has given you a few seconds of grace before that happens.
+
+Stop immediately and spend the time on exactly one of two things, whichever fits:
+
+- **Write a short handoff note** — what you were doing, where you stopped, what comes next — if the
+  work is worth resuming. One file write. Put it somewhere the next session will look.
+- **Just wrap up cleanly** if there is nothing worth recording: finish the thought, don't leave a
+  half-written file or a stray background process.
+
+Do not start anything new, do not launch a long command, and do not argue with the message. Rook
+closes as soon as your turn ends, so finishing early is what buys the user a faster quit — the budget
+is a ceiling, not a countdown you must use up.
+
+You will only ever see this between tool calls, because it arrives on your `PostToolUse` hook. If you
+are inside one long call when the quit happens, you get no warning at all — that is a known limit, not
+something to compensate for.
+
 ## Troubleshooting and reporting
 
 When the user hits a problem (a keymap editor that will not open, a custom action that does nothing,
