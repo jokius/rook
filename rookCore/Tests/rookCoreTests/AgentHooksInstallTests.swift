@@ -33,8 +33,9 @@ struct AgentHooksInstallTests {
         #expect(evts["Stop"]?.count == 1)
         #expect(evts["Notification"]?.count == 1)
         #expect(command(evts["UserPromptSubmit"]![0])?.hasSuffix("agent-status.sh' active --blink") == true)
-        // PostToolUse re-asserts active after every tool, clearing a lingering blocked on resume
-        #expect(command(evts["PostToolUse"]![0])?.hasSuffix("agent-status.sh' active --blink") == true)
+        // PostToolUse re-asserts active after every tool, clearing a lingering blocked on resume, and it is
+        // the ONE event carrying --drainable (the quit-time drain answers with exit 2)
+        #expect(command(evts["PostToolUse"]![0])?.hasSuffix("agent-status.sh' active --blink --drainable") == true)
         // only the Stop hook passes --auto-reset (clear-on-visit); active/blocked stay keep-state
         #expect(command(evts["Stop"]![0])?.hasSuffix("agent-status.sh' completed --auto-reset") == true)
         #expect(command(evts["Notification"]![0])?.hasSuffix("agent-status.sh' blocked") == true)
@@ -143,6 +144,58 @@ struct AgentHooksInstallTests {
         let json = try #require(try JSONSerialization.jsonObject(with: Data(first.json.utf8)) as? [String: Any])
         let hooks = try #require(json["hooks"] as? [String: Any])
         #expect((hooks["SessionStart"] as? [[String: Any]])?.count == 1)
+    }
+
+    @Test func postToolUseCarriesDrainableAndOthersDoNot() throws {
+        let merged = try AgentHooksInstall.mergeClaudeSettings(existing: nil, scriptDir: "/opt/rook")
+        let root = try #require(try JSONSerialization.jsonObject(with: Data(merged.json.utf8)) as? [String: Any])
+        let hooks = try #require(root["hooks"] as? [String: Any])
+
+        func command(_ event: String) throws -> String {
+            let entries = try #require(hooks[event] as? [[String: Any]])
+            let commands = try #require(entries.first?["hooks"] as? [[String: Any]])
+            return try #require(commands.first?["command"] as? String)
+        }
+
+        // exit 2 is fit for PostToolUse ONLY: on UserPromptSubmit it erases the user's prompt, and on Stop
+        // it forbids the agent from stopping — the exact opposite of draining.
+        #expect(try command("PostToolUse").hasSuffix("active --blink --drainable"))
+        #expect(try command("UserPromptSubmit").hasSuffix("active --blink"))
+        #expect(try !command("UserPromptSubmit").contains("--drainable"))
+        #expect(try !command("Stop").contains("--drainable"))
+    }
+
+    @Test func mergeUpgradesStaleArgsOnAnAlreadyInstalledHook() throws {
+        // the hook is already installed with the OLD arguments (no --drainable) — exactly a live machine
+        let stale = """
+        {"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"'/opt/rook/rook-agent-status.sh' active --blink"}]}]}}
+        """
+        let merged = try AgentHooksInstall.mergeClaudeSettings(existing: stale, scriptDir: "/opt/rook")
+        #expect(merged.changed == true)
+        #expect(merged.json.contains("active --blink --drainable"))
+        // an upgrade, not a second copy: the hook must not be duplicated
+        let root = try #require(try JSONSerialization.jsonObject(with: Data(merged.json.utf8)) as? [String: Any])
+        let hooks = try #require(root["hooks"] as? [String: Any])
+        let entries = try #require(hooks["PostToolUse"] as? [[String: Any]])
+        #expect(entries.count == 1)
+    }
+
+    @Test func mergeIsStillIdempotentOnCurrentArgs() throws {
+        let fresh = try AgentHooksInstall.mergeClaudeSettings(existing: nil, scriptDir: "/opt/rook")
+        let again = try AgentHooksInstall.mergeClaudeSettings(existing: fresh.json, scriptDir: "/opt/rook")
+        #expect(again.changed == false)
+    }
+
+    @Test func mergeLeavesForeignHooksAlone() throws {
+        let foreign = """
+        {"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"/usr/local/bin/my-own-hook.sh --whatever"}]}]}}
+        """
+        let merged = try AgentHooksInstall.mergeClaudeSettings(existing: foreign, scriptDir: "/opt/rook")
+        #expect(merged.json.contains("my-own-hook.sh --whatever"))
+        let root = try #require(try JSONSerialization.jsonObject(with: Data(merged.json.utf8)) as? [String: Any])
+        let hooks = try #require(root["hooks"] as? [String: Any])
+        let entries = try #require(hooks["PostToolUse"] as? [[String: Any]])
+        #expect(entries.count == 2) // the foreign one stayed, ours was added
     }
 
     /// Codex fires every hook registered for an event, so SessionStart carries BOTH the status adapter and

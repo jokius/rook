@@ -53,6 +53,14 @@ public enum AgentHooksInstall {
     /// `SessionStart` is the odd one out: it drives the CONVERSATION wrapper, not the status one — it is
     /// the event whose payload carries the agent's conversation id, which is what a restart needs to resume
     /// that conversation rather than open a blank one.
+    ///
+    /// `PostToolUse` additionally carries `--drainable`, which lets the wrapper answer the quit-time drain
+    /// flag with `exit 2` (Claude Code feeds a `PostToolUse` non-zero exit's stderr back to the model as a
+    /// blocking result). It rides an ARGUMENT rather than the hook payload's `hook_event_name` because
+    /// `PostToolUse` and `UserPromptSubmit` are otherwise argv-identical, and reading stdin on the
+    /// per-tool-call hot path is exactly what the wrapper was optimized to stop doing. The flag is
+    /// deliberately on this event ALONE: on `UserPromptSubmit` an `exit 2` erases the user's prompt, and on
+    /// `Stop` it FORBIDS the agent from stopping — the precise opposite of draining.
     struct ClaudeHook {
         let event: String
         let matcher: String?
@@ -62,7 +70,7 @@ public enum AgentHooksInstall {
 
     static let claudeHooks: [ClaudeHook] = [
         ClaudeHook(event: "UserPromptSubmit", matcher: nil, script: wrapperName, args: "active --blink"),
-        ClaudeHook(event: "PostToolUse", matcher: nil, script: wrapperName, args: "active --blink"),
+        ClaudeHook(event: "PostToolUse", matcher: nil, script: wrapperName, args: "active --blink --drainable"),
         ClaudeHook(event: "Stop", matcher: nil, script: wrapperName, args: "completed --auto-reset"),
         ClaudeHook(event: "Notification", matcher: "permission_prompt", script: wrapperName, args: "blocked"),
         ClaudeHook(event: "SessionStart", matcher: nil, script: sessionWrapperName, args: "claude --from-hook"),
@@ -109,7 +117,9 @@ public enum AgentHooksInstall {
     /// `existing` is the current file contents (nil or empty = no file yet); `scriptDir` is the
     /// directory the wrapper script was installed into. Returns the new JSON text and whether it
     /// differs from `existing`. Idempotent: when the rook hooks (detected by the wrapper command)
-    /// are already present, returns the input unchanged with `changed == false`. Unrelated hooks and
+    /// are already present WITH the arguments we install today, returns the input unchanged with
+    /// `changed == false`; an entry of ours carrying STALE arguments is rewritten IN PLACE rather than
+    /// duplicated, which is what lets an argument change reach a user who already has the hook. Unrelated hooks and
     /// keys are preserved; an absent/empty existing file starts from a fresh object, but a non-empty
     /// file that is not valid JSON throws `MergeError.malformedExistingSettings` so the caller can leave
     /// the user's hand-maintained file untouched rather than overwrite it.
@@ -120,11 +130,21 @@ public enum AgentHooksInstall {
         var didChange = false
         for hook in claudeHooks {
             var entries = hooks[hook.event] as? [[String: Any]] ?? []
-            if entries.contains(where: { entryUsesWrapper($0, scriptDir: scriptDir, script: hook.script) }) {
-                continue // already installed for this event
+            if let index = entries.firstIndex(where: {
+                entryUsesWrapper($0, scriptDir: scriptDir, script: hook.script)
+            }) {
+                // ours already, but possibly with stale arguments: rewrite it in place rather than
+                // appending a duplicate that would fire the wrapper twice per event.
+                if entryMatchesCurrentCommand(entries[index], scriptDir: scriptDir,
+                                              script: hook.script, args: hook.args) {
+                    continue // up to date
+                }
+                entries[index] = hookEntry(scriptDir: scriptDir, script: hook.script, args: hook.args,
+                                           matcher: hook.matcher)
+            } else {
+                entries.append(hookEntry(scriptDir: scriptDir, script: hook.script, args: hook.args,
+                                         matcher: hook.matcher))
             }
-            entries.append(hookEntry(scriptDir: scriptDir, script: hook.script, args: hook.args,
-                                     matcher: hook.matcher))
             hooks[hook.event] = entries
             didChange = true
         }
@@ -369,13 +389,25 @@ public enum AgentHooksInstall {
         return entry
     }
 
-    // does a hook entry already invoke THIS script (idempotency probe, by script path)? It is probed per
+    // does a hook entry already invoke THIS script (identity probe, by script path)? It is probed per
     // script, not per directory: `SessionStart` runs a different script than the status events, so a
     // directory-wide probe would either re-add it on every install or skip it forever.
     private static func entryUsesWrapper(_ entry: [String: Any], scriptDir: String, script: String) -> Bool {
         let probe = scriptPath(scriptDir: scriptDir, script: script)
         guard let commands = entry["hooks"] as? [[String: Any]] else { return false }
         return commands.contains { ($0["command"] as? String)?.contains(probe) == true }
+    }
+
+    // is this entry's command byte-identical to what we would install today? Identity alone (above) is
+    // NOT enough for the idempotency decision: it ignores the ARGUMENTS, so an entry installed by an older
+    // rook kept its stale args forever and no re-install could ever fix them — a `--drainable` added to
+    // `claudeHooks` would reach nobody who already had the hook. This is what separates "leave it alone"
+    // from "rewrite it in place".
+    private static func entryMatchesCurrentCommand(_ entry: [String: Any], scriptDir: String,
+                                                   script: String, args: String) -> Bool {
+        let expected = shellQuote(scriptPath(scriptDir: scriptDir, script: script)) + " " + args
+        guard let commands = entry["hooks"] as? [[String: Any]] else { return false }
+        return commands.contains { ($0["command"] as? String) == expected }
     }
 
     // parse existing JSON into a dictionary. absent/empty/whitespace-only → fresh empty object; a
