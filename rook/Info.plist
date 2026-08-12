@@ -34,8 +34,36 @@
 	<string>public.app-category.developer-tools</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Umputun</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Command-line tools you run inside Rook (for example, an osascript one-liner or a build script) request permission to control other apps through Rook.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Command-line tools you run inside Rook request Bluetooth access through Rook.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Command-line tools you run inside Rook request access to your calendars through Rook.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Command-line tools you run inside Rook request access to your calendars through Rook.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>Command-line tools you run inside Rook request permission to add events to your calendars through Rook.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Command-line tools you run inside Rook (for example, ffmpeg capturing video) request camera access through Rook.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Command-line tools you run inside Rook request access to your contacts through Rook.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Command-line tools you run inside Rook (for example, connecting to a .local host) request local network access through Rook.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Command-line tools you run inside Rook request your location through Rook.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Command-line tools you run inside rook (for example, voice dictation in Claude Code) request microphone access through rook.</string>
+	<string>Command-line tools you run inside Rook (for example, voice dictation in Claude Code) request microphone access through Rook.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Command-line tools you run inside Rook (for example, osxphotos) request access to your photo library through Rook.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Command-line tools you run inside Rook request access to your reminders through Rook.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>Command-line tools you run inside Rook request access to your reminders through Rook.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Command-line tools you run inside Rook request speech recognition through Rook.</string>
+	<key>NSSystemAdministrationUsageDescription</key>
+	<string>Command-line tools you run inside Rook (for example, dscl editing a directory record) request permission to change system configuration through Rook.</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
