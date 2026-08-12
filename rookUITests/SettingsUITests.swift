@@ -172,6 +172,20 @@ final class SettingsUITests: XCTestCase {
                       "moving the scroll-speed slider should persist a >3 mouseScrollMultiplier to settings.json")
     }
 
+    func testCommandWClosesTheSettingsWindowNotTheSession() throws {
+        // close_session owns ⌘W app-wide, so ⌘W over Settings used to reach the deck behind it.
+        app.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(poll { self.sessionRowCount() == 2 }, "⌘N should add a second session")
+
+        let control = settingsControl(tab: "General", control: "settings-confirm-close-session")
+
+        app.typeKey("w", modifierFlags: .command)
+
+        XCTAssertTrue(poll({ !control.exists }, timeout: 10), "⌘W should close the Settings window")
+        // both rows still readable is also the window-survival oracle: they render inside it.
+        XCTAssertEqual(sessionRowCount(), 2, "⌘W over Settings must leave the terminal sessions alone")
+    }
+
     // MARK: - Helpers
 
     /// Opens the Settings window (Cmd+,) if needed, switches to `tab`, and returns the control with
@@ -196,6 +210,10 @@ final class SettingsUITests: XCTestCase {
         }
         XCTFail("Settings '\(tab)' control '\(control)' never became hittable", file: file, line: line)
         return target
+    }
+
+    private func sessionRowCount() -> Int {
+        app.staticTexts.matching(identifier: "session-row").count
     }
 
     private func poll(_ condition: () -> Bool, timeout: TimeInterval = 5) -> Bool {

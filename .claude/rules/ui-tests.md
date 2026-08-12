@@ -127,10 +127,13 @@ paths:
   testing, and never "in parallel/background" (background only hides the output,
   not the on-screen event synthesis).
   Host-free `swift test` is fine anytime (no screen interaction).
-- **Dismiss the Settings window by ITS OWN close button, never ⌘W.**
-  ⌘W reaches the app's Close Session command and takes the seeded session with it — which a session-row-count
-  oracle reads as a workspace COLLAPSE rather than as a closed session, so the test fails for the wrong
-  reason (or worse, passes for it).
+- **Dismiss the Settings window by ITS OWN close button.**
+  ⌘W closes it too now and leaves the deck alone — pinned by
+  `SettingsUITests.testCommandWClosesTheSettingsWindowNotTheSession` — but ONLY while Settings is the KEY
+  window.
+  The reopen path can leave it open and non-key, and there ⌘W reaches the terminal window behind it and
+  takes the seeded session with it — which a session-row-count oracle reads as a workspace COLLAPSE rather
+  than as a closed session, so the test fails for the wrong reason (or worse, passes for it).
   Target the window by a control that only that tab has:
   `app.windows.containing(.any, identifier: <a control on the tab>).firstMatch.buttons[XCUIIdentifierCloseWindow].click()`
   (see `SidebarUITests.testWorkspaceRowClickStopsTogglingAfterLiveSettingsFlip`).

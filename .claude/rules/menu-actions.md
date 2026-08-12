@@ -231,6 +231,17 @@ paths:
   quick terminal was up, closing the window instead of the cover.
   `AppStore.currentWorkspaceID`/`defaultWorkspaceName` are the host-free placement/naming helpers behind
   New Session / New Workspace.
+- The menu item diverts to a plain `performClose` when the key window is NOT a rook terminal window —
+  Settings, the About panel, an open/save panel.
+  `applyCloseSessionChord` takes ⌘W off the stock File ▸ Close item while `close_session` owns the chord,
+  so without this rung the keystroke falls through to the deck behind the panel and takes a session with it.
+  The predicate is `WindowRegistry.shared.contains`, the same one `CustomCommandRunner` uses.
+  A `nil` key window still runs the deck sequence: with every window minimized the equivalent still
+  dispatches, and `performClose` on nothing would make ⌘W silently no-op.
+  The divert is gated on `close_session` still holding ⌘W (`closeSessionOwnsCommandW`) — the same condition
+  `applyCloseSessionChord` splits on.
+  Rebound off it, the chord belongs to whoever claims it: the stock item takes ⌘W back only when NO built-in
+  owns it (`anyBuiltinOwns`), so the new chord keeps its labelled meaning either way.
 - **Closing the ACTIVE session returns to the MOST-RECENTLY-ACTIVE survivor, not the positional neighbor**
   (Discussion #147).
   The shared host-free `AppStore.closeReselectionTarget(after:)` (`AppStore+CloseReselection.swift`, used by
