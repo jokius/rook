@@ -2462,7 +2462,8 @@
                 re-spawns a fresh login shell in its saved directory. The optional
                 <strong style="color: #e6e1d7">Restore running commands on restart</strong> toggle (General settings, off by
                 default) re-runs the command each pane had in the foreground at the last clean quit — a re-run, not a reattach.
-                Only a single-process command restores faithfully; a force-quit or crash captures nothing; and the multiplexers in
+                Only a single-process command restores faithfully; a force-quit or crash captures nothing, and a capture replays
+                exactly once, since the launch that arms it clears it from the state file; and the multiplexers in
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">restore-denylist.conf</span>
                 (seeded with tmux/screen/zellij) start fresh. A re-run coding agent comes back on a blank conversation unless
                 <strong style="color: #e6e1d7">Resume agent conversations</strong> is on as well.

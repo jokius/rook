@@ -1145,17 +1145,28 @@ struct AppStoreTests {
         let store = makeStore()
         let ws = store.addWorkspace(name: "work")
         let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        // split, because the capture path only ever records a split argv for a SHOWN split and the launch
+        // restore arms the split slot on the same condition.
+        session.isSplit = true
         session.foregroundCommand = ["ssh", "gate", "-p", "22"]
         session.splitForegroundCommand = ["tail", "-f", "/var/log/x"]
         let snap = store.snapshot()
         let snapped = snap.workspaces[0].sessions[0]
         #expect(snapped.foregroundCommand == ["ssh", "gate", "-p", "22"])
         #expect(snapped.splitForegroundCommand == ["tail", "-f", "/var/log/x"])
+        // the executable half of the round trip is quit → next-launch bootstrap; a non-launch rebuild
+        // deliberately drops the captured commands (see PersistenceTests' launch-restore seed gate).
         let restored = makeStore()
-        restored.restore(from: snap)
+        restored.restore(from: snap, launchRestore: true)
         let r = restored.workspaces[0].sessions[0]
-        #expect(r.foregroundCommand == ["ssh", "gate", "-p", "22"])
-        #expect(r.splitForegroundCommand == ["tail", "-f", "/var/log/x"])
+        // the TRANSIENT slots, never the persisted fields
+        #expect(r.pendingForegroundCommand == ["ssh", "gate", "-p", "22"])
+        #expect(r.pendingSplitForegroundCommand == ["tail", "-f", "/var/log/x"])
+        #expect(r.foregroundCommand == nil)
+        #expect(r.splitForegroundCommand == nil)
+        // re-snapshotting the restored store must not write the argv back — that is what makes the
+        // launch-time strip durable against any save landing before the surfaces consume it.
+        #expect(restored.snapshot().workspaces[0].sessions[0].foregroundCommand == nil)
     }
 
     @Test func legacySnapshotWithoutForegroundCommandDecodesNil() throws {

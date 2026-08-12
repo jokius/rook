@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // automatic tabbing removes AppKit's injected "Show Tab Bar" / "Show All Tabs" / "Move Tab to
         // New Window" menu items and the tab affordances. Must be set before any window is created.
         NSWindow.allowsAutomaticWindowTabbing = false
+        applyUITestAppearanceOverride()
         // NOTE: do NOT set NSApp.applicationIconImage. The app icon is the adaptive Icon Composer
         // `AppIcon.icon`, which the system renders LIVE in the Dock with the current appearance
         // (light/dark/clear/tinted, Liquid Glass). applicationIconImage takes a STATIC NSImage, so
@@ -67,8 +68,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             NSApp.activate()
         }
-        // Boot libghostty: init, config, app_new, 120fps tick.
+        // libghostty is already booted: `SettingsModel.init` touches `GhosttyApp.shared` during App.init,
+        // before NSApp exists. This keeps the dependency explicit ahead of the re-side below.
         _ = GhosttyApp.shared
+        // then re-side the config to the launch appearance, while NSApp exists and no scene has mounted —
+        // a dark launch otherwise strips the ROOK_* env, the restore replay and `--command` off every
+        // restored surface.
+        GhosttyApp.shared.syncLaunchColorScheme()
         scheduleRestoredWindowReconciliation(reason: "did-finish-launching")
         // AppKit auto-adds its own "Enter Full Screen" item (Globe+F / ⌃⌘F) to the View menu for any
         // fullscreen-capable window, and RE-INJECTS it each time the menu opens. rook ships its OWN
@@ -88,6 +94,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(keymapChanged),
                                                name: .rookKeymapChanged, object: nil)
         reconcileCloseSessionChord()
+    }
+
+    /// XCUITest-only seam: pin the LAUNCH appearance from `ROOK_UITEST_FORCE_APPEARANCE` (`light`/`dark`).
+    ///
+    /// The dark-launch config re-siding (`GhosttyApp.syncLaunchColorScheme`) runs in
+    /// `applicationDidFinishLaunching`, so a test covering it has to decide the side before that — and
+    /// XCUITest cannot: it inherits the machine's appearance, and `-AppleInterfaceStyle` would have to ride
+    /// launch ARGUMENTS, which hit FB11763863 here. `NSApp.appearance` moves `effectiveAppearance`, which is
+    /// what `GhosttyApp.currentIsDark()` reads. Ignored outside an isolated UI-test launch, like
+    /// `debug.appearance`, and exempt from the control keep-in-sync for the same reason: it is test
+    /// scaffolding, not a feature.
+    private func applyUITestAppearanceOverride() {
+        guard ContentView.isUITestLaunch,
+              let side = ProcessInfo.processInfo.environment["ROOK_UITEST_FORCE_APPEARANCE"],
+              side == "light" || side == "dark" else { return }
+        NSApp.appearance = NSAppearance(named: side == "dark" ? .darkAqua : .aqua)
     }
 
     @objc private func appDidBecomeActive(_: Notification) {
@@ -297,7 +319,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // BEFORE the snapshot save below, so a restored pane can re-run it. Only when the feature is on;
         // a force-quit/crash skips this (sessions + cwd still restore from the debounced snapshot).
         if settingsModel?.settings.restoreRunningCommand == true, let library {
-            captureForegroundCommands(library: library)
+            Self.captureForegroundCommands(sessions: library.allOpenSessions())
         }
         library?.finalizeAllPendingCloses()
         // flush every open window's store (per-window cwd changes since the last structural mutation
@@ -309,13 +331,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsModel?.flushPendingSaves()
     }
 
-    /// Capture every open pane's foreground command (main + split) into its `Session` fields, so the
+    /// Capture every given pane's foreground command (main + split) into its `Session` fields, so the
     /// snapshot save persists them for the next launch's restore. `ForegroundProcess` returns nil for a
     /// pane sitting at its shell prompt, so plain shells stay plain on restore.
+    ///
+    /// Takes a SESSION LIST rather than the library because it has two callers: the quit-time capture
+    /// above (every open session) and `WindowAccessor`'s `willClose`, which captures a closing window's
+    /// sessions BEFORE it tears their surfaces down. The quit-time capture alone runs too late for a
+    /// close-the-last-window exit — that teardown precedes `applicationWillTerminate`, so the capture
+    /// found no live surfaces and silently saved nil over every running command.
     @MainActor
-    private func captureForegroundCommands(library: WindowLibrary) {
+    static func captureForegroundCommands(sessions: [Session]) {
         let shellBasename = ProcessInfo.processInfo.environment["SHELL"].map(CommandRestore.basename)
-        for session in library.allOpenSessions() {
+        for session in sessions {
             if let view = session.surface as? GhosttySurfaceView {
                 session.foregroundCommand = ForegroundProcess.command(for: view, shellBasename: shellBasename)
             }

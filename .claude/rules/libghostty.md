@@ -69,6 +69,17 @@ paths:
   A zero-surface reload is chrome-correct: `reloadConfig` sets the APP scheme (`ghostty_app_set_color_scheme`)
   before `update_config`, so the CONFIG_CHANGE clone resolves to the applied side even with no surfaces —
   a dark launch re-sides the sidebar/titlebar before any surface exists.
+  **That re-side must also happen BEFORE the first surface is built, which is a separate obligation from
+  the chrome one and is what `GhosttyApp.syncLaunchColorScheme()` (called from `applicationDidFinishLaunching`,
+  ahead of the scenes mounting) exists for.**
+  A host-built config always resolves the DEFAULT light side, and `GhosttyApp` is constructed before `NSApp`
+  exists, so a dark launch would otherwise create every surface against a light-sided app config and have
+  libghostty REBUILD each surface's config from the files the moment the conditional state diverged.
+  A rebuild keeps only `working-directory` and DROPS the per-surface `env_vars`, `initial_input` and
+  `command` — so every restored session came up with no `ROOK_*` (a session-scoped `rookctl` loses its
+  self-addressing and the agent skill breaks), no replayed restore command, and no `session.new --command`.
+  The failure is silent and reads as "rookctl suddenly can't see the session", which is why the fix is a
+  launch-time re-side rather than anything at the surface level.
   The chrome retints on the same reload, but NOT from the host-loaded config: `ghostty_config_get` on
   a config the host built always reads the DEFAULT (light) conditional side — there is no C API to
   re-side a host config.

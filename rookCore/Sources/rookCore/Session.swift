@@ -268,10 +268,11 @@ public final class Session: Identifiable {
     /// shell). `@ObservationIgnored`; transient, never persisted.
     @ObservationIgnored public var wasRestored = false
 
-    /// The main pane's foreground command (full argv) captured at the last clean quit, for the
-    /// restore-running-command feature. `@ObservationIgnored`: written imperatively by the quit-flush
-    /// capture and read once by the surface factory on restore (then cleared, like `scratchCommand`).
-    /// Persisted via `SessionSnapshot.foregroundCommand`; nil when the pane was at its prompt.
+    /// The main pane's foreground command (full argv) captured at the last app EXIT, for the
+    /// restore-running-command feature. `@ObservationIgnored`: written imperatively by the exit capture
+    /// and read back by the next launch's restore, which MOVES it into `pendingForegroundCommand` and
+    /// leaves this nil. Persisted via `SessionSnapshot.foregroundCommand`; nil when the pane was at its
+    /// prompt — and nil at runtime, since only an exit capture ever fills it.
     @ObservationIgnored public var foregroundCommand: [String]?
     /// The split (right) pane's foreground command (full argv), the split analogue of `foregroundCommand`.
     @ObservationIgnored public var splitForegroundCommand: [String]?
@@ -300,6 +301,16 @@ public final class Session: Identifiable {
     /// Armed only when the restored snapshot's split was SHOWN (`isSplit`): a hidden split builds no right
     /// surface at bootstrap, so a payload left pending would fire on a later manual ⌘D instead.
     @ObservationIgnored public var pendingSplitRestoreCommand: String?
+
+    /// The main pane's TRANSIENT captured foreground command for THIS launch, MOVED out of the persisted
+    /// `foregroundCommand` by an app-bootstrap restore and consumed by the surface factory. Never
+    /// serialized by `sessionSnapshot`, which is what makes the launch-time strip durable: the persisted
+    /// field goes nil the moment the replay is armed, so no save landing before the surface spawns can
+    /// write the argv back over the file `WindowLibrary.loadStore` just cleaned.
+    @ObservationIgnored public var pendingForegroundCommand: [String]?
+    /// The split analogue of `pendingForegroundCommand`, armed only when the restored split was SHOWN
+    /// (`isSplit`) — a hidden split builds no right surface at bootstrap.
+    @ObservationIgnored public var pendingSplitForegroundCommand: [String]?
 
     /// The agent conversation the main pane is running, reported by that agent's `SessionStart` hook over
     /// `session.agent`. Persisted via `SessionSnapshot.agentSession`; read on restore (with
@@ -746,13 +757,56 @@ public final class Session: Identifiable {
         }
     }
 
-    /// Drops both unconsumed override payloads, leaving the persisted fields alone. Called where a live
-    /// `Session` object leaves the tree but may come back as the SAME object (the soft-close grace window):
-    /// a payload armed at bootstrap and never consumed would otherwise survive the round trip and fire when
-    /// the reinserted session's surface is finally built.
+    /// MOVES the persisted one-shot foreground captures into the transient pending slots, arming them for
+    /// THIS launch. Paired with `armPendingRestoreOverrides()` and called from the same single gate — only
+    /// `AppStore.restore(from:launchRestore: true)`, so a mid-process window reload or Reopen Closed Item
+    /// arms nothing. A MOVE, not a copy: `sessionSnapshot` serializes the persisted fields but not the
+    /// pending ones, so leaving the argv in place would let any save landing before the surface spawns
+    /// rewrite what `WindowLibrary.loadStore`'s launch strip just removed from disk.
+    /// The split's capture is armed only when the split was SHOWN, matching the pin rule and the capture
+    /// side; a hidden split's argv is dropped rather than left to fire on a later manual ⌘D.
+    public func armPendingForegroundCommands() {
+        pendingForegroundCommand = foregroundCommand
+        pendingSplitForegroundCommand = isSplit ? splitForegroundCommand : nil
+        foregroundCommand = nil
+        splitForegroundCommand = nil
+    }
+
+    /// Takes the pane's pending captured foreground command, clearing it so it fires exactly once — the
+    /// same consume-on-read rule as `takePendingRestoreOverride(pane:)`, and for the same reason: a
+    /// leftover payload would fire again when `makeSplitSurface` runs on a fresh mid-session ⌘D.
+    /// `.scratch` is never restored.
+    public func takePendingForegroundCommand(pane: StatusPane) -> [String]? {
+        switch pane {
+        case .left:
+            defer { pendingForegroundCommand = nil }
+            return pendingForegroundCommand
+        case .right:
+            defer { pendingSplitForegroundCommand = nil }
+            return pendingSplitForegroundCommand
+        case .scratch:
+            return nil
+        }
+    }
+
+    /// Drops the unconsumed CAPTURE payloads only, leaving the `session.restore` pins — persisted and
+    /// pending — armed. What `restore.clear` needs: it clears captures, and the launch arms them here
+    /// rather than in the persisted fields, so clearing those alone would leave a replay running.
+    public func clearPendingForegroundCommands() {
+        pendingForegroundCommand = nil
+        pendingSplitForegroundCommand = nil
+    }
+
+    /// Drops every unconsumed bootstrap payload — both override pins and both captured commands — leaving
+    /// the persisted fields alone. Called where a live `Session` object leaves the tree but may come back
+    /// as the SAME object (the soft-close grace window): a payload armed at bootstrap and never consumed
+    /// would otherwise survive the round trip and fire when the reinserted session's surface is finally
+    /// built.
     public func clearPendingRestoreOverrides() {
         pendingRestoreCommand = nil
         pendingSplitRestoreCommand = nil
+        pendingForegroundCommand = nil
+        pendingSplitForegroundCommand = nil
     }
 
     /// The surface currently on top and owning keyboard focus: an active overlay (full OR floating), else

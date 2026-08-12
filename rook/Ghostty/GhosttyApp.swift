@@ -184,6 +184,29 @@ final class GhosttyApp {
         ghostty_app_tick(app)
     }
 
+    /// Re-side the APP config to the launch appearance, BEFORE the first surface is created.
+    ///
+    /// libghostty rebuilds a surface's config whenever the app's conditional state differs from the
+    /// CONFIG's, and that rebuild replays the config FILES only: it carries `working-directory` over and
+    /// drops the per-surface `env_vars`, `initial_input` and `command` the host set on the struct. A
+    /// host-built config always resolves LIGHT, so on a dark launch with a dual `theme = light:,dark:`
+    /// every surface created before the first re-feed spawns with no `ROOK_*` (rookctl in that session
+    /// loses its self-addressing), no restore replay and no `session.new --command`. Only the
+    /// `update_config` round trip re-sides the stored app config — after it the two states match and
+    /// surfaces keep what they were built with. The KVO appearance reload does the same thing, but it is
+    /// debounced and lands well after the launch restore.
+    ///
+    /// Must run where `NSApp` exists (`GhosttyApp` is built from `SettingsModel.init` during `App.init`,
+    /// before that, so its own appearance read is always light) and before any scene mounts — which is
+    /// why `applicationDidFinishLaunching` calls it.
+    func syncLaunchColorScheme() {
+        guard let app, Self.currentIsDark(), let config else { return }
+        ghostty_app_set_color_scheme(app, GHOSTTY_COLOR_SCHEME_DARK)
+        ghostty_app_update_config(app, config)
+        // the reply carries the config libghostty APPLIED; take and free it so the box holds no stale clone.
+        if let derived = callbacks.takeDerivedAppConfig() { ghostty_config_free(derived) }
+    }
+
     /// Set the window translucency the chrome applies. Called by `SettingsModel` at launch and on
     /// every change; the actual window re-sync rides the `.rookAppearanceChanged` notification.
     func setWindowTranslucency(opacity: Double, blurRadius: Int) {

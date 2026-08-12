@@ -511,10 +511,16 @@ final class ControlServer {
     /// (consumed at restore); the SAVE is what wipes the on-disk copy from the last quit, also closing
     /// the force-quit re-fire window. Drives `restore.clear` / `rookctl restore clear`. App-global like
     /// `keymap.reload` (no `--window` selector — it clears every open window).
+    ///
+    /// Also disarms the PENDING capture slots, where a launch restore parks the argv until each surface
+    /// mounts: the socket binds before the later windows' decks have mounted, so a clear arriving in that
+    /// gap would answer ok and then watch those windows run the commands anyway. The `session.restore`
+    /// pins are deliberately untouched — they are sticky, and this command clears captures.
     func clearRestoreCommands() -> ControlResponse {
         for session in library.allOpenSessions() {
             session.foregroundCommand = nil
             session.splitForegroundCommand = nil
+            session.clearPendingForegroundCommands()
         }
         library.saveAllOpen()
         return ControlResponse(ok: true)

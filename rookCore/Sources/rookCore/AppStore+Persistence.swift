@@ -41,10 +41,12 @@ extension AppStore {
     /// If the persisted `selectedSessionID` points
     /// at a session that no longer exists, it is cleared to keep selection valid.
     ///
-    /// `launchRestore` marks an APP-BOOTSTRAP restore and is the ONLY thing that arms a persisted
-    /// `session.restore` override for this launch (`Session.armPendingRestoreOverrides()`). It defaults to
-    /// false because this method has RUNTIME callers too: reopening a closed window mid-process reloads its
-    /// store through here, and that must not execute anything.
+    /// `launchRestore` marks an APP-BOOTSTRAP restore and is the ONLY thing that arms anything EXECUTABLE:
+    /// a persisted `session.restore` override (`Session.armPendingRestoreOverrides()`) and the captured
+    /// `foregroundCommand`/`splitForegroundCommand` (persisted only by an app-exit capture, but a stale
+    /// file could still carry one). It defaults to false because this method has RUNTIME callers too:
+    /// reopening a closed window mid-process reloads its store through here, and that must not execute
+    /// anything.
     public func restore(from snapshot: Snapshot, launchRestore: Bool = false) {
         freshWorkspaceID = nil // live create-time state, never restored from disk
         // fold workspaces sharing an id into the first occurrence, and keep only the first snapshot of any
@@ -55,7 +57,23 @@ extension AppStore {
             let sessions = workspaceSnapshot.sessions
                 .filter { seenSessionIDs.insert($0.id).inserted }
                 .map(session(from:))
-            if launchRestore { for session in sessions { session.armPendingRestoreOverrides() } }
+            if launchRestore {
+                for session in sessions {
+                    session.armPendingRestoreOverrides()
+                    // into the TRANSIENT slots, leaving the persisted fields nil: `sessionSnapshot`
+                    // serializes those, so arming them would let any save before the surface spawns
+                    // rewrite the argv `WindowLibrary.loadStore`'s launch strip just removed from disk.
+                    session.armPendingForegroundCommands()
+                }
+            } else {
+                // the window-close capture persists a live argv, so a RUNTIME rebuild (a mid-process
+                // window reopen, Reopen Closed Item) would otherwise replay a command with no quit at
+                // all — against the clean-quit-only contract. Only a launch bootstrap may carry it.
+                for session in sessions {
+                    session.foregroundCommand = nil
+                    session.splitForegroundCommand = nil
+                }
+            }
             if let existing = restored.firstIndex(where: { $0.id == workspaceSnapshot.id }) {
                 restored[existing].sessions.append(contentsOf: sessions)
                 return

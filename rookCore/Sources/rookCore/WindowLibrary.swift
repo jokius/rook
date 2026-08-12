@@ -379,17 +379,68 @@ public final class WindowLibrary {
         if let existing = stores[id] { return existing }
         let persistence = persistenceStore(for: id)
         let store = makeStore(for: id, persistence: persistence)
-        // `launchRestore` arms each session's pending restore-command pin, and ONLY a launch restore may:
-        // reopening a closed window mid-run (ContentView's resolveStore) must not re-run a pinned command
-        // the user is not expecting. `isBootstrapping` already draws exactly that line for the event ring.
-        store.restore(from: persistence.load(), launchRestore: isBootstrapping)
+        // `launchRestore` arms each session's pending restore-command pin AND the captured foreground
+        // command, and ONLY a launch restore may: reopening a closed window mid-run (ContentView's
+        // resolveStore) must not re-run anything the user is not expecting. `isBootstrapping` already
+        // draws exactly that line for the event ring.
+        let snapshot = persistence.load()
+        store.restore(from: snapshot, launchRestore: isBootstrapping)
         stores[id] = store
+        if Self.carriesCaptures(snapshot) {
+            if isBootstrapping {
+                // the replay is armed in the sessions' TRANSIENT slots, which `sessionSnapshot` never
+                // serializes, so strip the FILE now and nothing can put the argv back: the persisted
+                // fields are already nil, and a save landing before the surfaces spawn writes that nil.
+                // Without the strip the argv would outlive its one replay whenever no save happens at
+                // all, and a crash would run it again next launch. If the strip fails, DISARM instead:
+                // losing a restore to a disk error beats re-running the user's command unasked.
+                if !stripCaptures(from: snapshot, into: persistence) {
+                    for session in store.workspaces.flatMap(\.sessions) {
+                        session.clearPendingForegroundCommands()
+                    }
+                }
+            } else {
+                // the launch-only gate just dropped the captured foreground commands from the LIVE
+                // sessions; rewrite the snapshot too, or the stale argv survives on disk and a
+                // force-quit before the next save replays it on the following launch — after the user
+                // last saw this window as a plain shell.
+                store.save()
+            }
+        }
         // opening a window makes its whole tree observable for the first time. During `bootstrap()` the
         // sink is dead, so a launch restore emits nothing — only a genuine (re)open reaches the ring.
         store.emitAllSessionsCreated()
         store.scheduleTreeChanged()
         saveIndex()
         return store
+    }
+
+    /// Whether a loaded snapshot carries any one-shot foreground capture — the gate on both the mid-run
+    /// write-back above and the launch-time strip, so neither rewrites a file that has nothing to clean.
+    private static func carriesCaptures(_ snapshot: Snapshot) -> Bool {
+        snapshot.workspaces.contains { workspace in
+            workspace.sessions.contains { $0.foregroundCommand != nil || $0.splitForegroundCommand != nil }
+        }
+    }
+
+    /// Rewrites `snapshot` without the one-shot foreground captures, leaving every other field — including
+    /// the sticky `restoreCommand` override, which fires again on the next launch. Returns whether the
+    /// write landed; the caller disarms the live sessions when it did not.
+    private func stripCaptures(from snapshot: Snapshot, into persistence: PersistenceStore) -> Bool {
+        var stripped = snapshot
+        for workspaceIndex in stripped.workspaces.indices {
+            for sessionIndex in stripped.workspaces[workspaceIndex].sessions.indices {
+                stripped.workspaces[workspaceIndex].sessions[sessionIndex].foregroundCommand = nil
+                stripped.workspaces[workspaceIndex].sessions[sessionIndex].splitForegroundCommand = nil
+            }
+        }
+        do {
+            try persistence.save(stripped)
+            return true
+        } catch {
+            log("stripCaptures failed: \(error)")
+            return false
+        }
     }
 
     @discardableResult
@@ -428,7 +479,16 @@ public final class WindowLibrary {
         store.emitAllSessionsClosed()
         store.scheduleTreeChanged()
         stores[id] = nil
-        if frontmostWindowID == id { frontmostWindowID = activeWindowID }
+        // the persisted `frontmost` is what the next launch's never-windowless `reopen` fallback picks,
+        // and nil there sends it to `windows.first` — the OLDEST library entry, whose stale file would
+        // replay instead of the exit window's just-captured commands. Pin unconditionally on the close
+        // that empties the open set (also repairing a frontmost left nil or stale by `removeWindow`);
+        // otherwise hand it to a live window, which guards on the store being loaded.
+        if openIDs().isEmpty {
+            frontmostWindowID = id
+        } else if frontmostWindowID == id {
+            frontmostWindowID = activeWindowID
+        }
         saveIndex()
     }
 
@@ -608,7 +668,23 @@ public final class WindowLibrary {
         // append ALL infos FIRST — loadStore(for:) guards on `windows.contains(id)`, so loading a
         // store before the append would silently no-op.
         windows.append(contentsOf: infos)
-        for info in infos { loadStore(for: info.id) }
+        for info in infos {
+            guard let store = loadStore(for: info.id) else { continue }
+            // recovery cannot tell a deliberately-closed window's surviving file from one open at the
+            // index loss (a per-window snapshot carries no open marker), and a stale file — written by an
+            // older build, or an exit capture resurrected abnormally — may carry a command the user last
+            // saw closed. Drop the one-shot captures and persist; the sticky `session.restore` override
+            // stays armed (the user pinned it to fire on every restart). Disarm the TRANSIENT slots:
+            // `loadStore` armed those, not the persisted fields, so clearing the latter here would leave
+            // every recovered window's capture live and replaying.
+            var stripped = false
+            for session in store.workspaces.flatMap(\.sessions)
+            where session.pendingForegroundCommand != nil || session.pendingSplitForegroundCommand != nil {
+                session.clearPendingForegroundCommands()
+                stripped = true
+            }
+            if stripped { store.save() }
+        }
         frontmostWindowID = infos.first?.id
         saveIndex()
         return true

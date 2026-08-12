@@ -264,15 +264,17 @@ struct rookApp: App {
                                     library: WindowLibrary) -> GhosttySurfaceView {
         // `initialCommand` (from `session.new --command`) runs as the surface's process instead of the
         // login shell; on its exit the surface's onExit (below) closes the single session, like kitty.
-        // restore-running-command: `foregroundCommand` (a distinct child captured at quit) is consumed
-        // run-once here; the persisted `initialCommand` is the durable creation identity (re-emitted by every
-        // `snapshot()`). A command that exec-replaces the shell is invisible to libghostty's foreground pid
-        // (nil), so it is never captured and restores via the exec `command` path (preserving close-on-exit).
+        // restore-running-command: the captured foreground (a distinct child captured at the app exit) is
+        // consumed run-once here, from the TRANSIENT pending slot the launch restore armed — the persisted
+        // field is already nil, so no save before this point can resurrect it. The persisted
+        // `initialCommand` is the durable creation identity (re-emitted by every `snapshot()`). A command
+        // that exec-replaces the shell is invisible to libghostty's foreground pid (nil), so it is never
+        // captured and restores via the exec `command` path (preserving close-on-exit).
         // The gate + precedence (fresh-always-runs, restored-honors-toggle, a captured foreground preempts
         // `initialCommand` even when denylist-suppressed) is the host-free `CommandRestore.restorePlan`.
-        let hadForeground = session.foregroundCommand != nil
-        let restoreInput = Self.restoreInitialInput(session.foregroundCommand, agent: session.agentSession)
-        session.foregroundCommand = nil
+        let pendingForeground = session.takePendingForegroundCommand(pane: .left)
+        let hadForeground = pendingForeground != nil
+        let restoreInput = Self.restoreInitialInput(pendingForeground, agent: session.agentSession)
         // the pin is consumed here, ONCE: `takePendingRestoreOverride` empties the transient slot that a
         // launch-time restore armed, so a later respawn of this pane (the shell exited, ⌘D re-opened it)
         // comes up as a plain shell rather than re-running the pinned line unasked.
@@ -464,9 +466,8 @@ struct rookApp: App {
         // the parent session's window/workspace/session ids in the env.
         // restore-running-command: re-run the split pane's captured foreground command via initial_input
         // (consumed run-once). Splits never carry an `initialCommand`, so no mutual-exclusion guard.
-        let captured = Self.restoreInitialInput(session.splitForegroundCommand,
+        let captured = Self.restoreInitialInput(session.takePendingForegroundCommand(pane: .right),
                                                 agent: session.splitAgentSession)
-        session.splitForegroundCommand = nil
         // same consume-once pin as the main pane; a split carries no `initialCommand`, so it needs only
         // the input half of the decision rather than the whole `restorePlan`.
         let restoreInput = CommandRestore.restoreInput(

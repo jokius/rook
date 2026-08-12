@@ -10,6 +10,7 @@ final class RestoreCommandUITests: XCTestCase {
     private var app: XCUIApplication!
     private var stateDir: URL!
     private var marker: URL!
+    private var envProbe: URL!
     private var socketPath: String!
 
     override func setUp() async throws {
@@ -18,6 +19,7 @@ final class RestoreCommandUITests: XCTestCase {
             .appendingPathComponent("rook-uitest-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
         marker = stateDir.appendingPathComponent("restore-marker")
+        envProbe = stateDir.appendingPathComponent("env-probe")
         app = XCUIApplication()
         app.launchEnvironment["ROOK_STATE_DIR"] = stateDir.path
         // short socket path in the runner's temp dir: under the ~104-byte sun_path limit AND inside the
@@ -46,6 +48,78 @@ final class RestoreCommandUITests: XCTestCase {
 
         XCTAssertTrue(poll { FileManager.default.fileExists(atPath: self.marker.path) },
                       "restore should re-run the captured foreground `tee` command and recreate the marker")
+    }
+
+    /// On a DARK launch a conditional `theme = light:,dark:` made libghostty rebuild each surface's config
+    /// from the config FILES alone, dropping the injected `ROOK_*` and rook's `TERM_PROGRAM` identity (and,
+    /// on a restored pane, the replay). A session created LATER was unaffected, which is why this asserts
+    /// on the RESTORED one.
+    func testDarkLaunchWithDualThemeKeepsRestoredPaneEnvironment() throws {
+        seedDualTheme()
+        app.launchEnvironment["ROOK_UITEST_FORCE_APPEARANCE"] = "dark"
+        app.launchForUITest()
+        XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 20), "seeded session row")
+        gracefulQuit()
+
+        app.launchForUITest()
+        XCTAssertTrue(app.staticTexts["session-row"].firstMatch.waitForExistence(timeout: 20), "restored session row")
+        // the assertions below pass on a LIGHT launch too (no conditional mismatch, so no surface rebuild),
+        // so confirm the forced side actually took or the test proves nothing. The bare `debug.appearance`
+        // reads `lastAppliedIsDark`, which the dark launch's own seeding reload flips — debounced, so poll.
+        XCTAssertTrue(poll { self.appliedAppearance() == "dark" }, "the launch under test must be dark")
+        let probe = try XCTUnwrap(writeEnvProbe(), "the restored pane's shell should answer the env probe")
+        let fields = probe.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        XCTAssertEqual(fields.first, "rook", "a restored pane must keep rook's TERM_PROGRAM identity")
+        XCTAssertFalse(fields.last?.isEmpty ?? true, "a restored pane must keep its injected ROOK_SESSION_ID")
+    }
+
+    // Exiting by closing the LAST window must capture the running command like ⌘Q: the close path tears
+    // surfaces down in `willClose` BEFORE the auto-quit reaches `applicationWillTerminate`, so the
+    // quit-time capture alone finds no surfaces and silently dropped every running command — the
+    // `willClose` capture (skipped only under `isTerminating`) is what re-runs `tee` here.
+    func testWindowCloseExitCapturesRunningCommand() throws {
+        seedRestoreFlag(true)
+        app.launchForUITest()
+        runTeeMarker()
+
+        try FileManager.default.removeItem(at: marker)
+        let windowID = try firstWindowID()
+        XCTAssertEqual(try sendCommand(#"{"cmd":"window.close","target":"\#(windowID)"}"#)["ok"] as? Bool,
+                       true, "closing the last window begins the auto-quit exit")
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 15),
+                      "the app must auto-quit after its last window closes — relaunching over a hung exit would fake the capture")
+        app.launchForUITest()
+
+        XCTAssertTrue(poll { FileManager.default.fileExists(atPath: self.marker.path) },
+                      "a close-the-window exit must capture the running `tee` and re-run it on relaunch")
+    }
+
+    // the willClose capture is scoped to the app-exit close, so closing a NON-last window persists no
+    // capture at all — and a mid-process reopen comes back a plain shell (replay is clean-exit →
+    // next-launch only).
+    func testWindowCloseCapturedCommandDoesNotReplayOnMidRunReopen() throws {
+        seedRestoreFlag(true)
+        app.launchForUITest()
+        runTeeMarker()
+        let windowID = try firstWindowID()
+
+        XCTAssertEqual(try sendCommand(#"{"cmd":"window.new"}"#)["ok"] as? Bool, true,
+                       "a second window keeps the app alive while the first is closed")
+        XCTAssertEqual(try sendCommand(#"{"cmd":"window.close","target":"\#(windowID)"}"#)["ok"] as? Bool, true,
+                       "closing the tee-running window while another stays open is NOT the app exit")
+        XCTAssertTrue(capturedForegroundCommands().isEmpty,
+                      "a non-last-window close must persist no capture — its stale argv could replay via the launch fallback: \(capturedForegroundCommands())")
+        try FileManager.default.removeItem(at: marker)
+        XCTAssertEqual(try sendCommand(#"{"cmd":"window.select","target":"\#(windowID)"}"#)["ok"] as? Bool, true,
+                       "selecting the closed window reopens it in the same run")
+
+        // `session-row` is app-scoped and window 2 already shows one, so waiting for the FIRST match would
+        // resolve instantly against the wrong window — wait for both windows' rows instead.
+        XCTAssertTrue(poll { self.app.staticTexts.matching(identifier: "session-row").count >= 2 },
+                      "both windows' session rows present after the reopen")
+        RunLoop.current.run(until: Date().addingTimeInterval(3)) // give any (incorrect) replay a chance to fire
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path),
+                       "a mid-run window reopen must come back a plain shell — the captured `tee` must not re-run")
     }
 
     func testRestoreOffDoesNotReRun() throws {
@@ -293,6 +367,46 @@ final class RestoreCommandUITests: XCTestCase {
     private func seedRestoreFlag(_ on: Bool) {
         let json = #"{"restoreRunningCommand":\#(on)}"#
         try? Data(json.utf8).write(to: stateDir.appendingPathComponent("settings.json"))
+    }
+
+    /// Seed both theme slots + following, which makes the emitted ghostty config carry the CONDITIONAL
+    /// `theme = light:,dark:` — the config shape that triggers the per-surface config rebuild.
+    private func seedDualTheme() {
+        let json = #"{"restoreRunningCommand":true,"theme":"Builtin Light","darkTheme":"rook","#
+            + #""followSystemAppearance":true}"#
+        try? Data(json.utf8).write(to: stateDir.appendingPathComponent("settings.json"))
+    }
+
+    /// The side the app last applied, from the XCUITest-only bare `debug.appearance`; nil when unreadable.
+    private func appliedAppearance() -> String? {
+        guard let response = try? sendCommand(#"{"cmd":"debug.appearance"}"#) else { return nil }
+        return (response["result"] as? [String: Any])?["text"] as? String
+    }
+
+    /// Type a probe writing the focused shell's rook identity + session id into `envProbe`, retried like
+    /// `runTeeMarker` because a freshly realized surface's shell may not be reading yet. Polls the CONTENT
+    /// the caller asserts on, not the path: `> file` truncates before `printf` writes, so an existence poll
+    /// can return an empty file — and on a retry it would return the previous attempt's file instantly.
+    private func writeEnvProbe() -> String? {
+        for attempt in 0..<3 {
+            try? FileManager.default.removeItem(at: envProbe)
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+            if attempt > 0 { app.typeKey("u", modifierFlags: .control) }
+            app.typeText("printf '%s|%s' \"$TERM_PROGRAM\" \"$ROOK_SESSION_ID\" > \(envProbe.path)\n")
+            if poll({ (try? String(contentsOf: self.envProbe, encoding: .utf8))?.contains("|") == true },
+                    timeout: 6) {
+                return try? String(contentsOf: envProbe, encoding: .utf8)
+            }
+        }
+        return nil
+    }
+
+    /// The id of the only open window, for the close/reopen round trip.
+    private func firstWindowID() throws -> String {
+        let response = try sendCommand(#"{"cmd":"window.list"}"#)
+        let result = try XCTUnwrap(response["result"] as? [String: Any], "window.list should carry a result")
+        let windows = try XCTUnwrap(result["windows"] as? [[String: Any]], "result should list windows")
+        return try XCTUnwrap(windows.first?["id"] as? String, "at least one window expected: \(windows)")
     }
 
     /// Type `tee <marker>` into the focused terminal and confirm it created the marker (so it is the live

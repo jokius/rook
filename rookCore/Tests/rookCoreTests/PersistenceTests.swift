@@ -1014,6 +1014,15 @@ final class PersistenceTests {
         ])])
     }
 
+    /// A one-window snapshot whose single session carries the one-shot foreground captures an app-exit
+    /// capture would have written.
+    private func capturedSnapshot(id: UUID = UUID(), isSplit: Bool = true) -> Snapshot {
+        Snapshot(workspaces: [WorkspaceSnapshot(id: UUID(), name: "work", sessions: [
+            SessionSnapshot(id: id, customName: nil, cwd: "/tmp", isSplit: isSplit,
+                            foregroundCommand: ["tee", "/tmp/m"], splitForegroundCommand: ["tail", "-f"]),
+        ])])
+    }
+
     @Test func snapshotWrittenBeforeTheOverrideExistedStillDecodesWithNoPin() throws {
         // the format guard: the two keys are OPTIONAL and the snapshot version is unchanged, so a file from
         // a build that never heard of them loads with the tree intact and no pin (= the old behavior).
@@ -1091,6 +1100,85 @@ final class PersistenceTests {
         // the persisted pins are untouched, so the next launch fires them again
         #expect(session.restoreCommand == "npm run dev")
         #expect(session.splitRestoreCommand == "htop")
+    }
+
+    @Test func onlyALaunchRestoreArmsACapturedForegroundCommand() {
+        // the window-close capture persists a live foreground argv; a mid-process reopen (window.select /
+        // Open Window) or Reopen Closed Item rebuilds through here and must NOT carry it into the surface
+        // factory — that would re-execute the command with no quit, against the clean-exit-only replay.
+        let id = UUID()
+        let captured = capturedSnapshot(id: id)
+
+        let runtime = AppStore(persistence: store)
+        runtime.restore(from: captured)
+        let reloaded = try! #require(runtime.session(withID: id))
+        #expect(reloaded.pendingForegroundCommand == nil)
+        #expect(reloaded.pendingSplitForegroundCommand == nil)
+        #expect(reloaded.foregroundCommand == nil)       // and dropped from the live session outright,
+        #expect(reloaded.splitForegroundCommand == nil)  // so the window-file write-back has nil to save
+
+        let bootstrap = AppStore(persistence: store)
+        bootstrap.restore(from: captured, launchRestore: true)
+        let armed = try! #require(bootstrap.session(withID: id))
+        // the TRANSIENT slots, never the persisted fields: `sessionSnapshot` serializes those, so arming
+        // them would let a save before the surface spawns rewrite the argv the launch strip just removed.
+        #expect(armed.pendingForegroundCommand == ["tee", "/tmp/m"])
+        #expect(armed.pendingSplitForegroundCommand == ["tail", "-f"])
+        #expect(armed.foregroundCommand == nil)
+        #expect(armed.splitForegroundCommand == nil)
+    }
+
+    @Test func aHiddenSplitDropsItsCapturedCommandToo() {
+        // same rule as the pin: a split hidden at the last quit builds no right surface, so its argv must
+        // not sit armed waiting for a later manual ⌘D.
+        let id = UUID()
+        let app = AppStore(persistence: store)
+        app.restore(from: capturedSnapshot(id: id, isSplit: false), launchRestore: true)
+        let session = try! #require(app.session(withID: id))
+        #expect(session.pendingForegroundCommand == ["tee", "/tmp/m"])
+        #expect(session.pendingSplitForegroundCommand == nil)
+    }
+
+    @Test func takingAPendingCaptureConsumesItOnce() {
+        let session = Session(initialCwd: "/tmp")
+        session.isSplit = true
+        session.foregroundCommand = ["tee", "/tmp/m"]
+        session.splitForegroundCommand = ["tail", "-f"]
+        session.armPendingForegroundCommands()
+
+        #expect(session.takePendingForegroundCommand(pane: .left) == ["tee", "/tmp/m"])
+        #expect(session.takePendingForegroundCommand(pane: .left) == nil) // a second surface = a plain shell
+        #expect(session.takePendingForegroundCommand(pane: .right) == ["tail", "-f"])
+        #expect(session.takePendingForegroundCommand(pane: .right) == nil)
+        #expect(session.takePendingForegroundCommand(pane: .scratch) == nil) // never restored
+    }
+
+    @Test func clearPendingForegroundCommandsDropsBothCapturesAndKeepsTheRestorePins() {
+        // what restore.clear needs: the launch parks captures in the pending slots until each surface
+        // mounts, so clearing only the persisted fields would answer ok and still let them run. The
+        // session.restore pins are sticky and must survive.
+        let session = Session(initialCwd: "/repo")
+        session.pendingForegroundCommand = ["tee", "/tmp/m"]
+        session.pendingSplitForegroundCommand = ["tail", "-f", "/var/log/x"]
+        session.restoreCommand = "claude --resume main"
+        session.pendingRestoreCommand = session.restoreCommand
+
+        session.clearPendingForegroundCommands()
+        #expect(session.takePendingForegroundCommand(pane: .left) == nil)
+        #expect(session.takePendingForegroundCommand(pane: .right) == nil)
+        #expect(session.takePendingRestoreOverride(pane: .left) == "claude --resume main")
+        #expect(session.restoreCommand == "claude --resume main")
+    }
+
+    @Test func clearingPendingOverridesAlsoDropsTheCapturedCommands() {
+        // the soft-close grace window returns the SAME object, so an unconsumed capture armed at
+        // bootstrap must not survive the round trip and fire when the surface is finally built.
+        let session = Session(initialCwd: "/tmp")
+        session.pendingForegroundCommand = ["tee", "/tmp/m"]
+        session.pendingSplitForegroundCommand = ["tail", "-f"]
+        session.clearPendingRestoreOverrides()
+        #expect(session.pendingForegroundCommand == nil)
+        #expect(session.pendingSplitForegroundCommand == nil)
     }
 
     @Test func clearingPendingOverridesLeavesThePersistedPinsAlone() {

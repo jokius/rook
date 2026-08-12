@@ -39,6 +39,11 @@ never two bundles in one window.
   used to live in the dropped `rookApp.restoredStore()`); `closeWindow`/`renameWindow`/`removeWindow`
   (`canRemoveWindow` = count > 1, keep-at-least-one) mutate + persist; `openIDs()` is the persisted open-set
   for launch reopen.
+  A `closeWindow` that EMPTIES the open set pins `frontmostWindowID` to the closing window.
+  The persisted index then has no open entries, so the next launch takes `reopen`'s never-windowless
+  fallback — the pin makes it reopen the exit window (whose captured commands were just persisted by the
+  `willClose` capture), not `windows.first`, the oldest library entry.
+  It is UNCONDITIONAL on that close, so it also repairs a `frontmost` left nil or stale by `removeWindow`.
 - **Persistence layout**
   under `<stateDir>` (`ROOK_STATE_DIR`-aware, else `~/Library/Application Support/rook`):
   `windows.json` is the index, `windows/<uuid>.json` is each window's `Snapshot` (the same shape `workspaces.json`
@@ -86,6 +91,10 @@ never two bundles in one window.
   `ControlServer`/`SettingsModel`/`SessionSwitcher` are likewise wired to the library.
   `TitleProbeView` reports frontmost (`didBecomeKey/Main` → `library.frontmostWindowID` + `saveIndex()`)
   and close (`willClose` → tear down that window's surfaces + `library.closeWindow`).
+  That `willClose` is ALSO the second restore-running-command capture point: on the app-exit close
+  (`openIDs() == [windowID]`, not while `isTerminating`) it captures the live foreground commands BEFORE
+  the teardown, because a close-the-last-window exit reaches `applicationWillTerminate` only after the
+  surfaces are gone — see [[settings]] for the full capture/replay contract.
   The quit-flush replaces the dropped single-store `AppDelegate.store.save()`:
   `applicationWillTerminate` sets `library.isTerminating` (so the per-window `willClose` close-reporting
   can't zero the open-set as windows tear down on quit) then `library.saveAllOpen()` + `library.saveIndex()`

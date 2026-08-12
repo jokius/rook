@@ -372,11 +372,23 @@ paths:
   See the Control API catalog for the `config.reload` four-point audit.
 - **`restoreRunningCommand` (re-run the foreground command on restart, opt-in,
   General tab).** `AppSettings.restoreRunningCommand: Bool?` (nil = off) gates capturing each pane's
-  foreground command at clean quit and re-running it on the next launch.
+  foreground command at the app EXIT and re-running it on the next launch.
   NOT a ghostty key (`writeGhosttyConfig` no-ops, no surface reload).
-  CAPTURE: `AppDelegate.applicationWillTerminate` — only when the flag is on — walks every open store's
-  session surfaces and sets `Session.foregroundCommand`/`splitForegroundCommand` (persisted on `SessionSnapshot`)
-  BEFORE `saveAllOpen()`, via `ForegroundProcess.command(for:shellBasename:)` (`ghostty_surface_foreground_pid`
+  Both capture and replay are EXIT-SCOPED.
+  CAPTURE runs at two points through the same `AppDelegate.captureForegroundCommands(sessions:)` —
+  only when the flag is on:
+  `applicationWillTerminate` before `saveAllOpen()` (every open session), and the LAST window's
+  `willClose` before its surface teardown, guarded by `openIDs() == [windowID]` and skipped under
+  `isTerminating` (where the quit-time capture already ran, and a re-read could overwrite a good value
+  with nil for a foreground that exited in the meantime).
+  The second point is what preserves commands when the exit is close-the-last-window, whose teardown
+  precedes `applicationWillTerminate` — without it that exit silently saved nil over every running
+  command and the whole feature looked broken.
+  A NON-last window close captures nothing: such a capture has no correct consumer (a mid-run reopen is
+  gated below, and a launch restore can't tell that window's file from one open at exit, so the stale
+  argv could replay via the never-windowless reopen fallback).
+  The capture itself sets `Session.foregroundCommand`/`splitForegroundCommand` (persisted on `SessionSnapshot`)
+  via `ForegroundProcess.command(for:shellBasename:)` (`ghostty_surface_foreground_pid`
   → `sysctl(KERN_PROCARGS2)` → host-free `CommandRestore.parseProcArgs`;
   returns nil only for an IDLE shell-at-prompt via `CommandRestore.isIdleShell` — a known shell with
   NO payload argument after argv0, only option flags.
@@ -391,7 +403,26 @@ paths:
   is recognized too), so an idle pane captures nil and stays a plain shell — verified via `tree --json`.
   A force-quit/crash skips `applicationWillTerminate`, so it loses commands (sessions + cwd still restore
   from the debounced snapshot) — best-effort by design.
-  RESTORE: the surface factories (`makeSurface`/`makeSplitSurface`) read the persisted command,
+  REPLAY arms ONLY on a launch restore, and exactly ONCE.
+  `AppStore.restore(from:launchRestore:)` is the single gate: under `launchRestore` it calls
+  `Session.armPendingForegroundCommands()`, which MOVES the persisted capture into the TRANSIENT
+  `pendingForegroundCommand`/`pendingSplitForegroundCommand` (split only when `isSplit`, matching the
+  pin rule and the capture side) and leaves the persisted fields nil; every other rebuild — a mid-run
+  window reopen, Reopen Closed Item — DROPS the capture outright and comes back a plain shell.
+  `sessionSnapshot` serializes the persisted fields but not the pending ones, and
+  `WindowLibrary.loadStore` strips the FILE in the same step, so no save landing between arming and the
+  surface spawning can write the argv back — several do land there.
+  A crash can then cost a restore but never repeat one; a failed strip DISARMS the pending slots rather
+  than leaving a replay nothing recorded.
+  Anything else that must cancel an armed replay clears those slots too, never the persisted fields:
+  `recoverOrphanedWindows`, `Session.clearPendingRestoreOverrides` on the soft-close round trip, and
+  `restore.clear` (`Session.clearPendingForegroundCommands`), which the socket can receive before the
+  later windows' decks have mounted.
+  Defense-in-depth against STALE files (written by older builds, or an exit capture resurrected
+  abnormally): a mid-run reopen REWRITES the window snapshot when it carried captures, and
+  `recoverOrphanedWindows` drops captures from every recovered window — a corrupt index must not
+  re-execute a closed window's last command — while the sticky `session.restore` override still arms.
+  RESTORE: the surface factories (`makeSurface`/`makeSplitSurface`) take the PENDING command,
   gate on `GhosttyApp.shared.restoreRunningCommand` (mirrored by `SettingsModel.applyRestoreRunningCommand`,
   like `notificationBadgeEnabled`) + the host-free `CommandRestore.shouldRestore(argv:denylist:)` check
   against the user-editable `restore-denylist.conf` (NO built-in list — `SettingsModel.loadRestoreDenylist`
@@ -401,8 +432,8 @@ paths:
   `node server.js`, a REPL — restores), and feed it to the login shell via `config.initial_input` = `CommandRestore.shellQuotedLine(argv) + "\n"`
   (NOT `config.command`, which would replace the shell + close on exit; `initial_input` re-runs inside
   the shell so exit returns to a prompt).
-  The captured field is consumed run-once in the factory (read-then-nil,
-  like `scratchCommand`) so a later structural save can't re-fire it.
+  The pending slot is consumed run-once in the factory (`Session.takePendingForegroundCommand(pane:)`,
+  the same take-then-clear as `takePendingRestoreOverride`) so a fresh mid-session ⌘D can't re-fire it.
   The SAME toggle ALSO gates the OTHER restore path: a `session.new --command` session persists its command
   (`SessionSnapshot.initialCommand`) and re-runs it on restore via `config.command` (the shell-replacing,
   close-on-exit path — the opposite of the foreground path's `initial_input`), because a command that
