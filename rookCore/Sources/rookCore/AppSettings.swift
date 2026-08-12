@@ -268,6 +268,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// (`effectiveCloseGraceSeconds`, 5). An app-level behavior value read on demand by `AppActions`, NOT a
     /// ghostty key — it never appears in `ghosttyConfigLines()`.
     public var closeGraceSeconds: Double?
+    /// How long a quit waits for mid-turn agents to wrap up, in seconds; nil means the default
+    /// (`effectiveAgentQuitGraceSeconds`, 5) and 0 turns the drain off entirely. Deliberately NOT clamped
+    /// for a logout: a long budget there visibly stalls the system logout, which the Settings copy says
+    /// out loud, but the choice stays the user's. An app-level behavior value read on demand by
+    /// `AppDelegate`, NOT a ghostty key — it never appears in `ghosttyConfigLines()`.
+    public var agentQuitGraceSeconds: Double?
     /// Whether the visual "Closed X / Reopen" undo toast is shown during the grace window. nil means the
     /// default (on); the undo MECHANISM (⌘Z / Reopen Closed Item) works either way. An app-level chrome
     /// flag, NOT a ghostty key — it never appears in `ghosttyConfigLines()`.
@@ -327,7 +333,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 newSessionDirectory: String? = nil, newSessionCustomDirectory: String? = nil,
                 confirmCloseSession: Bool? = nil, confirmCloseOnlyRunningAgent: Bool? = nil,
                 closeGraceUndoEnabled: Bool? = nil,
-                closeGraceSeconds: Double? = nil, showUndoToast: Bool? = nil,
+                closeGraceSeconds: Double? = nil, agentQuitGraceSeconds: Double? = nil,
+                showUndoToast: Bool? = nil,
                 autoFollowAttention: String? = nil,
                 autoFollowStayOnActive: Bool? = nil, sidebarFontSize: Double? = nil,
                 interfaceFontSize: Double? = nil,
@@ -369,6 +376,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.confirmCloseOnlyRunningAgent = confirmCloseOnlyRunningAgent
         self.closeGraceUndoEnabled = closeGraceUndoEnabled
         self.closeGraceSeconds = closeGraceSeconds
+        self.agentQuitGraceSeconds = agentQuitGraceSeconds
         self.showUndoToast = showUndoToast
         self.autoFollowAttention = autoFollowAttention
         self.autoFollowStayOnActive = autoFollowStayOnActive
@@ -425,6 +433,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// when set, else the default of 5 (the fork's longer-than-upstream window). The single read point the
     /// app target uses.
     public var effectiveCloseGraceSeconds: TimeInterval { closeGraceSeconds ?? 5 }
+
+    /// The quit-time agent drain budget in seconds; `agentQuitGraceSeconds` when set, else the default
+    /// of 5 (safe for a system logout — loginwindow escalates to "rook prevented logout" well before it).
+    /// The single read point the app target uses.
+    public var effectiveAgentQuitGraceSeconds: TimeInterval { agentQuitGraceSeconds ?? 5 }
 
     /// The working directory a new session should open in. A non-blank `workspaceRoot` is a HARD override
     /// (the target workspace's own root directory wins over the global mode); otherwise it resolves the

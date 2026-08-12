@@ -307,6 +307,9 @@ final class SettingsModel {
     /// Persist the undo grace window in seconds a soft close keeps (nil = the 5s default). Read on demand
     /// by `AppActions` at close time — not a ghostty key, nothing renders it continuously — so it just saves.
     func setCloseGraceSeconds(_ value: Double?) { settings.closeGraceSeconds = value; try? settingsStore.save(settings) }
+    /// Persist how long a quit waits for mid-turn agents to wrap up (nil = the 5s default, 0 = off). Read on
+    /// demand by `AppDelegate` at quit time — not a ghostty key, nothing renders it — so it just saves.
+    func setAgentQuitGraceSeconds(_ value: Double?) { settings.agentQuitGraceSeconds = value; try? settingsStore.save(settings) }
     /// Persist whether the undo toast is shown after a GUI close (nil = on). Read live by `WindowContentView`
     /// to gate the toast overlay; not a ghostty key, so it just saves.
     func setShowUndoToast(_ value: Bool?) { settings.showUndoToast = value; try? settingsStore.save(settings) }
