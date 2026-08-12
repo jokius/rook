@@ -315,14 +315,19 @@ final class CustomCommandRunner {
     }
 
     /// Spawn the expanded command as a detached `/bin/sh -c`, exporting `$AGT_*` on top of the app's
-    /// environment and running in the session's cwd. A thrown spawn error or a non-zero exit posts a
-    /// failure banner; there is no output capture and no success banner.
+    /// environment and running in the session's cwd. `PATH` is widened first (`CommandPath`): the app's
+    /// own is launchd's, and `sh -c` runs no profile, so a bare `rookctl` would exit 127. A thrown spawn
+    /// error or a non-zero exit posts a failure banner; there is no output capture and no success banner.
     private func spawn(_ command: CustomCommand, context: CommandContext) {
         let line = context.expand(command.command)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = ["-c", line]
-        process.environment = ProcessInfo.processInfo.environment.merging(context.environment()) { _, new in new }
+        var environment = ProcessInfo.processInfo.environment.merging(context.environment()) { _, new in new }
+        environment["PATH"] = CommandPath.widened(environment["PATH"],
+                                                  bundledCLIDirectory: CLIInstaller.bundledTool?
+                                                      .deletingLastPathComponent().path)
+        process.environment = environment
         // fire-and-forget: no output capture, so pin stdio to /dev/null rather than inheriting the
         // app's fds (which vary by launch method).
         process.standardInput = FileHandle.nullDevice

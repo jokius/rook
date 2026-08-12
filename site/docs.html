@@ -1702,7 +1702,7 @@
                 >command</span
               >
               <span style="color: #f2b45c">"Lazygit"</span
-              >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ctrl+a&gt;g&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rookctl session overlay open lazygit
+              >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ctrl+a&gt;g&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rookctl session overlay open 'zsh -lc lazygit'
               --socket {AGT_SOCKET}<br /><span style="color: #5ea1f2">command</span>
               <span style="color: #f2b45c">"Deploy"</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;./deploy.sh
             </div>
@@ -1856,6 +1856,42 @@
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">lazygit</span> in an overlay
               (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">rookctl session overlay open</span>) or a scratch
               terminal, which have a real TTY. A non-zero exit posts a notification banner.
+            </div>
+            <div
+              style="
+                background: rgba(242, 180, 92, 0.07);
+                border: 1px solid rgba(242, 180, 92, 0.22);
+                border-radius: 10px;
+                padding: 16px 18px;
+                margin: 20px 0 0;
+                font-size: 14px;
+                color: #e2c79a;
+                line-height: 1.65;
+              "
+            >
+              <strong style="color: #f2b45c; font-family: &quot;JetBrains Mono&quot;, monospace">GUI PATH</strong> — a custom
+              command resolves its binaries against the app's GUI
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span>, not your shell's: the launchd default,
+              widened with the bundled <span style="font-family: &quot;JetBrains Mono&quot;, monospace">rookctl</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">/usr/local/bin</span> and
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">/opt/homebrew/bin</span>. So a bare
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">rookctl</span> and a bare Homebrew binary both work,
+              but nothing else your shell profile adds is there: a
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">~/bin</span> script, a version-manager shim, or a
+              Homebrew in a custom prefix fails with exit 127. Give those an absolute path, or wrap the line in
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">zsh -lc '…'</span> to pick up your login
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span> —
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">zsh -ilc '…'</span> when that
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span> is set in
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">~/.zshrc</span>, which
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">-lc</span> does not read and which is where a
+              version manager usually puts itself. The program an <strong style="color: #f2b45c">overlay terminal</strong> runs is
+              a separate case: it is launched by the terminal itself, not by the custom command, so it gets the app's own
+              unwidened <span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span> and needs an absolute path or
+              a login shell (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">rookctl session overlay open 'zsh -lc
+              lazygit'</span>) even for a Homebrew binary. A scratch terminal is not in that boat — its
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--command</span> is wrapped in the session's shell
+              as a login shell.
             </div>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 20px 0 0">
               Open the file with <strong style="color: #e6e1d7">File ▸ Edit Keymap…</strong> (or the ⌃⇧P palette): it opens in a

@@ -242,6 +242,22 @@ paths:
   a custom command bound to one is dropped via `reservedMonitorChords`).
   The palette shows a custom command's chord as raw kitty syntax (`cmd+shift+e`),
   not the ⌘⇧E glyphs built-ins use.
+- **The spawned command's `PATH` is WIDENED (`CommandPath.widened`, host-free + unit-tested).**
+  A launchd-started app (Dock, Spotlight, `open`) inherits `/usr/bin:/bin:/usr/sbin:/sbin`,
+  and the runner's `/bin/sh -c` is neither a login nor an interactive shell, so it never reaches
+  `path_helper` — a bare `rookctl` or Homebrew binary in a keymap line just exited 127,
+  with the shell's own diagnostic discarded by the `/dev/null` stdio.
+  `CustomCommandRunner.spawn` therefore rewrites `PATH` on the merged environment: the bundled CLI's
+  directory (`CLIInstaller.bundledTool` → `Contents/MacOS`) FIRST, the inherited PATH next,
+  then `CLIInstall.installDirectory` + `/opt/homebrew/bin` LAST, de-duplicated so an entry already
+  present keeps its own position.
+  The bundled binary goes first because it is there even when nothing is installed; which binary runs does
+  not decide which INSTANCE it drives — `--socket`, then `ROOK_STATE_DIR`, then Application Support resolve
+  that identically either way.
+  The widening covers ONLY the runner: the program an OVERLAY runs is spawned by the terminal through
+  libghostty's own `sh -c` wrapper and still gets the app's unwidened PATH (hence the shipped
+  `'zsh -lc lazygit'` example), while a SCRATCH `--command` is wrapped in the session's shell as a login
+  shell by `SurfaceCommand.resolve` and needs no wrapper.
 - **`{AGT_X}` tokens are substituted RAW into the `/bin/sh -c` line (`CommandContext.expand`).** This
   is the intended raw interpolation (convenient), NOT shell-quoted — so dynamic content like `{AGT_SELECTION}`
   can inject shell syntax.

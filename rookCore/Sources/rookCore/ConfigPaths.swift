@@ -60,10 +60,16 @@ public enum ConfigPaths {
         #       line is run via `/bin/sh -c`, detached with no terminal — so it suits fire-and-forget
         #       launches (GUI apps, scripts), NOT a bare interactive or full-screen TUI program, which
         #       has no TTY and exits at once. Launch a TUI over a session through an overlay terminal,
-        #       as the Lazygit example does. Examples:
+        #       as the Lazygit example does. The line resolves binaries against the app's GUI `PATH`:
+        #       the launchd default plus the bundled rookctl, /usr/local/bin and /opt/homebrew/bin.
+        #       A bare rookctl or Homebrew binary works; anything else your shell profile adds does
+        #       not, so give it an absolute path or wrap the line in `zsh -lc '...'` — `zsh -ilc '...'`
+        #       when that PATH comes from ~/.zshrc, which -lc does not read. The program an overlay
+        #       terminal runs gets the app's own unwidened PATH and always needs one of those.
+        #       Examples:
         #
         #           command "Open in Zed"  cmd+shift+e  open -a Zed "$AGT_SESSION_PWD"
-        #           command "Lazygit"      ctrl+a>g     rookctl session overlay open lazygit --socket "$AGT_SOCKET"
+        #           command "Lazygit"      ctrl+a>g     rookctl session overlay open 'zsh -lc lazygit' --socket "$AGT_SOCKET"
         #           command "Deploy"                    ./deploy.sh
         #
         # Built-in actions (raw name → shipped default chord):

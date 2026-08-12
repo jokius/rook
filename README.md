@@ -451,7 +451,7 @@ map ctrl+shift+k  command_palette
 
 # define custom commands ("name" shows in the palette; chord is optional)
 command "Open in Zed"  cmd+shift+e  open -a Zed {AGT_SESSION_PWD}
-command "Lazygit"      ctrl+a>g     rookctl session overlay open lazygit --socket {AGT_SOCKET}
+command "Lazygit"      ctrl+a>g     rookctl session overlay open 'zsh -lc lazygit' --socket {AGT_SOCKET}
 command "Deploy"                    ./deploy.sh
 ```
 
@@ -491,7 +491,11 @@ The shell line of a `command` may use these `{AGT_X}` tokens, expanded at fire t
 
 The context is resolved from the focused pane's session, so a custom command runs in that session's working directory and can read its current selection. `{AGT_PANE}` is the pane the shortcut fired from — `left` (main), `right` (split), or `scratch` (the session's scratch terminal) — so a script can route a follow-up `rookctl session type --pane "$AGT_PANE"` back into the very pane it was invoked in. A custom command runs as a detached `/bin/sh -c`; a non-zero exit (or a spawn failure) posts a notification banner. A launcher chord — one that references no session/workspace/selection token — still fires when its window has no sessions left (e.g. after an all-SSH window's connections drop), while a session-scoped chord does nothing in that state (its `{AGT_SESSION_PWD}` and friends would be empty).
 
-Because it runs detached with no controlling terminal, a custom command suits fire-and-forget launches — GUI apps (`open -a …`), scripts, one-off shell lines — not interactive or full-screen programs: a TUI like `lazygit` run bare has no TTY to draw into and exits immediately. The `Lazygit` example above launches it the right way, in an overlay terminal that *does* have a TTY (`rookctl session overlay open`, passing `{AGT_SOCKET}` so the CLI reaches this very app; add `--size-percent 80` for a floating panel instead of full-size). A per-session scratch terminal (`rookctl session scratch on --command lazygit`) works too.
+Because it runs detached with no controlling terminal, a custom command suits fire-and-forget launches — GUI apps (`open -a …`), scripts, one-off shell lines — not interactive or full-screen programs: a TUI like `lazygit` run bare has no TTY to draw into and exits immediately. The `Lazygit` example above launches it the right way, in an overlay terminal that *does* have a TTY (`rookctl session overlay open`, passing `{AGT_SOCKET}` so the CLI reaches this very app; add `--size-percent 80` for a floating panel instead of full-size). A per-session scratch terminal (`rookctl session scratch on --command lazygit`) works too, and needs no `zsh -lc` wrapper — a scratch's `--command` already runs under a login shell.
+
+A custom command resolves its binaries against the app's GUI `PATH`, not your shell's — the launchd default, widened with the bundled `rookctl`, `/usr/local/bin` and `/opt/homebrew/bin`. So a bare `rookctl` and a bare Homebrew binary both work, but nothing else your shell profile adds is there: a `~/bin` script, a version-manager shim, or a Homebrew in a custom prefix fails with exit 127. Give those an absolute path, or wrap the line in `zsh -lc '…'` to pick up your login `PATH` — `zsh -ilc '…'` when that `PATH` is set in `~/.zshrc`, which `-lc` does not read and which is where a version manager usually puts itself.
+
+The program an **overlay terminal** runs is a separate case: it is launched by the terminal itself, not by the custom command, so it gets the app's own unwidened `PATH` and needs an absolute path or a login shell (`rookctl session overlay open 'zsh -lc lazygit'`) even for a Homebrew binary. A scratch terminal is not in that boat — its `--command` is wrapped in the session's shell as a login shell.
 
 A `{AGT_X}` token is substituted **raw** into the shell line — convenient, but unsafe for content you don't control. `{AGT_SELECTION}` is the obvious case, but a remote host can also set the session title (OSC) and report the working directory (OSC 7), so `{AGT_SESSION_NAME}` and `{AGT_SESSION_PWD}` are equally unsafe to interpolate raw. For any such content prefer the matching `$AGT_X` environment variable, quoted, e.g. `"$AGT_SELECTION"` — the shell quotes it for you so it can't inject syntax.
 
