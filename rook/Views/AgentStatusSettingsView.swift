@@ -49,6 +49,16 @@ struct AgentStatusSettingsView: View {
                 SettingHint("Only applies while auto-follow is on.")
             }
 
+            Section("Quitting") {
+                Stepper(value: agentQuitGrace, in: 0 ... 30, step: 1) {
+                    Text("Let agents wrap up: \(agentQuitGraceLabel)")
+                }
+                .accessibilityIdentifier("settings-agent-quit-grace")
+                SettingHint("On quit, rook tells agents that are mid-turn to wrap up and waits for them, "
+                            + "closing early once they finish. Needs the agent-status hooks installed. "
+                            + "0 turns this off; long values visibly delay a system logout.")
+            }
+
             Section {
                 Button("Reset to defaults") { model.resetAgentStatus() }
                     .accessibilityIdentifier("settings-status-reset")
@@ -194,6 +204,21 @@ struct AgentStatusSettingsView: View {
     private var autoFollowAttention: Binding<AppSettings.AutoFollowAttention> {
         Binding(get: { AppSettings.AutoFollowAttention(tolerant: model.settings.autoFollowAttention) },
                 set: { model.setAutoFollowAttention($0 == .off ? nil : $0.rawValue) })
+    }
+
+    /// The quit-time drain budget in seconds; the 5s default maps back to nil so settings.json stays
+    /// minimal, matching the other "unset = default" controls. 0 is the user's off switch and IS stored —
+    /// it is a real choice, not the default.
+    private var agentQuitGrace: Binding<Double> {
+        Binding(get: { model.settings.effectiveAgentQuitGraceSeconds },
+                set: { model.setAgentQuitGraceSeconds($0 == 5 ? nil : $0) })
+    }
+
+    /// The budget as the stepper shows it: "Off" at 0 (a duration reading "0s" would look like a bug),
+    /// else the seconds.
+    private var agentQuitGraceLabel: String {
+        let seconds = Int(model.settings.effectiveAgentQuitGraceSeconds)
+        return seconds == 0 ? "Off" : "\(seconds)s"
     }
 
     /// Inverted view of the stored `autoFollowStayOnActive` so the toggle reads forward ("auto-follow away"
