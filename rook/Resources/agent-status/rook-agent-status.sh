@@ -14,6 +14,9 @@
 # As a hook it must never interfere with the agent: stdout/stderr are suppressed
 # (Claude Code injects a UserPromptSubmit/SessionStart hook's stdout into the
 # prompt context) and it always exits 0 (a non-zero exit can block the turn).
+# The ONE exception is the quit-time drain below, where blocking the turn is the
+# whole point: with --drainable passed (PostToolUse only) and rook's shutdown flag
+# on disk, it prints the warning on stderr and exits 2 so the model sees it.
 #
 # rookctl resolution order (the binary that talks to the control socket):
 #   1. $ROOKCTL — an explicit override the caller set.
@@ -29,6 +32,41 @@ set -u
 # it. Pass it only when ROOK_SOCKET is set (the app injects it alongside the id).
 state=$1
 shift
+
+# Quit-time drain: rook drops a one-line flag file next to the control socket when it is about to close
+# and waits a bounded time for mid-turn agents to wrap up. `exit 2` on a PostToolUse hook is what feeds
+# the message back to the MODEL as a blocking result — the only channel an agent inside a tool loop can
+# actually observe (an events poll, a notification and a pty write all reach nobody mid-turn).
+#
+# `--drainable` gates this, and the installer puts it on PostToolUse ALONE: on UserPromptSubmit an
+# `exit 2` erases the user's prompt, and on Stop it forbids the agent from stopping — the exact opposite
+# of what a drain wants. The flag rides argv because PostToolUse and UserPromptSubmit are otherwise
+# argv-identical, and the alternative (reading `hook_event_name` off the stdin payload) would put a
+# stdin slurp back on the per-tool-call hot path this script was tuned to keep fork-free.
+#
+# Cost when idle: one `[` and one `read`, both builtins. No `date` (a fork per tool call, and bash 3.2
+# — what macOS ships — has no $EPOCHSECONDS), so the flag carries no deadline: rook creates it for the
+# duration of the drain and removes it on cancel and at launch.
+drainable=
+drain_args=()
+for arg in "$@"; do
+  case $arg in
+    --drainable) drainable=1 ;;
+    *) drain_args+=("$arg") ;;
+  esac
+done
+set -- "${drain_args[@]+"${drain_args[@]}"}"
+
+if [ -n "$drainable" ] && [ -n "${ROOK_SOCKET:-}" ]; then
+  drain_flag="${ROOK_SOCKET%/*}/shutdown"
+  if [ -f "$drain_flag" ]; then
+    drain_message=''
+    read -r drain_message < "$drain_flag" || true
+    [ -n "$drain_message" ] || drain_message='rook is closing this terminal. Wrap up now.'
+    printf '%s\n' "$drain_message" >&2
+    exit 2
+  fi
+fi
 
 # `Stop` means the main thread ended its TURN, not that the work is DONE. In a swarm the lead hands the
 # turn back while its backgrounded teammates keep grinding ("waiting for reports, then the gate") — and a

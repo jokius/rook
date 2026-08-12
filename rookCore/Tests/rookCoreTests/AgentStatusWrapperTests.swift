@@ -18,13 +18,24 @@ struct AgentStatusWrapperTests {
             .path
     }
 
+    // what one wrapper run produced. a struct rather than a tuple only because it carries four values
+    // now (stderr joined the other three) and swiftlint's `large_tuple` caps a tuple at three.
+    private struct WrapperRun {
+        let argv: [String]
+        let stdout: String
+        let stderr: String
+        let exit: Int32
+    }
+
     // run the wrapper with a stub rookctl. the stub records each received arg on its own line, prints
-    // `stubStdout`, and exits `stubExit`. returns the recorded argv, the wrapper's own stdout, and its exit.
+    // `stubStdout`, and exits `stubExit`. returns the recorded argv, the wrapper's own stdout, its
+    // stderr, and its exit. stderr is captured (not discarded) because the quit-time drain answers on
+    // exactly that channel: Claude Code feeds a PostToolUse non-zero exit's stderr back to the model.
     // `stdin` is the hook payload to feed the wrapper on a PIPE (nil = /dev/null, never the inherited
     // stdin: the wrapper's payload inspection branches on whether stdin is a tty).
     private func runWrapper(_ args: [String], env: [String: String],
                             stubStdout: String = "ok", stubExit: Int = 0,
-                            stdin: String? = nil) throws -> (argv: [String], stdout: String, exit: Int32) {
+                            stdin: String? = nil) throws -> WrapperRun {
         let fm = FileManager.default
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("rook-wrapper-\(UUID().uuidString)")
         try fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -48,8 +59,9 @@ struct AgentStatusWrapperTests {
         fullEnv["ROOKCTL"] = stub.path
         proc.environment = fullEnv
         let out = Pipe()
+        let err = Pipe()
         proc.standardOutput = out
-        proc.standardError = Pipe()
+        proc.standardError = err
         if let stdin {
             let input = Pipe()
             proc.standardInput = input
@@ -62,11 +74,12 @@ struct AgentStatusWrapperTests {
         proc.waitUntilExit()
 
         let stdout = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let stderr = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let argv = (try? String(contentsOf: record, encoding: .utf8))?
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
             .filter { !$0.isEmpty } ?? []
-        return (argv, stdout, proc.terminationStatus)
+        return WrapperRun(argv: argv, stdout: stdout, stderr: stderr, exit: proc.terminationStatus)
     }
 
     @Test func socketComesAfterTheSubcommand() throws {
@@ -356,5 +369,73 @@ struct AgentStatusWrapperTests {
                                    stdin: Self.stopPayload(task))
             #expect(r.argv == ["session", "status", "completed", "--target", "sid", "--auto-reset"])
         }
+    }
+
+    // MARK: - the quit-time drain flag
+    //
+    // On quit rook drops a one-line flag file next to the control socket and waits a bounded time for
+    // mid-turn agents to wrap up. `exit 2` on a PostToolUse hook is the only channel that reaches an
+    // agent stuck inside a tool loop: Claude Code hands that exit's stderr to the MODEL as a blocking
+    // result. `--drainable` gates it, and the installer puts that flag on PostToolUse ALONE — on
+    // UserPromptSubmit an `exit 2` erases the user's prompt, and on Stop it forbids the agent to stop.
+
+    // put a flag next to a "socket" in a throwaway directory and hand both paths to the body
+    private func withFlag(_ body: (_ socketPath: String, _ flagPath: String) throws -> Void) throws {
+        let fm = FileManager.default
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("rook-flag-\(UUID().uuidString)")
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+        let socketPath = dir.appendingPathComponent("rook.sock").path
+        let flagPath = dir.appendingPathComponent("shutdown").path
+        try body(socketPath, flagPath)
+    }
+
+    @Test func drainableExitsTwoWithTheFlagMessageOnStderr() throws {
+        try withFlag { socketPath, flagPath in
+            try "rook is closing this terminal in about 5s. Wrap up.".write(toFile: flagPath,
+                                                                           atomically: true, encoding: .utf8)
+            let result = try runWrapper(["active", "--blink", "--drainable"],
+                                        env: ["ROOK_SESSION_ID": "s1", "ROOK_SOCKET": socketPath])
+            // exit 2 is the only code Claude Code feeds back to the model as a blocking result
+            #expect(result.exit == 2)
+            #expect(result.stderr.contains("closing this terminal"))
+            // stdout must stay empty: UserPromptSubmit/SessionStart inject a hook's stdout into the prompt
+            #expect(result.stdout.isEmpty)
+        }
+    }
+
+    @Test func drainableIsInertWithoutTheFlag() throws {
+        try withFlag { socketPath, _ in
+            let result = try runWrapper(["active", "--blink", "--drainable"],
+                                        env: ["ROOK_SESSION_ID": "s1", "ROOK_SOCKET": socketPath])
+            #expect(result.exit == 0)
+            // the ordinary path is untouched: the status still reaches rookctl
+            #expect(result.argv.contains("status"))
+            #expect(result.argv.contains("active"))
+        }
+    }
+
+    @Test func flagIsIgnoredWithoutDrainable() throws {
+        try withFlag { socketPath, flagPath in
+            try "closing".write(toFile: flagPath, atomically: true, encoding: .utf8)
+            // exactly the UserPromptSubmit and Stop case: the flag is there, but an exit 2 would break the agent
+            let result = try runWrapper(["completed", "--auto-reset"],
+                                        env: ["ROOK_SESSION_ID": "s1", "ROOK_SOCKET": socketPath])
+            #expect(result.exit == 0)
+        }
+    }
+
+    @Test func drainableIsNotForwardedToRookctl() throws {
+        try withFlag { socketPath, _ in
+            let result = try runWrapper(["active", "--blink", "--drainable"],
+                                        env: ["ROOK_SESSION_ID": "s1", "ROOK_SOCKET": socketPath])
+            #expect(!result.argv.contains("--drainable"))
+        }
+    }
+
+    @Test func drainableIsInertOutsideRook() throws {
+        // no ROOK_SOCKET: nothing to probe — and certainly no reason to fail with exit 2
+        let result = try runWrapper(["active", "--blink", "--drainable"], env: ["ROOK_SESSION_ID": "s1"])
+        #expect(result.exit == 0)
     }
 }
