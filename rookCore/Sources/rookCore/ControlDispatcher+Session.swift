@@ -247,6 +247,8 @@ extension ControlDispatcher {
         switch request.cmd {
         case .sessionSplit:
             return actions.splitSession(request.target, window: request.args?.window, mode: request.args?.mode)
+        case .sessionSplitClose:
+            return actions.closeSessionSplit(request.target, window: request.args?.window)
         case .sessionScratch:
             return actions.scratchSession(request.target, window: request.args?.window, mode: request.args?.mode,
                                           command: request.args?.command)

@@ -86,6 +86,11 @@ extension MockControlActions {
         return ControlResponse(ok: true)
     }
 
+    func closeSessionSplit(_ target: String?, window: String?) -> ControlResponse {
+        calls.append(.sessionSplitClose(target: target, window: window))
+        return ControlResponse(ok: true)
+    }
+
     func scratchSession(_ target: String?, window: String?, mode: String?,
                         command: String?) -> ControlResponse {
         calls.append(.sessionScratch(target: target, window: window, mode, command: command))

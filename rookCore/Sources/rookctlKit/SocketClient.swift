@@ -274,7 +274,10 @@ struct SocketClient {
                 // a session whose main pane has no terminal looks identical to a working one here, which is
                 // the whole complaint: it is listed, named, and does nothing.
                 let realizedTag = session.realized == false ? " (not realized)" : ""
-                let tags = (session.split ? " (split)" : "") + realizedTag
+                // a hidden split still owns a live pane, so it needs a tag of its own: without one it
+                // reads exactly like a session that has no split at all.
+                let splitTag = session.split ? " (split)" : (session.hasSplit == true ? " (split hidden)" : "")
+                let tags = splitTag + realizedTag
                     + (session.overlay ? " (overlay)" : "") + (session.scratch ? " (scratch)" : "")
                 let titleSuffix = session.title.map { "  title: \($0)" } ?? ""
                 lines.append("  \(smark) \(session.name)\(tags)  [\(session.id)]  \(session.cwd)\(titleSuffix)")

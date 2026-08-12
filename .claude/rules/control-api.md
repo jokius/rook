@@ -365,10 +365,10 @@ paths:
   rules, then remaining targets resolve inside that same store so one command never mutates multiple windows.
   The top-level `target` also carries the first explicit batch target so a new CLI talking to a still-running
   pre-batch server degrades to a named session instead of accidentally acting on `active`.
-- **Command catalog (80 commands):**
+- **Command catalog (81 commands):**
   The count is every `Command` case MINUS `debug.appearance` (the UI-test-only seam below, which has no
   `rookctl` subcommand and is not in the skill) — `awk '/^public enum Command/,/^}/' rookCore/Sources/rookCore/ControlProtocol.swift | grep -cE '^\s+case '`
-  minus one (81 cases → 80).
+  minus one (82 cases → 81).
   Re-RUN that command rather than trusting the number in front of you: it went stale once already, when
   `session.restore` landed and every count surface kept saying 73.
   The same number must appear in `README.md`, `site/docs.html`, `site/commands.html` (four places there:
@@ -379,7 +379,7 @@ paths:
   - `events.read` — its own family, NOT part of `tree`: the ring is app-wide and the command is a
     cursor-paged read of what HAPPENED, while `tree` is a snapshot of what IS
   - `workspace.new`/`workspace.rename`/`workspace.delete`/`workspace.select`/`workspace.move`/`workspace.focus`/`workspace.filter`/`workspace.color`/`workspace.icon`/`workspace.root`/`workspace.collapse`/`workspace.expand`
-  - `session.new`/`session.close`/`session.select`/`session.rename`/`session.duplicate`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.agent`/`session.flag`/`session.seen`/`session.background`/`session.restore`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`/`session.hud.open`/`session.hud.update`/`session.hud.close`
+  - `session.new`/`session.close`/`session.select`/`session.rename`/`session.duplicate`/`session.reveal`/`session.move`/`session.type`/`session.split`/`session.split.close`/`session.scratch`/`session.filetree`/`session.markdown`/`session.focus`/`session.resize`/`session.go`/`session.copy`/`session.paste`/`session.selectall`/`session.text`/`session.search`/`session.status`/`session.agent`/`session.flag`/`session.seen`/`session.background`/`session.restore`/`session.overlay.open`/`session.overlay.close`/`session.overlay.resize`/`session.overlay.result`/`session.hud.open`/`session.hud.update`/`session.hud.close`
   - `surface.zoom`
   - `dashboard`
   - `pick.open`/`pick.result`/`pick.cancel` — the native picker (see its own section below)
@@ -577,8 +577,18 @@ paths:
   one).
   `session.split` resolves the target id and drives `AppStore.toggleSplit` directly (NOT the argument-less
   `AppActions.toggleSplit()`, which only acts on the active session) — `off` HIDES the split keep-alive,
-  mirroring ⌘D (the pane's surface is NOT torn down; `closeSplit` stays the shell-exit-only path,
-  so there is no on-demand destroy over the control channel, matching the GUI).
+  mirroring ⌘D (the pane's surface is NOT torn down).
+  `split` reports SHOWN, so a hidden split reads false; `hasSplit` reports the pane existing at all and is
+  present exactly when `splitRatio`/`splitFocused` can be.
+  Callers asking "does this session have a split" read `hasSplit`, and `rookctl tree` tags the hidden case
+  `(split hidden)`.
+  `session.split.close` is the teardown verb, its own command rather than a fourth `ControlToggleMode`
+  value, which is shared with `session.scratch`/`sidebar` and cannot express close (a hidden split is
+  already `off`).
+  Idempotent: a session with no right pane answers ok.
+  Its app-side arm lives in `rook/Control/ControlServer+SplitCommands.swift`, not in the size-capped
+  `ControlServer+SessionActions.swift`.
+  The palette's Close Split is the GUI twin, a row gated on `hasSplit` with no `BuiltinAction`.
   `session.scratch` (mode `on`|`off`|`toggle`, mirrors `session.split` exactly) shows/hides the **scratch
   terminal** — a THIRD per-session login shell (alongside main + split) that RENDERS like a full overlay
   (full-pane, hides the session, translucent) but BEHAVES like the split:
@@ -2361,6 +2371,12 @@ paths:
   It is the READ side of `session.overlay.resize` (which had only the write side), so a tmux-style zoom
   script can record the current size before switching to `--full` and restore the EXACT original on un-zoom
   (not a guessed default).
+  It ALSO surfaces `hasSplit` on each node — whether the session HAS a split pane at all, shown or hidden
+  (`session.hasSplit ? true : nil` in the tree builder), omitted when there is none.
+  `split` alone was ambiguous: a split hidden with ⌘D reads `split: false` while `splitRatio`/`splitFocused`
+  describe a pane the boolean says is not there, so a script filtering on `split` missed a live shell.
+  `hasSplit` is present exactly when those two can be, which is what makes them readable without
+  second-guessing `split`.
   It ALSO surfaces `splitRatio` on each node — the left-pane divider fraction of a session that HAS a split
   (`session.hasSplit ? session.splitRatio : nil` in the tree builder, so shown OR hidden splits report it),
   nil/omitted when there is no split or the ratio was never explicitly set (divider then at the default 0.5).

@@ -67,6 +67,9 @@ public protocol ControlActions {
     /// or the report came from a nested agent and is dropped.
     func setAgentSession(_ target: String?, window: String?, update: ControlAgentSessionUpdate) -> ControlResponse
     func splitSession(_ target: String?, window: String?, mode: String?) -> ControlResponse
+    /// Tear the split pane down rather than hide it, the write side `splitSession`'s `on|off|toggle` cannot
+    /// express: the surface dies and `hasSplit`/`splitRatio`/`splitFocused` go nil in `tree`.
+    func closeSessionSplit(_ target: String?, window: String?) -> ControlResponse
     func scratchSession(_ target: String?, window: String?, mode: String?, command: String?) -> ControlResponse
     func fileTreeSession(_ target: String?, window: String?, mode: String?, path: String?) -> ControlResponse
     /// Opens/closes/toggles the session's Markdown preview panel. The dispatcher has parsed the mode and
@@ -223,7 +226,8 @@ public struct ControlDispatcher {
                 .sessionReveal, .sessionMove, .sessionFlag, .sessionSeen, .sessionStatus, .sessionAgent,
                 .sessionRestore:
             return dispatchSessionCommand(request)
-        case .sessionSplit, .sessionScratch, .sessionFileTree, .sessionMarkdown, .sessionFocus, .sessionResize,
+        case .sessionSplit, .sessionSplitClose, .sessionScratch, .sessionFileTree, .sessionMarkdown,
+                .sessionFocus, .sessionResize,
                 .surfaceZoom,
                 .sessionType,
                 .sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch, .sessionOverlayOpen,

@@ -714,7 +714,10 @@
                 </div>
                 <p style="font-size: 15px; line-height: 1.6; color: #949ba4; margin: 0">
                   A session can split into two shells side by side. Both panes share one sidebar row — a split is one session with
-                  two terminals, not two sessions. One pane is focused at a time and the divider position is remembered.
+                  two terminals, not two sessions. One pane is focused at a time and the divider position is remembered. ⌘D hides
+                  a split rather than closing it, keeping the second shell alive;
+                  <strong style="color: #bfbab0">Close Split</strong> in the action palette tears the pane down whatever it is
+                  running.
                 </p>
               </div>
               <div
@@ -740,7 +743,8 @@
                 </div>
                 <p style="font-size: 15px; line-height: 1.6; color: #949ba4; margin: 0">
                   An extra shell belonging to one session, for a quick aside next to your main work. It covers the session
-                  full-screen and hides again without killing it. Opens in the session's directory; not restored across launches.
+                  full-screen and hides again without killing it. While it is up, ⌘D and the split button hide it rather than
+                  rearrange the panes beneath. Opens in the session's directory; not restored across launches.
                 </p>
               </div>
               <div
@@ -1185,7 +1189,7 @@
               "
             >
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 0">
-                Looking for the full list? All 80 commands (the count excludes one UI-test-only command with no CLI
+                Looking for the full list? All 81 commands (the count excludes one UI-test-only command with no CLI
                 subcommand), with every argument, return value, and error, live on the
                 <a href="/commands" style="color: #7ece8f; font-weight: 500">Command reference →</a>
               </p>
@@ -1385,7 +1389,8 @@
                 color: #e6e1d7;
               "
             >
-              rookctl session split toggle<br />rookctl session resize --split-ratio 0.7
+              rookctl session split toggle<br />rookctl session split close
+              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# tear the pane down; hide keeps its shell alive</span><br />rookctl session resize --split-ratio 0.7
               <span style="color: #6b727a">&nbsp;# or --grow-left/--grow-right D</span><br />rookctl session scratch toggle
               <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;# on|off|toggle</span><br />rookctl session filetree toggle<span style="color: #6b727a">&nbsp;&nbsp;# on|off|toggle|refresh|reroot &lt;path&gt;</span><br />rookctl session markdown open ./plan.md<span style="color: #6b727a">&nbsp;&nbsp;# render it in the preview panel (open|close|toggle)</span><br />rookctl session flag on
               <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# on|off|toggle|clear</span><br />rookctl session seen --target 9f3c

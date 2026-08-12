@@ -40,6 +40,7 @@ final class MockControlActions: ControlActions {
         case sessionRestore(target: String?, window: String?, ControlSessionRestoreUpdate)
         case sessionAgent(target: String?, window: String?, ControlAgentSessionUpdate)
         case sessionSplit(target: String?, window: String?, String?)
+        case sessionSplitClose(target: String?, window: String?)
         case sessionScratch(target: String?, window: String?, String?, command: String?)
         case sessionFileTree(target: String?, window: String?, String?, path: String?)
         case sessionMarkdown(target: String?, window: String?, ControlToggleMode, path: String?)

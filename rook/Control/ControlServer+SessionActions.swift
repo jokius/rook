@@ -364,7 +364,7 @@ extension ControlServer: ControlActions {
     /// argument-less `AppActions.toggleSplit()`, which only acts on the active session). `mode` is
     /// `on|off|toggle`, computed against the session's current `isSplit` so `on`/`off` are
     /// idempotent. Always via `AppStore.toggleSplit` — a keep-alive hide/show that mirrors ⌘D and
-    /// never tears the hidden pane's surface down (`closeSplit` stays the shell-exit-only path).
+    /// never tears the hidden pane's surface down; `session.split.close` is the verb that does.
     /// Focus follows via `AppActions.focusSplitPane`.
     func splitSession(_ target: String?, window: String?, mode: String?) -> ControlResponse {
         return resolver.resolveSession(target, window: window) { store, id in

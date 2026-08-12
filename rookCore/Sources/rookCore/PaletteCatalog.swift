@@ -49,7 +49,7 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
     case renameSession, duplicateSession, renameWorkspace, closeSession, reopenRecent, undoClose, clearStatus
     case previousSession, nextSession, previousAttentionSession, nextAttentionSession
     case firstSession, lastSession, showAttention
-    case toggleSplit, toggleScratch, toggleTerminalZoom, toggleSidebar, toggleFlag, focusWorkspace
+    case toggleSplit, closeSplit, toggleScratch, toggleTerminalZoom, toggleSidebar, toggleFlag, focusWorkspace
     case find, quickTerminal, dashboard, toggleFullscreen
     case increaseFontSize, decreaseFontSize, resetFontSize, selectTheme
     case editKeymap, reloadKeymap, editGhosttyConfig, reloadConfig
@@ -81,7 +81,9 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
             return !context.activeWorkspaceMarked
         case .expandWorkspaces, .collapseWorkspaces:
             return context.sidebarShowsWorkspaceTree
-        case .focusLeftPane, .focusRightPane:
+        case .focusLeftPane, .focusRightPane, .closeSplit:
+            // `hasSplit`, not `isSplit`: a hidden pane is alive and still reported, the state Close Split
+            // exists for.
             return context.activeSessionHasSplit
         case .undoClose:
             return context.hasPendingClose
@@ -116,6 +118,7 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
         case .lastSession: return "Last Session"
         case .showAttention: return "Show Attention"
         case .toggleSplit: return "Toggle Split"
+        case .closeSplit: return "Close Split"
         case .toggleScratch: return "Toggle Scratch"
         case .toggleTerminalZoom: return "Toggle Terminal Zoom"
         case .toggleSidebar: return "Toggle Sidebar"
@@ -185,7 +188,8 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
         case .focusLeftPane: return .focusLeftPane
         case .focusRightPane: return .focusRightPane
         case .editKeymap, .reloadKeymap, .editGhosttyConfig, .reloadConfig,
-             .clearFlagged, .clearFocus, .addWorkspaceToFocus, .expandWorkspaces, .collapseWorkspaces:
+             .clearFlagged, .clearFocus, .addWorkspaceToFocus, .expandWorkspaces, .collapseWorkspaces,
+             .closeSplit:
             return nil
         }
     }

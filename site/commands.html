@@ -6,7 +6,7 @@
     <title>Command reference — rook | rookctl control API</title>
     <meta
       name="description"
-      content="Complete rookctl reference: all 80 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, events, themes, and keymaps, with arguments and return values."
+      content="Complete rookctl reference: all 81 control commands for rook — sessions, workspaces, windows, overlays, the quick terminal, sidebar, agent status, events, themes, and keymaps, with arguments and return values."
     />
     <meta
       name="keywords"
@@ -18,7 +18,7 @@
     <meta property="og:title" content="Command reference — rook" />
     <meta
       property="og:description"
-      content="All 80 rookctl control commands with arguments, return values, and errors."
+      content="All 81 rookctl control commands with arguments, return values, and errors."
     />
     <meta property="og:url" content="https://rook.app/commands" />
     <meta property="og:image" content="https://rook.app/assets/rook-og.png" />
@@ -30,7 +30,7 @@
     <meta name="twitter:title" content="Command reference — rook" />
     <meta
       name="twitter:description"
-      content="All 80 rookctl control commands with arguments, return values, and errors."
+      content="All 81 rookctl control commands with arguments, return values, and errors."
     />
     <meta name="twitter:image" content="https://rook.app/assets/rook-og.png" />
     <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
@@ -196,7 +196,7 @@
             Command reference
           </h1>
           <p style="font-size: 19px; line-height: 1.6; color: #bfbab0; margin: 0 0 8px">
-            All 80 commands of the rook control API, with arguments and return values. Every one is reachable from the
+            All 81 commands of the rook control API, with arguments and return values. Every one is reachable from the
             <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">rookctl</span> CLI and from the local
             control socket.
           </p>
@@ -390,7 +390,10 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">cwd</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">title</span> (raw OSC terminal title, omitted when
                 none), <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span>,
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">split</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">split</span> (the split is SHOWN side by side),
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">hasSplit</span> (a second pane exists at all, shown or
+                hidden, omitted when there is none — read this rather than
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">split</span> to tell whether a session has a split),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">realized</span> (the session's main pane has a live
                 terminal; <span style="font-family: &quot;JetBrains Mono&quot;, monospace">false</span> means no shell was spawned and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session type</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">session text</span>
@@ -1210,6 +1213,28 @@
                 A side-by-side second shell in the same session.
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">off</span> <em>hides</em> it but keeps the shell alive
                 (mirroring ⌘D); the pane's surface is torn down only when its own shell exits. Idempotent; an unknown mode errors.
+                Read back via the session node's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">split</span> (shown) and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">hasSplit</span> (exists at all); a hidden split reads
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">split: false</span> with the pane still alive, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">rookctl tree</span> tags it
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">(split hidden)</span>.
+              </p>
+            </div>
+
+            <div style="background: #1a1e21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #7ece8f; line-height: 1.6; word-break: break-word">
+                rookctl session split close [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.split.close</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Tears the split pane down: the surface dies, whatever it runs dies with it, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">hasSplit</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">splitRatio</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">splitFocused</span> drop out of the tree.
+                Reaches a <em>hidden</em> pane too, which
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session type --pane right</span> cannot once the pane is
+                past a prompt — a nested shell, ssh, an agent. Idempotent: a session with no split answers ok.
+                The command palette's <strong style="color: #bfbab0">Close Split</strong> is the same action.
               </p>
             </div>
 

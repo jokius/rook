@@ -142,9 +142,9 @@ Rook arranges terminals into a small hierarchy. These are the only terms you nee
 
 **Session.** A session is one running shell with a name, a working directory, and its own scrollback. It is the unit you work in and the row you see in the sidebar. A new session takes its name from the basename of its directory; rename it to pin a custom name, clear the name to go back to the basename. New sessions open in your home directory by default, or in the current session's directory, or in a fixed folder (set in Settings). A session runs until you close it or its shell exits, and it comes back on the next launch with its directory, font size, and split state restored.
 
-**Panes.** A session can split into two shells side by side. Both panes are part of the same session and share one sidebar row; a split is one session with two terminals, not two sessions. One pane is focused at a time, and the divider position is remembered.
+**Panes.** A session can split into two shells side by side. Both panes are part of the same session and share one sidebar row; a split is one session with two terminals, not two sessions. One pane is focused at a time, and the divider position is remembered. ⌘D hides a split rather than closing it: the second shell stays alive and comes back where you left it. To end it, type `exit` in the pane or run **Close Split** from the action palette, which tears the pane down whatever it is running — a nested shell, an `ssh`, an agent — and takes the session back to one terminal.
 
-**Scratch terminal.** Every session has an extra shell, the scratch terminal, that you toggle on over the session and hide again without killing it. It opens in the session's directory and is for a quick aside next to your main work. It belongs to that one session and is not restored across launches.
+**Scratch terminal.** Every session has an extra shell, the scratch terminal, that you toggle on over the session and hide again without killing it. It opens in the session's directory and is for a quick aside next to your main work. It belongs to that one session and is not restored across launches. While it covers the session, ⌘D and the split button hide it rather than rearrange the panes beneath, so either one takes you back to the panes exactly as you left them.
 
 **Quick terminal.** The quick terminal is a single throwaway shell per window, not tied to any session. It drops over whatever session is active, for a command unrelated to what you are working on, and hiding it keeps the shell alive. It is not restored across launches.
 
@@ -216,7 +216,7 @@ The theme picker (View ▸ Select Theme…, or the action palette) previews each
 
 `rook` can be driven from a script over a local unix-domain socket through a companion CLI, `rookctl`. This is for personal scripting — fire-and-forget commands that manage workspaces and sessions, inject text, and invoke control actions, plus a read-only event feed you poll for what the app just did (see [Watching for events](#watching-for-events)). Everything stays request/response: nothing is pushed to you, and there is no terminal-output streaming — to read a terminal's buffer, ask for it with `session text`.
 
-The sections below cover the common cases. All 80 commands, with every argument, return value, and error, are documented in the **[Command reference](https://rook.app/commands)**. (That count is the scriptable set — it excludes `debug.appearance`, a UI-test-only command with no `rookctl` subcommand.)
+The sections below cover the common cases. All 81 commands, with every argument, return value, and error, are documented in the **[Command reference](https://rook.app/commands)**. (That count is the scriptable set — it excludes `debug.appearance`, a UI-test-only command with no `rookctl` subcommand.)
 
 The app bundles `rookctl` inside `rook.app`. The easiest way to put it on your PATH is **Help ▸ Install Command Line Tool…**, which symlinks the bundled binary into `/usr/local/bin` (the first entry in macOS's default PATH). When that directory is user-writable it installs silently; otherwise it asks once for an administrator password.
 
@@ -261,6 +261,7 @@ rookctl workspace move --to top                # reorder a workspace among its s
 rookctl workspace collapse                     # fold one workspace shut in the sidebar tree (expand reopens it; reads back as collapsed on tree --json)
 rookctl workspace new staging --collapsed      # create it already folded, so filling it with session new --no-select doesn't pop it open
 rookctl session split toggle                   # split the active session
+rookctl session split close                    # tear the split pane down, killing what it runs (hide keeps the shell alive)
 rookctl session resize --split-ratio 0.7       # set the split divider (left-pane fraction); or --grow-left/--grow-right D
 rookctl session scratch toggle                 # show/hide the active session's scratch terminal (on|off|toggle)
 rookctl session filetree toggle                # show/hide the active session's file-tree panel (on|off|toggle|refresh|reroot <path>)

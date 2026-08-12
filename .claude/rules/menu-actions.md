@@ -108,6 +108,23 @@ paths:
   is the one shown maximized, and RE-showing a hidden split PRESERVES that pane rather than jerking focus
   back to the right — so a hide/show round-trip, e.g. the tmux-style zoom script that drives `session split off`
   then `on`, keeps whichever pane you had focused).
+  **⌘D over a session-wide cover dismisses the cover instead of rearranging panes nobody can see:**
+  `AppActions.toggleSplit` (and `closeSplit` beside it) is inert while `fullOverlayActive`, and hides a
+  shown scratch (keep-alive `toggleScratch`) rather than toggling behind it — ⌘W's cover-first rule, so
+  either press is the way back to the panes as they were.
+  Control's `session.split`/`session.split.close` keep acting on the deck behind either cover.
+  **Closing a split (as opposed to hiding it) is the palette's Close Split** — `PaletteCommand.closeSplit`
+  → `AppActions.closeSplit`, gated on `hasSplit` (so a hidden pane is reachable), with NO `BuiltinAction`
+  and no chord.
+  It routes to `AppStore.closeSplit`, giving that method a second caller beside the split shell's own exit;
+  teardown is immediate, unconfirmed, and undo-less like the other pane teardowns.
+  The control twin is `session.split.close`.
+  **`focusSplitPane` also gates on the session's OWN selection** (`sessionIsSelected`): the deck mounts
+  every session and only HIDES the unselected ones, so their surfaces still accept first responder and a
+  control command addressing a background session would type into a terminal the user cannot see.
+  The guard lives in the helper because `session.split`, `session.split.close` and `session.focus` all
+  reach it with a background target; unresolvable ownership does not block, like the window-scoped cover
+  gates beside it.
   **Hiding the split (the toolbar toggle) keeps BOTH shells alive** and shows the focused pane maximized
   — `detailPane`'s collapsed branch renders `\.splitSurface` when `splitFocused`,
   else `\.surface` — so reopening restores the two panes in place; nothing is destroyed (`closeSplit`

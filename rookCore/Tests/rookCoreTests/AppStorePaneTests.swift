@@ -24,6 +24,31 @@ struct AppStorePaneTests {
         #expect(session.splitFocused == true)
     }
 
+    @Test func controlTreeReportsHasSplitAcrossHide() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        func node() -> ControlSessionNode? { store.controlTree().workspaces.first?.sessions.first }
+        // bind before asserting: `node()?.hasSplit == nil` also holds when the session is gone from the
+        // tree, so a closeSplit that tore down the whole session would pass every omission check here.
+        var n = try #require(node())
+        #expect(n.split == false)
+        #expect(n.hasSplit == nil)
+        store.toggleSplit(session.id)
+        n = try #require(node())
+        #expect(n.split == true)
+        #expect(n.hasSplit == true)
+        store.toggleSplit(session.id)
+        n = try #require(node())
+        #expect(n.split == false)
+        #expect(n.hasSplit == true)
+        #expect(n.splitFocused != nil, "a hidden split still reports its focused pane")
+        store.closeSplit(session.id)
+        n = try #require(node())
+        #expect(n.hasSplit == nil)
+        #expect(n.splitFocused == nil)
+    }
+
     @Test func toggleSplitReshowPreservesFocusedPane() {
         let store = makeStore()
         let ws = store.addWorkspace(name: "work")

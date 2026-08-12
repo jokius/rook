@@ -251,6 +251,7 @@ public final class AppStore {
                                           cwd: session.effectiveCwd, title: session.oscTitle,
                                           active: session.id == activeID,
                                           split: session.isSplit,
+                                          hasSplit: session.hasSplit ? true : nil,
                                           splitRatio: session.hasSplit ? session.splitRatio : nil,
                                           splitFocused: session.hasSplit ? session.splitFocused : nil,
                                           overlay: session.programOverlayActive,

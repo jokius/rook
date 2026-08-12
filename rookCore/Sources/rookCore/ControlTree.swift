@@ -77,7 +77,15 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// title as one fallback) — useful to a script because a remote session's local `cwd` goes stale.
     public let title: String?
     public let active: Bool
+    /// Whether the split is SHOWN side by side, the read side of `session.split on|off`. A split hidden
+    /// with ⌘D reports `false` while its pane stays alive, so a caller asking "is there a second pane"
+    /// must read `hasSplit`, not this.
     public let split: Bool
+    /// Whether the session HAS a split pane at all, shown or hidden; nil/omitted when it has none. Present
+    /// exactly when `splitRatio`/`splitFocused` can be, which is what makes those two readable without
+    /// second-guessing `split`. The sidebar icon, the dashboard's second cell and Focus Left/Right Pane
+    /// all follow this, not `split`.
+    public let hasSplit: Bool?
     /// The left-pane fraction (0.05...0.95) of a session that HAS a split pane (shown or hidden), or nil
     /// when the session has no split OR the ratio was never explicitly set (via `session.resize` or a
     /// divider drag), in which case the divider sits at the default 0.5. The read side of `session.resize`
@@ -216,7 +224,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public let realized: Bool?
 
     public init(id: String, name: String, cwd: String, title: String? = nil, active: Bool, split: Bool,
-                splitRatio: Double? = nil, splitFocused: Bool? = nil,
+                hasSplit: Bool? = nil, splitRatio: Double? = nil, splitFocused: Bool? = nil,
                 overlay: Bool = false, overlaySizePercent: Int? = nil, paneOverlays: [String]? = nil,
                 hud: ControlHudNode? = nil, scratch: Bool = false, flagged: Bool = false,
                 commandWait: Bool? = nil,
@@ -236,6 +244,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.title = title
         self.active = active
         self.split = split
+        self.hasSplit = hasSplit
         self.splitRatio = splitRatio
         self.splitFocused = splitFocused
         self.overlay = overlay

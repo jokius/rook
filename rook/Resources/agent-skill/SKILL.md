@@ -18,7 +18,7 @@ description: >
   feature request / question as a GitHub Discussion.
 when_to_use: >
   Trigger on: rook, rookctl, rook control socket, session.new, session.close, session.type,
-  session.split, session.scratch, session.filetree, session.markdown, markdown preview, session.focus, session.resize, surface.zoom, dashboard, pick, pick.open, pick.result, pick.cancel, native picker, ask the user to choose, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status, session.agent, resume agent conversation,
+  session.split, session.split.close, session.scratch, session.filetree, session.markdown, markdown preview, session.focus, session.resize, surface.zoom, dashboard, pick, pick.open, pick.result, pick.cancel, native picker, ask the user to choose, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status, session.agent, resume agent conversation,
   session.flag, session.seen, session.reveal, session.background, session.overlay,
   session.hud, hud panel, show a message over a session, workspace.new, workspace.select, workspace.move, workspace.focus, workspace.focus add, workspace focus set, add a workspace to the focus set, workspace.filter, workspace focus filter, re-apply the workspace filter, workspace.root, workspace.collapse, workspace.expand, window.new, window.list,
   window.select, window.resize, window.move, window.zoom, window.fullscreen, window.minimize, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, flagged, notify, font.inc, keymap.reload, keymap.list, config.reload,
@@ -148,7 +148,7 @@ you work. For any session-scoped command meant to act on *this* session — `ove
 `type`, `text`, `background`, `status`, `copy`, … — pass `--target "$ROOK_SESSION_ID"`. Omit it and
 you open overlays / type into whatever the user has selected, not your own session.
 
-## Command summary (80 commands)
+## Command summary (81 commands)
 
 Run `rookctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
 **examples.md**. (The count excludes `debug.appearance`, a UI-test-only seam with no `rookctl`
@@ -185,6 +185,8 @@ no event announces it),
 entry, which is weaker — libghostty will not create a surface while the display is asleep, so a session
 created by a scheduled job overnight stays unrealized until the displays wake and then recovers itself.
 Poll this after an unattended create),
+`hasSplit` (whether a second pane exists at all, shown or hidden; omitted when there is none — read this
+rather than `split`, which is false for a split hidden with ⌘D even though its pane is still alive),
 `splitRatio` (the left-pane divider fraction 0.05–0.95 of a
 session that has a split — shown or hidden; omitted when there's no split or the ratio was never set (at
 the default 0.5) —
@@ -293,7 +295,8 @@ of `sidebar collapse`/`sidebar expand`, honoring `--window`; read back from the 
   is the visible screen of the focused pane; `--pane scratch` reads the scratch terminal even while hidden;
   `--all` adds scrollback; `--lines N` keeps the last N lines.
 - `search [needle] [--next|--prev|--close]` — search the terminal scrollback; prints the "N of M" counter.
-- `split [on|off|toggle]` — side-by-side second shell (hide keeps it alive).
+- `split [on|off|toggle]` · `split close` — side-by-side second shell. Hide keeps it alive; `close`
+  destroys the pane and whatever runs in it (a nested shell, ssh, an agent), hidden or shown.
 - `scratch [on|off|toggle] [--command CMD]` — full-coverage third shell (hide keeps it alive; `exit`
   recreates). `--command` (when showing) runs a program instead of a shell, run-once and under a login
   shell like `session new --command` (respawns the scratch if one is open). It takes no `--shell`: the

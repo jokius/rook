@@ -44,7 +44,10 @@ Full detail for every `rookctl` command. See `SKILL.md` for the model and addres
 `rookctl tree [--json] [--window W]` — the workspace/session tree. Each session node:
 `id`, `name`, `cwd`, `title` (the raw OSC terminal title — e.g. a remote host over SSH — omitted
 when none reported; distinct from `name`, the derived sidebar label), `active` (selected),
-`split` (split shown),
+`split` (split SHOWN side by side, the read side of `session split on|off`),
+`hasSplit` (whether a second pane exists at all, shown or hidden with ⌘D; omitted when there is none —
+read THIS to decide whether a session has a split, because a hidden split reports `split: false` while
+its pane stays alive, and it is present exactly when `splitRatio`/`splitFocused` can be),
 `realized` (whether the session's MAIN pane has a live terminal — `false` means no shell was spawned, a
 `--command` has not run, and `session type`/`session text` will answer `session not realized`. `session
 new` returns `ok` for a session that exists in the model, which is not the same thing: libghostty refuses
@@ -520,9 +523,14 @@ bare event object (NDJSON — pipe it straight into `jq`).
   settles asynchronously, so the command waits briefly for it. Without `--json` it prints `result.text`
   (or `ok` on close / an empty bar).
 - `session split [on|off|toggle] [--target] [--window W]` — side-by-side second shell. `off` HIDES it
-  but keeps the shell alive (mirrors ⌘D); the pane's surface is torn down only when its shell exits.
+  but keeps the shell alive (mirrors ⌘D); tearing the pane down takes `session split close` or the
+  shell's own exit.
   Unknown mode errors. No `--shell`: the split inherits the shell of the session that owns it, since half
   a session in a different shell is exactly the divergence `--shell` exists to avoid.
+- `session split close [--target] [--window W]` — tear the split pane down: the surface dies, whatever it
+  runs dies with it, and `hasSplit`/`splitRatio`/`splitFocused` drop out of `tree`. Reaches a HIDDEN pane
+  too, which is what `session type --pane right $'exit\n'` cannot do once the pane is past a prompt
+  (nested shell, ssh, an agent). Answers ok on a session with no split.
 - `session scratch [on|off|toggle] [--command CMD] [--target] [--window W]` — a third, full-coverage
   shell that renders like a full overlay but behaves like the split. `off` hides it keep-alive; typing
   `exit` in it closes it and the next `on` spawns a fresh shell. `on` selects the target first (the

@@ -28,6 +28,15 @@ extension AppActions {
         return DashboardControllerRegistry.shared.controller(for: windowID)?.isOpen == true
     }
 
+    /// Whether `session` is selected in its OWN window. The deck mounts every session and only hides the
+    /// unselected ones, so their surfaces still accept first responder and focusing one types into a
+    /// terminal the user cannot see. Control reaches here on background targets; GUI callers select first.
+    /// Unresolvable ownership does not block, like the window-scoped gates below.
+    func sessionIsSelected(_ session: Session) -> Bool {
+        guard let owner = library.store(forSession: session.id) else { return true }
+        return owner.selectedSessionID == session.id
+    }
+
     /// Whether the quick terminal is showing in the window OWNING this session — the session-scoped twin of
     /// the frontmost-scoped `frontmostQuickTerminal`, completing the set with `terminalZoomActive(for:)`
     /// and `dashboardActive(for:)`.
@@ -71,6 +80,7 @@ extension AppActions {
         if terminalZoomActive(for: session) { return }
         if dashboardActive(for: session) { return }
         if pickActive(for: library.windowID(forSession: session.id)) { return }
+        if !sessionIsSelected(session) { return }
         // the quick terminal is a window-level cover above the session; while it's up it owns focus, so
         // don't move first responder to a pane behind it (its own hide restores the session). The caller
         // has already set `splitFocused`, so the right pane shows once the quick terminal is dismissed.

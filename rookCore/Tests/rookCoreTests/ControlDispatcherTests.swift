@@ -677,6 +677,11 @@ struct ControlDispatcherTests {
             target: "session",
             args: ControlArgs(mode: "off", window: "win")
         ))
+        let splitClose = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionSplitClose,
+            target: "session",
+            args: ControlArgs(window: "win")
+        ))
         let scratch = await dispatcher.dispatch(ControlRequest(
             cmd: .sessionScratch,
             target: "session",
@@ -704,6 +709,7 @@ struct ControlDispatcherTests {
         ))
 
         #expect(split == ControlResponse(ok: true))
+        #expect(splitClose == ControlResponse(ok: true))
         #expect(scratch == ControlResponse(ok: true))
         #expect(fileTree == ControlResponse(ok: true))
         #expect(fileTreeReroot == ControlResponse(ok: true))
@@ -711,6 +717,7 @@ struct ControlDispatcherTests {
         #expect(resize == ControlResponse(ok: true))
         #expect(actions.calls == [
             .sessionSplit(target: "session", window: "win", "off"),
+            .sessionSplitClose(target: "session", window: "win"),
             .sessionScratch(target: "session", window: nil, "on", command: "htop"),
             .sessionFileTree(target: "session", window: "win", "toggle", path: nil),
             .sessionFileTree(target: "session", window: "win", "reroot", path: "/some/dir"),
