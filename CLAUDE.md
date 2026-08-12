@@ -79,11 +79,11 @@ surface ownership, and the C-boundary concurrency contract before changing the b
   — a custom command's spawned `rookctl` derives its socket from the inherited `ROOK_STATE_DIR`
   (`<stateDir>/rook.sock`), so a server bound elsewhere is unreachable; set ONLY `ROOK_STATE_DIR` (a
   SHORT `/tmp` path) and let the app + CLI derive the same socket.
-  (2) to make custom commands use the freshly-BUILT `rookctl` (not the deployed one on PATH), launch with
-  `--env PATH="<devApp>/Contents/MacOS:/opt/homebrew/bin:/usr/bin:/bin:…"` — `CustomCommandRunner` runs
-  `/bin/sh -c` over `ProcessInfo.processInfo.environment`, so the prepended PATH reaches the command; a
-  session shell's login rc re-prioritizes PATH back to the deployed `rookctl`, so a MANUAL `rookctl` in
-  a dev session needs the full dev-binary path while keybinding commands resolve the dev binary automatically.
+  (2) custom commands ALREADY resolve the freshly-BUILT `rookctl` — no `--env PATH=…` needed any more.
+  `CommandPath.widened` puts the RUNNING app's own bundled CLI directory first in the PATH a custom command
+  spawns with, so a dev instance's keybinding commands hit its own binary by construction.
+  A MANUAL `rookctl` typed into a dev session still needs the full dev-binary path: a session shell's login
+  rc re-prioritizes PATH back to the deployed one.
 - **After launching a dev instance for the user to test, default to HANDS-OFF.**
   For the user's MANUAL test (the common case — "run it for me to test",
   "I'll test manually"), do NOT touch the running instance after launch:
