@@ -44,7 +44,14 @@ Full detail for every `rookctl` command. See `SKILL.md` for the model and addres
 `rookctl tree [--json] [--window W]` — the workspace/session tree. Each session node:
 `id`, `name`, `cwd`, `title` (the raw OSC terminal title — e.g. a remote host over SSH — omitted
 when none reported; distinct from `name`, the derived sidebar label), `active` (selected),
-`split` (split shown), `splitRatio` (the left-pane fraction 0.05–0.95 of a session that HAS a split —
+`split` (split shown),
+`realized` (whether the session's MAIN pane has a live terminal — `false` means no shell was spawned, a
+`--command` has not run, and `session type`/`session text` will answer `session not realized`. `session
+new` returns `ok` for a session that exists in the model, which is not the same thing: libghostty refuses
+to create a surface while the DISPLAY is asleep, so a session a scheduled job creates overnight stays
+unrealized until the displays wake, at which point it recovers on its own. Poll this after creating a
+session unattended; `rookctl tree` also tags the row `(not realized)`),
+`splitRatio` (the left-pane fraction 0.05–0.95 of a session that HAS a split —
 shown or hidden; omitted when there's no split or the ratio was never explicitly set (divider at the
 default 0.5) — the read side
 of `session resize`, record it to restore the exact divider position),
@@ -499,7 +506,10 @@ bare event object (NDJSON — pipe it straight into `jq`).
   session, else the focused pane). NOTE: unlike
   `session focus`, `--pane` here has NO `other` value — only `left`/`right`/`scratch`. A genuinely BLANK screen is
   NOT an error (returns `ok` with an empty string, unlike `session copy`'s `no selection`), but a failed
-  read IS an error (`failed to read surface buffer`). Pipe the text into `grep`/`fzf` to extract URLs,
+  read IS an error (`failed to read surface buffer`). An UNREALIZED pane answers `session not realized`
+  instead — whether its slot is empty or holds a view whose libghostty surface never came up (the state a
+  display-asleep create leaves behind; poll `tree`'s `realized`) — because nothing failed to read there,
+  there was nothing to read from. Pipe the text into `grep`/`fzf` to extract URLs,
   paths, etc.
 - `session search [needle] [--next|--prev|--close] [--target] [--window W]` — search the target
   session's live terminal scrollback. Selects the target first (so the search bar and match highlights
@@ -1302,7 +1312,8 @@ rejects the same value locally with `position must be one of: top, center, botto
 `too many items (max 1000)` / `pick item label must not be empty` / `pick item ids must be unique` /
 `item text must not contain control characters` (pick — see the `pick` section for the full list),
 `no open window` (quick/sidebar/pick), `quick terminal not open` / `quick terminal not realized` (quick type) /
-`failed to read surface buffer` (quick text / session text), `window not open — window.select it first`
+`failed to read surface buffer` (quick text; and session text on a REALIZED surface whose read fails — an
+unrealized pane answers `session not realized`), `window not open — window.select it first`
 (resize/move/minimize/`--window`),
 `cannot minimize a full-screen window — window.fullscreen it first` (window minimize),
 `events.read requires --run and --after together` / `invalid event run id` / `invalid event cursor` /

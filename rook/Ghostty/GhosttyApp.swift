@@ -607,6 +607,13 @@ extension Notification.Name {
     /// system→settings direction.
     static let rookSystemAppearanceChanged = Notification.Name("rook.systemAppearanceChanged")
 
+    /// Posted by `SystemWakeObserver` when the displays wake. `ghostty_surface_new` returns NULL while the
+    /// display is asleep, so a session created in that window realizes no surface — the `--command` never
+    /// runs and every later call reports `session not realized`. Nothing re-attempts on a schedule, because
+    /// the deck's retries all ride SwiftUI layout, which does not run for an off-display window. UNREALIZED
+    /// surfaces re-attempt creation here; a realized one is left alone.
+    static let rookScreensDidWake = Notification.Name("rook.screensDidWake")
+
     /// Posted when a window becomes frontmost (the active-window change is async, via the window's
     /// didBecomeKey), so the control server can refresh its cached `window.list` — whose `active` flag
     /// would otherwise stay stale until the next dispatched command.

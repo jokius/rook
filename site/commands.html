@@ -391,6 +391,12 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">title</span> (raw OSC terminal title, omitted when
                 none), <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">split</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">realized</span> (the session's main pane has a live
+                terminal; <span style="font-family: &quot;JetBrains Mono&quot;, monospace">false</span> means no shell was spawned and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session type</span>/<span style="font-family: &quot;JetBrains Mono&quot;, monospace">session text</span>
+                answer <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session not realized</span>. A surface cannot be
+                created while the display is asleep, so a session made by a scheduled job overnight stays unrealized until the
+                displays wake, then recovers on its own — poll this after an unattended create),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">splitRatio</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">splitFocused</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">overlay</span>,
@@ -1169,7 +1175,9 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ok</span> with an empty string, unlike
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session copy</span>'s
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">no selection</span>. A failed read <em>is</em> an
-                error (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">failed to read surface buffer</span>). Plain
+                error (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">failed to read surface buffer</span>), and an
+                unrealized pane answers <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session not realized</span>
+                instead — nothing failed to read there, there was nothing to read from. Plain
                 text only; there is no <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--ansi</span>.
               </p>
             </div>

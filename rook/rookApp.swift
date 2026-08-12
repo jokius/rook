@@ -23,6 +23,7 @@ struct rookApp: App {
     @State private var customCommandRunner: CustomCommandRunner
     @State private var appearanceObserver: SystemAppearanceObserver
     @State private var accessibilityObserver: SystemAccessibilityObserver
+    @State private var wakeObserver: SystemWakeObserver
 
     /// Whether this launch owes the user the first-run welcome. Decided in `init()`, because the first
     /// launch writes its own window snapshot moments after the scene appears and that write would read
@@ -79,6 +80,9 @@ struct rookApp: App {
         // overrides at render time — this only re-asserts the chrome when one flips, so the change lands
         // without a relaunch. No dependencies; started in `.task` alongside the appearance observer.
         _accessibilityObserver = State(initialValue: SystemAccessibilityObserver())
+        // re-attempts surface creation on display wake: libghostty refuses to create one while the display
+        // sleeps, which leaves a scheduled job's session realized-never and its --command unrun.
+        _wakeObserver = State(initialValue: SystemWakeObserver())
     }
 
     var body: some Scene {
@@ -197,6 +201,7 @@ struct rookApp: App {
                     // the eager-deck surfaces exist (idempotent, so per-window `.task` re-entry is safe).
                     appearanceObserver.start()
                     accessibilityObserver.start()
+                    wakeObserver.start()
                     // last: a modal here blocks the rest of the task, and the window behind it should be
                     // fully wired before it opens. `presentOnce` latches, so the per-window .task is safe.
                     if welcomeDue { WelcomeAlert.presentOnce(stateDirectory: Self.stateDirectory) }

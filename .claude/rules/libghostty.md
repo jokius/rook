@@ -410,6 +410,21 @@ paths:
 - **Non-zero backing size.**
   Create the surface only when the view has a non-zero backing size, else the Metal layer renders blank.
   `pendingSurfaceCreation` defers creation until `setFrameSize` reports a real size.
+- **`ghostty_surface_new` returns NULL for as long as the DISPLAY is asleep, with a valid backing size.**
+  Measured 21 consecutive failures over 40s, then success within ~2s of wake while the screen was still
+  LOCKED.
+  Unlock is irrelevant; display wake is the earliest moment creation can succeed, so retrying during sleep
+  is pure spin.
+  Nothing in the deck re-attempts on its own: every other retry path rides SwiftUI layout, which does not
+  run for an off-display window, so `updateNSView` never fires.
+  That is why a session a scheduled job creates overnight realized no surface and never ran its `--command`,
+  while `session.new` had already answered `ok`.
+  `SystemWakeObserver` posts `.rookScreensDidWake` and `GhosttySurfaceView.retryCreationAfterWake`
+  re-attempts, bounded, because creation can still fail for a second or two after the notification.
+  A failed create also LOGS (the silence is what made the report undiagnosable from outside) and re-arms
+  `pendingSurfaceCreation`, so the layout path retries as well: the wake hook makes recovery TIMELY, not
+  possible, and a view first mounted inside that residual window registered its observer too late for the
+  wake that just fired.
 - **Re-parent invalidates the drawable → force a repaint.**
   The split toggle re-hosts a surface between the `HSplitView` and a standalone host,
   detaching/re-attaching the `NSView` and invalidating its Metal drawable.

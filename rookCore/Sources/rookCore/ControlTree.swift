@@ -202,6 +202,18 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// the persisted value: a shell `SurfaceCommand.resolve` would degrade still reads back as what is
     /// stored, so a script sees the field it would have to fix rather than a default it never set.
     public let shell: String?
+    /// Whether the MAIN pane's terminal exists — the libghostty surface created and its program spawned —
+    /// as opposed to the session merely being in the model. False means `session.type`/`session.text` will
+    /// report `session not realized` and a `--command` has not run yet. nil/omitted only against a server
+    /// predating the field; this one always reports it.
+    ///
+    /// `session.new` answers `ok` for a model insert, which is honest but says nothing about the terminal:
+    /// libghostty refuses to create a surface while the display is asleep, so a session a scheduled job
+    /// creates overnight sits unrealized until the displays wake. This is the field that tells them apart.
+    /// It reports the main pane because that is what `--command` spawns on and what the input/read commands
+    /// address by default; per-pane liveness is `fontSize`/`splitFontSize`/`scratchFontSize`, each omitted
+    /// when its pane is unrealized.
+    public let realized: Bool?
 
     public init(id: String, name: String, cwd: String, title: String? = nil, active: Bool, split: Bool,
                 splitRatio: Double? = nil, splitFocused: Bool? = nil,
@@ -217,7 +229,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 statusShape: String? = nil,
                 background: BackgroundWatermark? = nil, unseen: Int? = nil,
                 fontSize: Double? = nil, splitFontSize: Double? = nil, scratchFontSize: Double? = nil,
-                surfaces: [ControlSurfaceNode]? = nil, shell: String? = nil) {
+                surfaces: [ControlSurfaceNode]? = nil, shell: String? = nil, realized: Bool? = nil) {
         self.id = id
         self.name = name
         self.cwd = cwd
@@ -255,6 +267,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.scratchFontSize = scratchFontSize
         self.surfaces = surfaces
         self.shell = shell
+        self.realized = realized
     }
 }
 

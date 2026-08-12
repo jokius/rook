@@ -271,8 +271,11 @@ struct SocketClient {
             lines.append("\(mark) \(workspace.name)  [\(workspace.id)]")
             for session in workspace.sessions {
                 let smark = session.active ? "*" : " "
-                let tags = (session.split ? " (split)" : "") + (session.overlay ? " (overlay)" : "")
-                    + (session.scratch ? " (scratch)" : "")
+                // a session whose main pane has no terminal looks identical to a working one here, which is
+                // the whole complaint: it is listed, named, and does nothing.
+                let realizedTag = session.realized == false ? " (not realized)" : ""
+                let tags = (session.split ? " (split)" : "") + realizedTag
+                    + (session.overlay ? " (overlay)" : "") + (session.scratch ? " (scratch)" : "")
                 let titleSuffix = session.title.map { "  title: \($0)" } ?? ""
                 lines.append("  \(smark) \(session.name)\(tags)  [\(session.id)]  \(session.cwd)\(titleSuffix)")
             }

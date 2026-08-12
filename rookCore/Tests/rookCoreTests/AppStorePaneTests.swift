@@ -227,6 +227,25 @@ struct AppStorePaneTests {
         #expect(firstSplit.teardownCount == 1)             // the exited (promoted) main pane is torn down
     }
 
+    // `session.new` answers ok for a model insert, and libghostty refuses to build a surface while the
+    // display sleeps, so this is the field that separates a working session from an empty one.
+    @Test func controlTreeReportsMainPaneRealization() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+
+        func realized() -> Bool? { store.controlTree().workspaces.first?.sessions.first?.realized }
+
+        #expect(realized() == false, "an empty surface slot has no terminal, so it is not realized")
+
+        let parked = SpySurface(isRealized: false)
+        session.surface = parked
+        #expect(realized() == false, "a parked view whose libghostty surface never came up is not realized")
+
+        parked.isRealized = true
+        #expect(realized() == true)
+    }
+
     @Test func addressableSurfaceIsTheMainPaneUntilThePrimaryExits() {
         let store = makeStore()
         let ws = store.addWorkspace(name: "work")

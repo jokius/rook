@@ -142,6 +142,19 @@ To remap a shortcut ghostty still owns: a physical key name (`key_c`, `key_v`, �
 any layout; a bare letter (`c`, `v`) matches the produced character. Edit `~/.config/rook/ghostty.conf`,
 then `rookctl config reload`.
 
+### "session new said ok but the --command never ran"
+
+Check `rookctl tree --json` for that session's `realized` (the human listing tags the row
+`(not realized)`). `session new` answers `ok` for a session that exists in the MODEL, which says nothing
+about the terminal: libghostty refuses to create a surface while the DISPLAY is asleep, so a session a
+scheduled job creates overnight is listed and named and does nothing, and `session type`/`session text`
+against it answer `session not realized`.
+
+It recovers on its own — Rook re-attempts creation when the displays wake (the screen may still be
+locked; unlocking is not involved), so the session comes up and runs its `--command` then. Nothing needs to
+be re-issued. For an unattended create that must be USED right away, poll `realized` before typing into it
+or reading from it.
+
 ### "notify says ok but no notification appears"
 
 Most often the banners toggle is off: Settings ▸ Notifications ▸ "Show notification banners".

@@ -1018,6 +1018,14 @@ paths:
   `no selection`), but a FAILED `ghostty_surface_read_text` is a `failed to read surface buffer` error:
   `readScreenText` returns `""` for the empty read and nil ONLY for a real failure, which the app-side `readSessionText` maps
   to the error (so a caller can tell a blank terminal from a broken read).
+  An UNREALIZED pane answers `session not realized`, not `failed to read surface buffer`, whether its slot
+  is empty or holds a view whose libghostty surface never came up — one state to a caller, and the reading
+  never happened.
+  `readSessionText` therefore checks `GhosttySurfaceView.isRealized` BEFORE reading, leaving the genuine
+  read-failure path alone; that unrealized state is exactly what a display-asleep create leaves behind (see
+  [[libghostty]] and the `realized` tree field below).
+  `quick.text` keeps its own four-state vocabulary and still reports `failed to read surface buffer` for an
+  unrealized quick surface.
   Plain text only — the pinned libghostty exposes only `ghostty_surface_read_text` (no per-cell SGR),
   so `--ansi` is out of scope until a styled surface read lands upstream and the pin is bumped.
   Four-point keep-in-sync audit for `session.text`: (1) `case sessionText = "session.text"` + new `ControlArgs.all: Bool?`/`lines: Int?`
@@ -2332,6 +2340,19 @@ paths:
   Populated in `AppStore.controlTree` from the ephemeral `Session.agentKind`, which the sidebar's agent logo
   renders (see [[sidebar]]); round-tripped by `treeSessionNodeRoundTripsWithAgent`/`…OmitsAgentWhenNil` and
   `AppStorePaneTests.controlTreeReportsAgentKind`.
+  It ALSO surfaces `realized` on each node — the MAIN pane's `TerminalSurface.isRealized`, populated
+  host-free in `AppStore.controlTree` (no app-side closure like the font sizes — `isRealized` is on the
+  protocol) and FALSE rather than omitted for an empty slot, so only a server predating the field omits it.
+  It exists because `session.new` answers `ok` for a model insert while libghostty refuses to create a
+  surface with the display asleep, leaving a scheduled job's session unrealized until the displays wake (see
+  [[libghostty]]); nothing in the tree separated that from a working session, and `fontSize` leaked it only
+  as a side effect of the font read-back, ambiguous with a font size libghostty reports as zero.
+  It is the MAIN pane because that is what `--command` spawns on and what `session.type`/`session.text`
+  address by default; per-pane liveness stays with the `fontSize`/`splitFontSize`/`scratchFontSize` triple,
+  so do NOT add a second per-pane spelling.
+  Like `agent`/`foreground` it is a READ-ONLY DERIVED field with no write command, so it is keep-in-sync
+  EXEMPT from the four-point audit.
+  `rookctl tree` tags the row `(not realized)`.
   It ALSO surfaces `background` on each node — the `BackgroundWatermark` spec set via `session.background`
   (omitted when none), the read side of set/clear so a script can query the current watermark.
   It ALSO surfaces `overlaySizePercent` on each node — an OPEN overlay's size (`session.overlayActive ? session.overlaySizePercent : nil`
