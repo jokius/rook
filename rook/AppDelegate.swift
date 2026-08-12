@@ -1,5 +1,6 @@
 import rookCore
 import AppKit
+import CoreServices
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -33,6 +34,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// and action live in a target object that has to be held here; `applicationDockMenu` invalidates and
     /// replaces the batch on every rebuild.
     var dockMenuActionTargets: [DockMenuActionTarget] = []
+
+    /// The quit-time agent drain: owns the flag file, the countdown sheet, and the deferred
+    /// `reply(toApplicationShouldTerminate:)`. Started only from `applicationShouldTerminate`.
+    private let shutdownDrain = ShutdownDrainController()
 
     private var restoreObserver: NSObjectProtocol?
     private var scheduledReconciliationReasons: Set<String> = []
@@ -288,17 +293,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Reports the open-window and session counts in the prompt; proceeds without asking when nothing is
     /// open (the auto-quit after the last window closed) or under an XCUITest launch (a modal would hang
     /// the test's terminate).
+    ///
+    /// A system-initiated quit (logout / restart / shut down) SKIPS the confirmation entirely: the user
+    /// already answered that question in the system's own dialog, and a modal here parks loginwindow on a
+    /// prompt nobody asked for — it used to stall the whole logout.
+    ///
+    /// Then, if any session has a mid-turn agent, the quit becomes `.terminateLater` and
+    /// `ShutdownDrainController` gets a bounded window to let those agents wrap up.
     func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
         guard !ContentView.isUITestLaunch, let library else { return .terminateNow }
         let counts = library.openCounts()
-        guard counts.windows > 0 else { return .terminateNow }
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Quit Rook?"
-        alert.informativeText = QuitPrompt.message(windows: counts.windows, sessions: counts.sessions)
-        alert.addButton(withTitle: "Quit")
-        alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+        let statuses = library.allOpenSessions().map { $0.agentIndicator.status }
+        let grace = settingsModel?.settings.effectiveAgentQuitGraceSeconds ?? 0
+
+        if counts.windows > 0, !Self.isSystemInitiatedQuit() {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Quit Rook?"
+            var informative = QuitPrompt.message(windows: counts.windows, sessions: counts.sessions)
+            if let suffix = ShutdownDrain.quitPromptSuffix(
+                activeCount: ShutdownDrain.activeCount(statuses), graceSeconds: grace) {
+                informative += "\n\n" + suffix
+            }
+            alert.informativeText = informative
+            alert.addButton(withTitle: "Quit")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+        }
+
+        // The drain runs even with no windows left: a close-the-last-window exit reaches here too, and
+        // gating it on `counts.windows` would silently skip the feature on ⌘W of the final window.
+        //
+        // `boundSocketPath`, NOT `resolvedSocketPath`: the flag lives in the socket's DIRECTORY, and a
+        // second instance sharing a state dir resolves to `<socket>.unavailable` — same directory, same
+        // flag. Quitting it would tell the OTHER instance's agents to wrap up, and that other instance is
+        // the user's live terminal. An instance that never bound the socket owns no agents, so it drains
+        // nothing.
+        if let socketPath = controlServer.flatMap(\.boundSocketPath),
+           shutdownDrain.begin(socketPath: socketPath, graceSeconds: grace,
+                               statusProvider: { [weak library] in
+                                   library?.allOpenSessions().map { $0.agentIndicator.status } ?? []
+                               },
+                               presentingWindow: NSApp.keyWindow ?? NSApp.windows.first) {
+            return .terminateLater
+        }
+        return .terminateNow
+    }
+
+    /// Whether this quit came from the system (logout / restart / shut down) rather than the user's ⌘Q.
+    /// loginwindow delivers the quit as an Apple Event carrying `kAEQuitReason`; a ⌘Q carries none.
+    private static func isSystemInitiatedQuit() -> Bool {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent,
+              let reason = event.attributeDescriptor(forKeyword: AEKeyword(kAEQuitReason)) else {
+            return false
+        }
+        switch Int(reason.enumCodeValue) {
+        case Int(kAELogOut), Int(kAEReallyLogOut), Int(kAEShutDown), Int(kAERestart):
+            return true
+        default:
+            return false
+        }
     }
 
     func applicationWillTerminate(_: Notification) {

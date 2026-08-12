@@ -134,6 +134,17 @@ struct rookApp: App {
                     // reference so it can stop + unlink the socket on terminate.
                     appDelegate.controlServer = controlServer
                     controlServer.start()
+                    // a hard-killed previous run leaves the quit-time drain flag behind, and a stale flag
+                    // would make every PostToolUse hook exit 2 forever. Same reasoning as the socket
+                    // unlink in ControlServer — and it must run HERE, not in the delegate's launch hook,
+                    // which fires before this `.task` hands the server over (`controlServer` is nil there).
+                    //
+                    // Only when we actually BOUND the socket: a refused second instance shares the
+                    // directory, so clearing here would wipe the live flag out from under the instance
+                    // that is mid-drain right now.
+                    if let boundSocketPath = controlServer.boundSocketPath {
+                        ShutdownDrainController.clearStaleFlag(socketPath: boundSocketPath)
+                    }
                     // the quick terminal is per-window now: each WindowContentView owns its own
                     // controller and binds its own cwdProvider to that window's active session.
                     // install the Ctrl-Tab session-switcher key monitors (idempotent).
