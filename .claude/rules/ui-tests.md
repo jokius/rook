@@ -58,6 +58,28 @@ paths:
   This is not hypothetical bookkeeping: a full 220-test run on a Cyrillic layout came back with 40 failures,
   22 of them pure layout/occlusion noise spread across six suites, and it took a fan-out of ten agents to
   work out which of the 40 were real.
+- **POST-RUN, EVERY TIME: sweep up after the run — it litters OUTSIDE the repo, where only the maintainer
+  trips over it.**
+  The per-test state needs nothing from you: `ControlAPITestCase.tearDown` already removes its
+  `ROOK_STATE_DIR`, its socket, and its marker dir.
+  What it does NOT cover:
+  1. **Screenshots on the Desktop.**
+     macOS writes captures there as PNG by default (`com.apple.screencapture location` unset), and a run
+     whose synthesized chords reach the SYSTEM instead of the app can trip ⌘⇧3/⌘⇧4/⌘⇧5 — the suites fire
+     plenty of ⌘⇧-shaped chords (⌘⇧D/N/E/Y/J/←), and a mis-resolved one lands on the capture shortcut.
+     Observed for real after a Cyrillic run: a pile of screenshots on the Desktop that the maintainer found,
+     not the run.
+     **You almost certainly cannot clean these yourself — `~/Desktop` is TCC-protected and `ls` answers
+     `Operation not permitted`** — so SAY SO: tell the user to check the Desktop, rather than assuming the
+     screen is clean because your `ls` returned nothing.
+     The layout pre-flight above is the prevention; this is the cure.
+  2. **`.xcresult` bundles in `build/DerivedData/Logs/Test/`.**
+     Measured at 414 MB for TWO runs, and gitignored — so nothing ever complains and they accumulate
+     silently.
+     Delete the ones you are done reading.
+  3. **Anything you built or wrote outside the session scratchpad** (a `/tmp` helper, a compiled probe), and
+     any dev instance you launched — `kill <pid>`, never `pkill` (see the root CLAUDE.md ban).
+  4. **The keyboard layout you switched** — put it back where you found it.
 - Tests pass `ROOK_STATE_DIR` (a temp dir) via launch environment to isolate persistence;
   the app honors it in `rookApp.restoredStore()`.
   The native `Open Directory…` panel is system UI, verified manually rather than in XCUITest.
