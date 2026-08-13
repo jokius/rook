@@ -669,6 +669,43 @@ paths:
   The constant lives next to `OverlayResultError` in `rookCore/Sources/rookCore/ControlProtocol.swift`
   and is shared for the same reason: the server's wording and any caller matching on it must not drift.
   `session.new` creates a session.
+  **An UNADDRESSED create follows the CALLER, not the user's eyes.**
+  `active` resolves the FRONTMOST window's CURRENT workspace, so an agent's `rookctl session new` used to
+  land wherever its human happened to be looking — and then select the new session, yanking them out of
+  it.
+  `rookctl session new` therefore stamps its own `$ROOK_SESSION_ID` onto the request as
+  `ControlArgs.callerSession` (a SEND-path default like `--shell`, via `CallerSession.resolved(env:)`, so
+  `makeRequest()` stays pure and nothing is sent from outside a rook session), and the app-side
+  `ControlServer+SessionActions.callerHome` turns it into the destination `(store, workspace)`.
+  Resolution goes through `resolveSessionTarget(caller, window: nil)`, which is CROSS-WINDOW for a uuid
+  target — that is what puts the session in the agent's own WINDOW, not merely its workspace.
+  Two nil cases, deliberately different: ANY explicit addressing (`window`/`workspace`/`workspaceName`/
+  `after`/`before`) outranks the implicit caller, because the id rides on every call whether the caller
+  meant it or not; and an id naming NO live session falls back SILENTLY to the historical default rather
+  than erroring — the caller never asked for this addressing, so failing it would break a create that
+  used to work.
+  There is no `--caller-session` CLI flag: the env var IS the mechanism, and a script that wants a
+  specific destination has `--workspace`.
+  READ-BACK is the returned `result.id` + the `tree` position; the field is a request-scoped proof of
+  origin, not session state, so it owes no node field (the `session.status --agent-pid` precedent).
+  **SELECTION is now OFF by default over the socket, and that is a deliberate behavior change.**
+  `ControlSessionCreateOptions.select` is THREE-VALUED (`false` = `--no-select`, `true` = `--select`,
+  nil = neither), and the app resolves nil through the host-free
+  `AppSettings.selectsNewControlSession(explicit:)` → `AppSettings.selectNewControlSession` (nil = off).
+  So a create leaves the user's view where it is unless they opt back in via
+  Settings ▸ General ▸ **Switch to sessions created by rookctl**, or the caller passes `--select`.
+  Both flags together is a dispatcher error (`use either --select or --no-select, not both`,
+  CLI-pre-validated), and `selectsNewSession(_:)` on `ControlServer` is the ONE read point — it also feeds
+  `ensureWorkspace(revealNewWorkspace:)`, so a background create still cannot widen the workspace-focus
+  set.
+  The GUI ⌘T path never comes through here (`AppActions.newSession`), so it focuses regardless; a keymap
+  custom command running `rookctl session new` DOES come through, which is what `--select` is for.
+  Keep-in-sync: `ControlArgs.callerSession` + the reused `ControlArgs.select` +
+  `ControlSessionCreateOptions.select`/`callerSession` + `AppSettings.selectNewControlSession` /
+  `selectsNewControlSession(explicit:)` in `rookCore`, the `.sessionNew` dispatcher guard + passthrough,
+  `callerHome` + `selectsNewSession` app-side, the `session new --select` flag +
+  `requestForSending(env:)` stamp in `rookctlKit`, and round-trip / dispatcher / CLI (`CallerSessionCommandsTests`)
+  / `AppSettingsTests` / e2e (`SessionNewPlacementUITests`) tests.
   The destination workspace is addressed one of two MUTUALLY-EXCLUSIVE ways:
   `args.workspace` (id / unique prefix / `active`, the default) OR `args.workspaceName` (the sidebar
   label, name-matched first-exact-trimmed via `AppStore.workspace(named:)`) — the latter optionally with
@@ -783,12 +820,16 @@ paths:
   covering the build, the CLI default and the read-back.
   `session.new` ALSO takes `--no-select` and `--wait` (ports of upstream bdc3684 + 8220978 — NO new
   `Command` case for the flags — the catalog bump to 66 is `session.duplicate` below).
-  `ControlArgs.noSelect` + `ControlSessionCreateOptions.noSelect` create the session in the BACKGROUND:
+  `ControlArgs.noSelect` creates the session in the BACKGROUND:
   `AppStore.addSession` gained a defaulted `select: Bool = true` gating `selectedSessionID` /
-  `disableFocusIfSelectionOutsideSet` / `recordRecency`, `makeSessionResponse` passes `select: !noSelect`
-  and skips the focus call, and the `--create-workspace` path threads `revealNewWorkspace: !noSelect` so a
-  background create can't widen the marked workspace set; read-back is the existing `tree` `active` flag (a
-  background session is not `active`) — state-mutating-read-back EXEMPT, no new field.
+  `disableFocusIfSelectionOutsideSet` / `recordRecency`, `makeSessionResponse` passes the resolved
+  `selectsNewSession(_:)` and skips the focus call, and the `--create-workspace` path threads the same
+  value as `revealNewWorkspace:` so a background create can't widen the marked workspace set; read-back is
+  the existing `tree` `active` flag (a background session is not `active`) — state-mutating-read-back
+  EXEMPT, no new field.
+  Since the caller/selection change above, `noSelect` is the EXPLICIT spelling of what is already the
+  DEFAULT, and `ControlSessionCreateOptions` carries the tri-state `select: Bool?` rather than the
+  original `noSelect: Bool` — see that section for the precedence.
   Both names changed with the focus SET (the parameter also inverted its mechanism — it no longer CLEARS a
   focus, it declines to JOIN the set); see the `workspace.focus`/`workspace.filter` section.
   `ControlArgs.wait` + `ControlSessionCreateOptions.wait` HOLD a `--command` session open on libghostty's

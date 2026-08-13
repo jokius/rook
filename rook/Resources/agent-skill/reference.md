@@ -391,9 +391,18 @@ bare event object (NDJSON — pipe it straight into `jq`).
 
 ## session
 
-- `session new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--shell PATH] [--name NAME] [--no-select] [--wait] [--after SID | --before SID] [--window W]`
-  — create a session and focus it; returns the new id. `--cwd` sets the start directory (default
-  `$HOME`). The destination workspace is addressed one of two mutually-exclusive ways: `--workspace`
+- `session new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--shell PATH] [--name NAME] [--select | --no-select] [--wait] [--after SID | --before SID] [--window W]`
+  — create a session; returns the new id. `--cwd` sets the start directory (default
+  `$HOME`).
+  **With NO destination named, the session lands in the workspace and window of the session `rookctl` is
+  running in**, not in whatever the user is currently looking at: the CLI stamps its own
+  `$ROOK_SESSION_ID` on the request (wire field `callerSession`) and the app resolves it across all
+  windows. Any explicit addressing — `--window`, `--workspace`, `--workspace-name`, `--after`/`--before` —
+  outranks it, and an id that names no live session (a closed session, a stale `ROOK_SESSION_ID` inherited
+  by a detached process) falls back SILENTLY to the frontmost window's current workspace rather than
+  failing the create. Outside a rook session the field is not sent at all, so an external script behaves
+  exactly as before.
+  The destination workspace is addressed one of two mutually-exclusive ways: `--workspace`
   (id / unique prefix / `active`, the default) or `--workspace-name` (the sidebar label) — the latter
   errors if no workspace has that name unless `--create-workspace` is also passed, which reuses an
   existing one or creates it when absent (idempotent). `--command` runs that command as the session's
@@ -425,8 +434,12 @@ bare event object (NDJSON — pipe it straight into `jq`).
   therefore mutually exclusive with each other and with `--workspace`/`--workspace-name` (the anchor
   already picks the workspace). `rookctl session new --after active` is the headline case: create
   right after the current session in one round-trip.
-  `--no-select` creates the session in the BACKGROUND — appended, but the current selection and focus stay
-  put (the inverse of the overlay's `--follow`); it reads back as the session NOT being `active` on `tree`.
+  SELECTION: a control-created session lands in the BACKGROUND by default — the current selection and
+  focus stay put (the inverse of the overlay's `--follow`), and it reads back as NOT being `active` on
+  `tree`. `--no-select` says that explicitly, `--select` overrides it and switches to the new session, and
+  the two together are an error (`use either --select or --no-select, not both`). With neither flag the
+  user's **Settings ▸ General ▸ Switch to sessions created by rookctl** decides (default off). The GUI's
+  own ⌘T never comes through the control channel, so it focuses regardless.
   `--wait` (requires `--command`) HOLDS a command session open on libghostty's press-any-key prompt after
   the command exits instead of closing — the session-surface counterpart of `overlay open --wait`; it
   persists (a restored command session re-runs and holds again) and reads back on the `tree` node's

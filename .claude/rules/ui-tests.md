@@ -9,6 +9,55 @@ paths:
   close, move, drag, add-session) through the accessibility API — the coverage the host-free `rookCore`
   unit tests can't provide.
   Run with `xcodebuild test -project rook.xcodeproj -scheme rook -destination 'platform=macOS'`.
+- **PRE-FLIGHT, BEFORE EVERY RUN THAT TAKES OVER THE KEYBOARD AND SCREEN: check the active keyboard
+  layout and switch it to ABC, then put it back when the run ends.**
+  This is the FIRST step of an XCUITest run, ahead of building or picking `-only-testing` — the maintainer
+  has given standing permission to flip the layout for a run, so just do it rather than asking.
+  A Cyrillic (or any non-latin) layout does not fail loudly; it corrupts a whole CLASS of results at once —
+  `app.typeText` reaches the shell as Cyrillic, `typeKey` chords stop matching menu key equivalents
+  (⌘W/⌘⇧D/Ctrl-C), and the run comes back with assertion failures that read exactly like product bugs.
+  Triage that starts from such a run blames the code and "fixes" tests that were never broken, which costs
+  far more than the two seconds this check takes.
+  Read the ACTIVE layout with `defaults read com.apple.HIToolbox AppleCurrentKeyboardLayoutInputSourceID`
+  (verified to track a live switch).
+  **Do NOT read `AppleSelectedInputSources` to answer this question** — it lists the ENABLED sources, and it
+  answered `ABC` on a machine whose active layout was `com.apple.keylayout.Russian`, i.e. it hands out a
+  false all-clear.
+  Switch (and confirm) with the Carbon TIS API, the only way that takes effect live — a `defaults write` of
+  the key above does not:
+  ```swift
+  // swift /tmp/kbd.swift        -> print the active layout id
+  // swift /tmp/kbd.swift ABC    -> select the enabled layout whose id ends with ABC, then print it
+  import Carbon
+  let want = CommandLine.arguments.dropFirst().first
+  func now() -> String {
+      guard let s = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+            let p = TISGetInputSourceProperty(s, kTISPropertyInputSourceID) else { return "unknown" }
+      return Unmanaged<CFString>.fromOpaque(p).takeUnretainedValue() as String
+  }
+  if let want {
+      let filter = [kTISPropertyInputSourceCategory as String: kTISCategoryKeyboardInputSource as String] as CFDictionary
+      for s in (TISCreateInputSourceList(filter, false)?.takeRetainedValue() as? [TISInputSource]) ?? [] {
+          guard let p = TISGetInputSourceProperty(s, kTISPropertyInputSourceID),
+                (Unmanaged<CFString>.fromOpaque(p).takeUnretainedValue() as String).hasSuffix(want) else { continue }
+          TISSelectInputSource(s); usleep(300_000); break
+      }
+  }
+  print(now())
+  ```
+  **Do the switch in the SAME shell command that launches `xcodebuild`, not as an earlier separate step** —
+  measured: a layout set to ABC was back on `com.apple.keylayout.Russian` minutes later, because the user
+  kept typing (and macOS can hold an input source PER APP, so focusing the app under test can flip it back
+  on its own).
+  A check that passed when you ran it proves nothing about the run you start afterwards.
+  Print the layout again when the run ends, so the log says what the run actually executed on.
+  The same pre-flight covers the other two ENVIRONMENTAL blockers documented below, which are equally
+  invisible in the failure text: a screen-occluding window (the synthesize-event timeout) and an open system
+  authentication prompt.
+  Check all three before reading a single assertion failure as a product bug.
+  This is not hypothetical bookkeeping: a full 220-test run on a Cyrillic layout came back with 40 failures,
+  22 of them pure layout/occlusion noise spread across six suites, and it took a fan-out of ten agents to
+  work out which of the 40 were real.
 - Tests pass `ROOK_STATE_DIR` (a temp dir) via launch environment to isolate persistence;
   the app honors it in `rookApp.restoredStore()`.
   The native `Open Directory…` panel is system UI, verified manually rather than in XCUITest.
@@ -219,6 +268,10 @@ paths:
   assertion (or hangs, or scatters the text into whatever app has focus).
   It is ENVIRONMENTAL, like the HazeOver occlusion above: switch the layout to latin and re-run before
   suspecting the test.
+  The damage is not confined to typed TEXT: a `typeKey` chord is matched against the character the layout
+  PRODUCES, so ⌘W, ⌘⇧D and Ctrl-C stop reaching their menu items too, and a run on Cyrillic returns a
+  scattering of "the shortcut did nothing" failures across unrelated suites.
+  The pre-flight at the top of this file is what keeps this from being discovered after the fact.
 
 - **The `pick.open` picker reuses the command palette, so its accessibility ids are DIFFERENT ones on the
   same views.**

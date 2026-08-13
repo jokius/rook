@@ -196,8 +196,8 @@ paths:
   **General** (a **Mouse** section with the scroll-speed slider + the right-click-pastes toggle + the
   workspace-row-click toggle,
   a **Sessions** section with the new-session-directory picker (home / current session's directory / a
-  fixed custom folder, the last with a `Choose…` panel) + the restore-running-commands toggle + the
-  confirm-before-closing-a-session toggle,
+  fixed custom folder, the last with a `Choose…` panel) + the switch-to-sessions-created-by-rookctl toggle
+  + the restore-running-commands toggle + the confirm-before-closing-a-session toggle,
   and a **Ghostty Config** section with the inherit-global-config toggle).
   **Appearance** (a **Terminal** section — font/size/theme via `NSFontManager` monospaced families +
   the bundled `ghostty/themes` dir, `SettingsCatalog` — a **Window** section with the Normal/Compact/Hidden
@@ -491,6 +491,26 @@ paths:
   GUI-only and keep-in-sync EXEMPT (only `theme.set`/`config.reload` touch settings over the socket); the
   control-side `session.new --cwd` already covers "open a session in directory X" and keeps its explicit
   `--cwd`-or-home default regardless of this setting.
+- **`selectNewControlSession` (a socket-created session also becomes the selected one, opt-in, General ▸
+  Sessions).**
+  `AppSettings.selectNewControlSession: Bool?` (nil = OFF, the default-off binding shape) is the DEFAULT
+  answer for `session.new`'s selection when the caller passed neither `--select` nor `--no-select`.
+  Off — the shipped default — leaves the user's view exactly where it was, because an agent creating a
+  session cannot know they are reading something else; on restores the pre-change behavior.
+  NOT a ghostty key (`setSelectNewControlSession` is save-only, no config rewrite / surface reload) and
+  NOT a `GhosttyApp` mirror: `ControlServer.selectsNewSession(_:)` reads it ON DEMAND per create, which is
+  rare and never on a render path.
+  The resolution itself is the host-free `AppSettings.selectsNewControlSession(explicit:)`
+  (per-call flag wins in BOTH directions, else the setting), so the precedence has one home.
+  It gates ONLY the control path — `AppActions.newSession()` (⌘T, the File menu, the palette, the sidebar
+  row's `+`) never goes through `ControlServer` and focuses regardless.
+  The toggle is GUI-only and keep-in-sync EXEMPT, and unusually the EXEMPTION is earned rather than
+  assumed: the per-call `--select`/`--no-select` pair already gives the control channel full coverage of
+  the behavior, so exposing the standing default over the socket would add nothing a caller cannot state
+  per call.
+  Default-off + the resolver's truth table are covered host-free in `AppSettingsTests`; the end-to-end
+  effect (including seeding the setting on and getting a selecting create back) is
+  `SessionNewPlacementUITests`.
 - **`inheritGlobalGhosttyConfig` (load the user's global `~/.config/ghostty/config`,
   opt-in, General tab).** `AppSettings.inheritGlobalGhosttyConfig: Bool?` (nil = OFF) gates whether `loadConfig`
   reads the user's GLOBAL ghostty config (see the `<configDir>/ghostty.conf` bullet for the layering).

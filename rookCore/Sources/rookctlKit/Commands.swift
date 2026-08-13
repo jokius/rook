@@ -101,6 +101,21 @@ struct CallerShellOptions: ParsableArguments {
     }
 }
 
+/// The session `rookctl` itself is running in, read from the `ROOK_SESSION_ID` the app bakes into every
+/// session shell. `session new` puts it on the wire so an unaddressed create lands in the CALLER's window
+/// and workspace rather than in whatever the user happens to be looking at.
+///
+/// The environment is a parameter for the same reason `CallerShellOptions.resolved(env:)` takes one: this
+/// runs on the SEND path, so `makeRequest()` stays pure and a test can build a request without the
+/// runner's own environment leaking in. Blank/unset sends NOTHING, keeping the request byte-identical to a
+/// pre-feature one — which is also the "called from outside rook" case.
+enum CallerSession {
+    static func resolved(env: [String: String]) -> String? {
+        let value = env["ROOK_SESSION_ID"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (value?.isEmpty == false) ? value : nil
+    }
+}
+
 /// Options for commands that address an individual terminal surface from `tree`.
 struct SurfaceTargetOptions: ParsableArguments {
     @Option(name: .long, help: "Target surface id from tree, 'quick' (the quick terminal), or 'active'.")

@@ -224,6 +224,17 @@ struct CommandsTests {
         #expect(try request(["session", "new", "--no-select"]) == expected)
     }
 
+    @Test func sessionNewSelect() throws {
+        // --select forces the focus the Settings default withholds (omitted when the flag is absent).
+        let expected = ControlRequest(cmd: .sessionNew, args: ControlArgs(select: true))
+        #expect(try request(["session", "new", "--select"]) == expected)
+    }
+
+    @Test func sessionNewRejectsSelectAndNoSelect() {
+        #expect(validationMessage(["session", "new", "--select", "--no-select"])
+            == "use either --select or --no-select, not both")
+    }
+
     @Test func sessionNewWaitWithCommand() throws {
         // --wait sets wait=true on the wire (omitted when the flag is absent); it rides --command.
         let expected = ControlRequest(cmd: .sessionNew, args: ControlArgs(command: "make test", wait: true))
@@ -1734,6 +1745,58 @@ struct ShellInheritanceCommandsTests {
         for argv in spawning {
             #expect(try CommandsTests().request(argv).args?.shell == nil, "\(argv) read the environment while building")
             #expect(try sent(argv, env: ["SHELL": fish]).args?.shell == fish, "\(argv) lost the send-path default")
+        }
+    }
+}
+
+/// `session new` also carries the CALLER's session (`$ROOK_SESSION_ID`), which decides where an otherwise
+/// unaddressed create lands — the caller's own window + workspace, not whatever the user is looking at.
+/// Like the shell, it is a SEND-path default, so the environment is a parameter here too.
+struct CallerSessionCommandsTests {
+    private let sid = "1B0E4B36-6C5E-4C0B-9E5B-7B1C1E7B0000"
+
+    private func sent(_ argv: [String], env: [String: String]) throws -> ControlRequest {
+        let parsed = try Rookctl.parseAsRoot(argv)
+        guard let command = parsed as? any RequestCommand else {
+            throw SocketClientError("parsed \(argv) is not a RequestCommand")
+        }
+        return try command.requestForSending(env: env)
+    }
+
+    @Test func sessionNewCarriesTheCallersSession() throws {
+        #expect(try sent(["session", "new"], env: ["ROOK_SESSION_ID": sid]).args?.callerSession == sid)
+    }
+
+    /// Stamped even alongside explicit addressing: the SERVER owns the precedence (it ignores the caller
+    /// then), so the CLI has no second copy of that rule to drift from.
+    @Test func theCallersSessionRidesAlongsideExplicitAddressing() throws {
+        let request = try sent(["session", "new", "--workspace", "ws1"], env: ["ROOK_SESSION_ID": sid])
+        #expect(request.args?.callerSession == sid)
+        #expect(request.args?.workspace == "ws1")
+    }
+
+    /// Outside a rook session the key must be off the WIRE, not merely empty, so the request stays
+    /// byte-identical to a pre-feature one.
+    @Test func nothingIsSentOutsideARookSession() throws {
+        for env in [[:], ["ROOK_SESSION_ID": ""], ["ROOK_SESSION_ID": " \t "]] as [[String: String]] {
+            let request = try sent(["session", "new"], env: env)
+            #expect(request.args?.callerSession == nil, "sent a caller session for \(env)")
+            let encoded = try #require(String(data: JSONEncoder().encode(request), encoding: .utf8))
+            #expect(!encoded.contains("callerSession"), "put callerSession on the wire for \(env): \(encoded)")
+        }
+    }
+
+    /// The design guard: the ambient default lives on the SEND path only.
+    @Test func makeRequestNeverCarriesAnAmbientCallerSession() throws {
+        #expect(try CommandsTests().request(["session", "new"]).args?.callerSession == nil)
+    }
+
+    /// Only `session new` takes it: every other create either names its own destination or belongs to a
+    /// session already.
+    @Test func siblingSpawnsDoNotCarryIt() throws {
+        for argv in [["window", "new"], ["quick"], ["session", "duplicate"], ["session", "split"]] {
+            #expect(try sent(argv, env: ["ROOK_SESSION_ID": sid]).args?.callerSession == nil,
+                    "\(argv) carried the caller's session")
         }
     }
 }

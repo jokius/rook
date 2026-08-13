@@ -65,10 +65,12 @@ final class AttentionButtonUITests: XCTestCase {
         launch(attentionEnabled: true)
         let seeded = try seededSessionID()
 
-        // flag the seeded session, then add a SECOND session — `session.new` selects the new (idle) one,
-        // so the seeded blocked session is NOT the active one. The bell still lists it (window-wide).
+        // flag the seeded session, then add a SECOND session and ASK for it to be selected (a socket create
+        // no longer selects by default) — the seeded blocked session must NOT be the active one, or the
+        // palette row would "select" what is already selected and prove nothing. The bell still lists it
+        // (window-wide).
         try setStatus("blocked", target: seeded)
-        let created = try sendCommand(#"{"cmd":"session.new"}"#)
+        let created = try sendCommand(#"{"cmd":"session.new","args":{"select":true}}"#)
         let createdResult = try XCTUnwrap(created["result"] as? [String: Any], "session.new should carry a result")
         let secondID = try XCTUnwrap(createdResult["id"] as? String, "session.new should return the new id")
         XCTAssertTrue(pollSelectedSessionID(secondID), "the new session should be selected after add")

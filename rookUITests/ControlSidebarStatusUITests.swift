@@ -16,8 +16,10 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
         let sessions = try XCTUnwrap(workspaces.first?["sessions"] as? [[String: Any]], "workspace should list sessions")
         let seeded = try XCTUnwrap(sessions.first?["id"] as? String, "should have a seeded session id")
 
-        // a second session takes focus, leaving the seeded one realized but unfocused.
-        XCTAssertEqual(try sendCommand(#"{"cmd":"session.new"}"#)["ok"] as? Bool, true)
+        // a second session takes focus, leaving the seeded one realized but unfocused. `select:true` is
+        // spelled out because a socket create is a BACKGROUND create now, and an OSC 9 fired from the
+        // FOCUSED pane is focus-suppressed — the badge this test waits for would never appear.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.new","args":{"select":true}}"#)["ok"] as? Bool, true)
         XCTAssertTrue(pollSessionCount(2, timeout: 10), "the new session should land")
 
         // emit OSC 9 from the unfocused seeded session (printf interprets the octal escapes).
@@ -294,10 +296,13 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
         XCTAssertEqual(try sendCommand(#"{"cmd":"session.rename","target":"\#(seededID)","args":{"name":"stay"}}"#)["ok"] as? Bool,
                        true, "renaming the seeded session should succeed")
 
-        // add a second workspace with its own session in a different workspace.
+        // add a second workspace with its own session in a different workspace. `select:true` because a
+        // socket create no longer selects, and `workspace.new` leaves the SECOND workspace marked FRESH —
+        // which outranks the selection in `currentWorkspaceID`, so the collapse below would keep that
+        // workspace open instead. Selecting the new session is what drops the fresh mark.
         let newWs = try sendCommand(#"{"cmd":"workspace.new","args":{"name":"second"}}"#)
         let secondWsID = try XCTUnwrap((newWs["result"] as? [String: Any])?["id"] as? String, "workspace.new should return an id")
-        let created = try sendCommand(#"{"cmd":"session.new","args":{"workspace":"\#(secondWsID)"}}"#)
+        let created = try sendCommand(#"{"cmd":"session.new","args":{"workspace":"\#(secondWsID)","select":true}}"#)
         let newSessID = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String, "session.new should return an id")
         XCTAssertEqual(try sendCommand(#"{"cmd":"session.rename","target":"\#(newSessID)","args":{"name":"hidden"}}"#)["ok"] as? Bool,
                        true, "renaming the new session should succeed")
@@ -604,7 +609,8 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
         XCTAssertTrue(pollSessionRowCount(3, timeout: 10), "all three workspaces' rows should be present unfiltered")
 
         // select a session inside the set about to be built, so nothing lifts the filter when it applies
-        // (session.new left `gamma` selected, and gamma's workspace is deliberately left OUT of the set).
+        // (the background creates above left the selection on the seeded session, and gamma's workspace is
+        // deliberately left OUT of the set).
         XCTAssertEqual(try sendCommand(#"{"cmd":"session.select","target":"\#(seededID)"}"#)["ok"] as? Bool, true,
                        "selecting the seeded session should succeed")
 
@@ -665,8 +671,8 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
     }
 
     /// Creates a workspace named `name` holding one session renamed `session`, returning the workspace id —
-    /// the three-command preamble the multi-workspace focus e2e needs twice over. Note `session.new` SELECTS
-    /// the new session, so a caller that cares about the active session re-selects afterwards.
+    /// the three-command preamble the multi-workspace focus e2e needs twice over. The `session.new` here is a
+    /// BACKGROUND create (a socket create no longer selects), so it leaves the caller's selection alone.
     private func makeWorkspace(named name: String, withSession session: String) throws -> String {
         let created = try sendCommand(#"{"cmd":"workspace.new","args":{"name":"\#(name)"}}"#)
         let wsID = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String,
@@ -792,8 +798,10 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
         let sessions = try XCTUnwrap(workspaces.first?["sessions"] as? [[String: Any]], "workspace should list sessions")
         let seeded = try XCTUnwrap(sessions.first?["id"] as? String, "should have a seeded session id")
 
-        // a second session takes focus, leaving the seeded one realized but non-selected.
-        let created = try sendCommand(#"{"cmd":"session.new"}"#)
+        // a second session takes focus, leaving the seeded one realized but non-selected. `select:true`
+        // because a socket create no longer selects, and a seeded session that stayed selected would make
+        // the "shows on a NON-selected session" legs below assert nothing.
+        let created = try sendCommand(#"{"cmd":"session.new","args":{"select":true}}"#)
         let createdResult = try XCTUnwrap(created["result"] as? [String: Any], "session.new should carry a result")
         let secondID = try XCTUnwrap(createdResult["id"] as? String, "session.new should return the new id")
         XCTAssertTrue(pollSessionCount(2, timeout: 10), "the new session should land")
@@ -891,8 +899,9 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
         let sessions = try XCTUnwrap(workspaces.first?["sessions"] as? [[String: Any]], "workspace should list sessions")
         let seeded = try XCTUnwrap(sessions.first?["id"] as? String, "should have a seeded session id")
 
-        // a second session takes focus, leaving the seeded one non-selected so its badge persists.
-        XCTAssertEqual(try sendCommand(#"{"cmd":"session.new"}"#)["ok"] as? Bool, true)
+        // a second session takes focus, leaving the seeded one non-selected so its badge persists —
+        // `select` spelled out because a control-created session now lands in the background by default.
+        XCTAssertEqual(try sendCommand(#"{"cmd":"session.new","args":{"select":true}}"#)["ok"] as? Bool, true)
         XCTAssertTrue(pollSessionCount(2, timeout: 10), "the new session should land")
 
         // notify (no focus-suppression) bumps the non-selected session's unseen count → the badge shows.
@@ -924,7 +933,9 @@ final class ControlSidebarStatusUITests: ControlAPITestCase {
         let seeded = try XCTUnwrap(sessions.first?["id"] as? String, "should have a seeded session id")
 
         // a second session takes focus, leaving the seeded one non-selected so its badge persists.
-        let created = try sendCommand(#"{"cmd":"session.new"}"#)
+        // `select:true` because a socket create no longer selects, and this test's whole subject is that
+        // `session.seen` clears the badge of a session that is NOT the active one.
+        let created = try sendCommand(#"{"cmd":"session.new","args":{"select":true}}"#)
         XCTAssertEqual(created["ok"] as? Bool, true)
         let newSession = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String, "session.new returns the new id")
         XCTAssertTrue(pollSessionCount(2, timeout: 10), "the new session should land")

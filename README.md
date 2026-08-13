@@ -243,7 +243,8 @@ rookctl session new --shell /opt/homebrew/bin/fish  # spawn a specific shell (ab
 rookctl session new --name "myhost" --command "ssh user@host"  # pre-name the session (sidebar label set at creation)
 rookctl session new --workspace-name servers --create-workspace --name "myhost"  # open in the "servers" workspace, creating it if absent (idempotent)
 rookctl session new --after active             # create right after the current session (--before to precede it); the anchor's workspace is used
-rookctl session new --cwd ~/src/rook --no-select   # create in the background: appended, but the current session stays selected and focused
+rookctl session new                            # run from inside a session: lands in THAT session's workspace and window, in the background
+rookctl session new --cwd ~/src/rook --select      # switch to the new session (the default leaves your view where it is)
 rookctl session new --command "make test" --wait  # hold the session open on a press-any-key prompt after the command exits (needs --command)
 rookctl session duplicate                       # duplicate the current session into a fresh shell in its directory (and its shell), right after it
 rookctl session type --target 9f3c $'make test\n'      # inject text into a session by id prefix

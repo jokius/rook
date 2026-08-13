@@ -146,8 +146,62 @@ struct ControlDispatcherTests {
         ))
 
         let options = ControlSessionCreateOptions(window: nil, cwd: nil, workspace: nil, workspaceName: nil,
-                                                  createWorkspace: nil, command: nil, name: nil, noSelect: true)
+                                                  createWorkspace: nil, command: nil, name: nil, select: false)
         #expect(response == ControlResponse(ok: true, result: ControlResult(id: "bg-session")))
+        #expect(actions.calls == [.sessionNew(options)])
+    }
+
+    /// Neither flag leaves `select` nil, so the app follows the `selectNewControlSession` setting rather
+    /// than the dispatcher deciding for it.
+    @Test func sessionNewLeavesSelectUnsetWithoutAFlag() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        actions.nextSessionNewResponse = ControlResponse(ok: true, result: ControlResult(id: "s"))
+
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionNew))
+
+        let options = ControlSessionCreateOptions(window: nil, cwd: nil, workspace: nil, workspaceName: nil,
+                                                  createWorkspace: nil, command: nil, name: nil, select: nil)
+        #expect(actions.calls == [.sessionNew(options)])
+    }
+
+    @Test func sessionNewRoutesForcedSelect() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        actions.nextSessionNewResponse = ControlResponse(ok: true, result: ControlResult(id: "s"))
+
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionNew, args: ControlArgs(select: true)))
+
+        let options = ControlSessionCreateOptions(window: nil, cwd: nil, workspace: nil, workspaceName: nil,
+                                                  createWorkspace: nil, command: nil, name: nil, select: true)
+        #expect(actions.calls == [.sessionNew(options)])
+    }
+
+    @Test func sessionNewRejectsSelectAndNoSelect() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionNew, args: ControlArgs(noSelect: true, select: true)
+        ))
+
+        #expect(response == ControlResponse(ok: false, error: "use either --select or --no-select, not both"))
+        #expect(actions.calls.isEmpty)
+    }
+
+    /// The caller's session rides through untouched — the dispatcher has no store to resolve it against,
+    /// so the whole precedence (and the silent fallback) lives app-side.
+    @Test func sessionNewForwardsCallerSession() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        actions.nextSessionNewResponse = ControlResponse(ok: true, result: ControlResult(id: "s"))
+
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionNew,
+                                                     args: ControlArgs(callerSession: "9f3c")))
+
+        let options = ControlSessionCreateOptions(window: nil, cwd: nil, workspace: nil, workspaceName: nil,
+                                                  createWorkspace: nil, command: nil, name: nil,
+                                                  callerSession: "9f3c")
         #expect(actions.calls == [.sessionNew(options)])
     }
 

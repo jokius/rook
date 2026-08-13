@@ -251,6 +251,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// The fixed directory a new session opens in when `newSessionDirectory` is `custom`; nil/empty falls
     /// back to home. Ignored for the `home`/`currentSession` modes. Set by the Settings directory picker.
     public var newSessionCustomDirectory: String?
+    /// Whether a session created over the CONTROL channel (`session.new`) also becomes the selected one;
+    /// nil means the default (off — it lands in the background). An agent creating a session must not
+    /// yank the user's view out of whatever they are reading, and it has no way to know they are looking;
+    /// the GUI ⌘T path never comes through here, so it keeps focusing either way. A per-call
+    /// `--select`/`--no-select` overrides this. Read by `ControlServer`, NOT a ghostty key.
+    public var selectNewControlSession: Bool?
     /// Whether closing a session from the GUI (⌘W, the File/palette Close Session, the sidebar row's Close)
     /// first asks for confirmation. nil means the default (off — the session closes immediately). An
     /// app-level behavior flag read on demand by `AppActions`, NOT a ghostty key — it never appears in
@@ -331,6 +337,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 blockedStatusSoundName: String? = nil, rightClickPaste: Bool? = nil,
                 workspaceRowClickExpands: Bool? = nil,
                 newSessionDirectory: String? = nil, newSessionCustomDirectory: String? = nil,
+                selectNewControlSession: Bool? = nil,
                 confirmCloseSession: Bool? = nil, confirmCloseOnlyRunningAgent: Bool? = nil,
                 closeGraceUndoEnabled: Bool? = nil,
                 closeGraceSeconds: Double? = nil, agentQuitGraceSeconds: Double? = nil,
@@ -372,6 +379,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.workspaceRowClickExpands = workspaceRowClickExpands
         self.newSessionDirectory = newSessionDirectory
         self.newSessionCustomDirectory = newSessionCustomDirectory
+        self.selectNewControlSession = selectNewControlSession
         self.confirmCloseSession = confirmCloseSession
         self.confirmCloseOnlyRunningAgent = confirmCloseOnlyRunningAgent
         self.closeGraceUndoEnabled = closeGraceUndoEnabled
@@ -458,6 +466,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
             guard let dir = newSessionCustomDirectory, !dir.isEmpty else { return home }
             return dir
         }
+    }
+
+    /// Whether a control-channel `session.new` selects the session it creates: the per-call flag when the
+    /// caller passed one (`--select` / `--no-select`), else `selectNewControlSession` (nil = off, so an
+    /// unaddressed create leaves the user's view alone).
+    public func selectsNewControlSession(explicit: Bool?) -> Bool {
+        explicit ?? (selectNewControlSession == true)
     }
 
     /// The SwiftUI overlay opacity for a given inactive-pane mute strength: the strength is clamped to

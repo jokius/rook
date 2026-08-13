@@ -293,6 +293,10 @@ final class SettingsModel {
     func setNewSessionDirectory(_ value: String?) { settings.newSessionDirectory = value; try? settingsStore.save(settings) }
     /// Persist the fixed directory used when `newSessionDirectory` is `custom` (nil/empty falls back to home).
     func setNewSessionCustomDirectory(_ value: String?) { settings.newSessionCustomDirectory = value; try? settingsStore.save(settings) }
+    /// Persist whether a `session.new` over the control channel also selects the session (nil = off, it
+    /// stays in the background). Not a ghostty key and nothing renders it continuously — `ControlServer`
+    /// reads it on demand per create — so it just saves.
+    func setSelectNewControlSession(_ value: Bool?) { settings.selectNewControlSession = value; try? settingsStore.save(settings) }
     /// Persist the .app the file tree opens files with (nil = the macOS system default). Not a ghostty key
     /// and nothing renders it continuously — the file tree reads it on demand at open time — so it just saves.
     func setEditorApp(_ value: String?) { settings.editorApp = value; try? settingsStore.save(settings) }

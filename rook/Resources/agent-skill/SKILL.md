@@ -254,8 +254,12 @@ of `sidebar collapse`/`sidebar expand`, honoring `--window`; read back from the 
 `collapsed` flag, which is `true` when collapsed and omitted when expanded).
 
 **session**
-- `new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--shell PATH] [--name NAME] [--no-select] [--wait] [--after SID | --before SID]` —
-  create (and focus) a session. Target the workspace by id/prefix (`--workspace`) OR by name
+- `new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--shell PATH] [--name NAME] [--select | --no-select] [--wait] [--after SID | --before SID]` —
+  create a session. **With no workspace named, it lands in YOUR OWN workspace and window** — `rookctl`
+  stamps its `$ROOK_SESSION_ID` on the request, so a session you create while your human browses another
+  workspace still joins yours. It is created in the BACKGROUND by default (the user's view stays where it
+  is); pass `--select` to switch to it, or `session select <id>` later.
+  Target the workspace by id/prefix (`--workspace`) OR by name
   (`--workspace-name`, mutually exclusive); add `--create-workspace` to reuse-or-create the named
   workspace when absent. `--command` runs that program as the session process instead of an interactive
   shell — it runs UNDER a login shell (`<shell> -l -c '<cmd>'`), so your rc files run, `PATH` is yours (a
@@ -267,8 +271,9 @@ of `sidebar collapse`/`sidebar expand`, honoring `--window`; read back from the 
   `--name` seeds the sidebar label (default: the auto basename). `--after`/`--before` place it directly
   after/before an anchor session (id/prefix/`active`) instead of appending — the anchor carries its own
   workspace, so it's mutually exclusive with `--workspace`/`--workspace-name`. `new --after active` =
-  create right after the current session. `--no-select` creates in the background (selection/focus stay
-  put; reads back as not `active`); `--wait` (needs `--command`) holds a command session open on the
+  create right after the current session. `--no-select` states the background default explicitly and
+  `--select` overrides it (they are mutually exclusive; the user's **Switch to sessions created by
+  rookctl** setting decides when neither is passed); `--wait` (needs `--command`) holds a command session open on the
   press-any-key prompt after it exits, persists, and reads back on the `tree` node's `commandWait`.
 - `close [--target T ...]` — close one session, or repeat `--target` to close a batch with one
   grace-period undo.

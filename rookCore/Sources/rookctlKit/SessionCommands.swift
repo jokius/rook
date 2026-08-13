@@ -37,6 +37,7 @@ struct Session: ParsableCommand {
         @Option(name: .long, help: "Place the new session right AFTER this anchor session (id/prefix/active); the anchor carries its own workspace, replacing --workspace.") var after: String?
         @Option(name: .long, help: "Place the new session right BEFORE this anchor session (id/prefix/active); mirror of --after.") var before: String?
         @Flag(name: .long, help: "Create the session in the background without selecting or focusing it (leaves the current selection untouched).") var noSelect = false
+        @Flag(name: .long, help: "Select and focus the new session, overriding the Settings default (which leaves it in the background).") var select = false
         @OptionGroup var callerShell: CallerShellOptions
         @OptionGroup var options: ClientOptions
         var echoesResultID: Bool { true }
@@ -58,18 +59,31 @@ struct Session: ParsableCommand {
             if wait, command == nil {
                 throw ValidationError("--wait requires --command")
             }
+            if select, noSelect {
+                throw ValidationError("use either --select or --no-select, not both")
+            }
         }
 
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .sessionNew, args: options.withWindow(
                 ControlArgs(name: name, cwd: cwd, workspace: workspace, workspaceName: workspaceName,
                             createWorkspace: createWorkspace ? true : nil, noSelect: noSelect ? true : nil,
+                            select: select ? true : nil,
                             command: command, shell: callerShell.shell,
                             wait: wait ? true : nil, after: after, before: before)))
         }
 
+        /// Stamps BOTH environment-derived defaults: the caller's shell (so the new session comes up in the
+        /// shell the request came from) and the caller's session (so it lands in the caller's own window +
+        /// workspace). The session is stamped unconditionally — the server ignores it as soon as any
+        /// explicit addressing is present, and deciding that here would duplicate the precedence rules.
         func requestForSending(env: [String: String]) throws -> ControlRequest {
-            try requestCarryingCallerShell(callerShell, env: env)
+            var request = try requestCarryingCallerShell(callerShell, env: env)
+            guard let caller = CallerSession.resolved(env: env) else { return request }
+            var args = request.args ?? ControlArgs()
+            args.callerSession = caller
+            request.args = args
+            return request
         }
     }
 

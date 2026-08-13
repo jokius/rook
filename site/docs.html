@@ -1268,7 +1268,8 @@
               <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# reorder: up|down|top|bottom</span><br />rookctl session move
               <span style="color: #f2b45c">"$ws"</span> <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;# relocate to a workspace</span
               ><br />rookctl session new --after active
-              <span style="color: #6b727a">&nbsp;&nbsp;# create right after the current session (--before to precede)</span><br />rookctl session move --after
+              <span style="color: #6b727a">&nbsp;&nbsp;# create right after the current session (--before to precede)</span><br />rookctl session new --select
+              <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;&nbsp;# switch to it (by default a socket-created session stays in the background)</span><br />rookctl session move --after
               <span style="color: #f2b45c">9f3c</span> <span style="color: #6b727a">&nbsp;&nbsp;# place after an anchor (its workspace is used; relocates cross-workspace)</span
               ><br />rookctl session move <span style="color: #f2b45c">"$ws"</span> --target 9f3c --target abcd
               <span style="color: #6b727a">&nbsp;&nbsp;# move a batch as one ordered block</span
@@ -1318,6 +1319,16 @@
               the app's own <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">PATH</span> and no rc, so
               a bare Homebrew binary there exits 127 — give it an absolute path or wrap it in
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">zsh -lc '…'</span>.
+            </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              A <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session new</span> that names no
+              destination follows the <em>caller</em>, not your eyes: run from inside a session it lands in that session's
+              workspace and window, so an agent creating a session while you read somewhere else does not scatter sessions
+              across the tree. It also stays in the background —
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--select</span> switches to it, and
+              <strong style="color: #cbc6bc">Settings ▸ General ▸ Switch to sessions created by rookctl</strong> makes that the
+              default again. <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">⌘T</span> is
+              unaffected either way.
             </p>
 
             <h3

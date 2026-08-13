@@ -572,6 +572,27 @@ struct AppSettingsTests {
         #expect(original.ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
     }
 
+    @Test func selectNewControlSessionRoundTripsAndIsNotAConfigLine() throws {
+        let original = AppSettings(selectNewControlSession: true)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(original))
+        #expect(decoded == original)
+        // absent in a legacy file decodes to nil — the background-create default.
+        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{ "fontSize": 16 }"#.utf8))
+        #expect(legacy.selectNewControlSession == nil)
+        #expect(original.ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
+    }
+
+    @Test func selectsNewControlSessionFollowsThePerCallFlagThenTheSetting() {
+        let off = AppSettings()
+        let on = AppSettings(selectNewControlSession: true)
+        // no flag: the setting decides, and its default leaves the user's view alone.
+        #expect(off.selectsNewControlSession(explicit: nil) == false)
+        #expect(on.selectsNewControlSession(explicit: nil) == true)
+        // an explicit flag wins in BOTH directions.
+        #expect(off.selectsNewControlSession(explicit: true) == true)
+        #expect(on.selectsNewControlSession(explicit: false) == false)
+    }
+
     @Test func editorAppRoundTripsAndIsNotAConfigLine() throws {
         let original = AppSettings(editorApp: "/Applications/Foo.app")
         let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(original))

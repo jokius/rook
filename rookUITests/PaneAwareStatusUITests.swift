@@ -450,10 +450,12 @@ final class PaneAwareStatusUITests: ControlAPITestCase {
         XCTAssertNotNil(seeded, "seeding the \(pane) pane marker should land in its buffer")
     }
 
-    /// Add a fresh session (which takes the selection) and wait for it to become the parked selection, so the
-    /// following attention-nav has somewhere to jump FROM. Returns the new session id.
+    /// Add a fresh session and wait for it to become the parked selection, so the following GUI selection
+    /// (attention-nav, a row click, a palette pick) has somewhere to jump FROM. `select:true` is spelled out
+    /// because a socket create is a BACKGROUND create now — moving the selection OFF the blocked session is
+    /// this helper's entire job, not a side effect it can inherit. Returns the new session id.
     private func parkOnNewSession() throws -> String {
-        let created = try sendCommand(#"{"cmd":"session.new"}"#)
+        let created = try sendCommand(#"{"cmd":"session.new","args":{"select":true}}"#)
         let id = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String, "session.new should return an id")
         XCTAssertTrue(pollSessionCount(2, timeout: 10), "the parked second session should land")
         XCTAssertTrue(try pollActiveNode(equals: id, timeout: 10), "the new session should be the parked selection")

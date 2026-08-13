@@ -195,6 +195,12 @@ extension ControlServer: ControlActions {
     /// shell is checked for existence/executability FIRST, so a bad one creates nothing.
     func createSession(_ options: ControlSessionCreateOptions) -> ControlResponse {
         if let rejection = rejectUnusableShell(options.shell) { return rejection }
+        // an unaddressed create follows the CALLER, not the user's eyes: `active` would resolve the
+        // FRONTMOST window's CURRENT workspace, so an agent creating a session while its human reads
+        // another workspace dropped it there.
+        if let home = callerHome(options) {
+            return makeSessionResponse(in: home.store, workspaceID: home.workspace, options: options)
+        }
         return resolver.resolvePlacementStore(options.window) { store in
             // anchor-relative placement (`--after`/`--before`): the anchor sid names its own workspace,
             // so this bypasses the `--workspace`/`--workspace-name` addressing entirely. `before` inserts
@@ -216,7 +222,7 @@ extension ControlServer: ControlActions {
                 // a --no-select create must not widen the workspace-focus set (addWorkspace's auto-reveal),
                 // so the background create leaves the current view untouched like the rest of --no-select.
                 let workspace = options.createWorkspace == true
-                    ? store.ensureWorkspace(named: name, revealNewWorkspace: !options.noSelect)
+                    ? store.ensureWorkspace(named: name, revealNewWorkspace: selectsNewSession(options))
                     : store.workspace(named: name)
                 guard let workspace else {
                     return ControlResponse(ok: false, error: "no workspace named \"\(name)\" (pass --create-workspace to add it)")
@@ -230,6 +236,26 @@ extension ControlServer: ControlActions {
                 makeSessionResponse(in: store, workspaceID: workspaceID, options: options)
             }
         }
+    }
+
+    /// Where the CALLER lives: the store + workspace of the session `rookctl` was run from, or nil when
+    /// this create should keep the historical frontmost-window/current-workspace default.
+    ///
+    /// It yields nil for two very different reasons, both deliberate. (1) ANY explicit addressing — a
+    /// window, a workspace by id or name, or an anchor — outranks the implicit caller: the user asked for
+    /// a place, and the caller id rides along on every `rookctl session new` whether they meant it or not.
+    /// (2) An id that resolves to no live session (a closed session, a stale `ROOK_SESSION_ID` exported
+    /// into a detached process, a hand-written request) falls back SILENTLY instead of erroring — the
+    /// caller never asked for this addressing, so failing it would break `session new` for a case that
+    /// used to work. Resolution is cross-window by construction (a uuid target with no `--window`), which
+    /// is what lets the session land in the agent's own window while another is frontmost.
+    private func callerHome(_ options: ControlSessionCreateOptions) -> (store: AppStore, workspace: UUID)? {
+        guard options.window == nil, options.workspace == nil, options.workspaceName == nil,
+              options.after == nil, options.before == nil,
+              let caller = trimmed(options.callerSession) else { return nil }
+        guard case .success(let (store, sessionID)) = resolver.resolveSessionTarget(caller, window: nil),
+              let workspace = store.workspace(forSession: sessionID) else { return nil }
+        return (store, workspace.id)
     }
 
     /// Resolve an anchor session address (`--after`/`--before`) across the store's whole session set (all

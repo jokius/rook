@@ -18,8 +18,9 @@ final class AutoFollowUITests: ControlAPITestCase {
     func testAutoFollowJumpsToBlockedAfterIdle() throws {
         try relaunch(withSettings: #"{"autoFollowAttention":"s5"}"#)
 
-        // A = the restored seeded session; add B, then park the selection back on A (a non-blocked session,
-        // since session.new leaves the new session B selected).
+        // A = the restored seeded session; add B, then pin the selection on A (a non-blocked session). The
+        // create leaves B in the background nowadays, so the select is a same-value assign that states the
+        // precondition rather than undoing a focus grab.
         let sessionA = try activeSessionID()
         let created = try sendCommand(#"{"cmd":"session.new"}"#)
         let sessionB = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String, "session.new should return an id")

@@ -581,13 +581,19 @@ final class ControlServer {
         )
     }
 
+    /// Whether this create also SELECTS the new session: the per-call `--select`/`--no-select` when the
+    /// caller passed one, else the `selectNewControlSession` setting (default off). Read on demand rather
+    /// than mirrored into `GhosttyApp` — a create is rare and never on a render path.
+    func selectsNewSession(_ options: ControlSessionCreateOptions) -> Bool {
+        settingsModel.settings.selectsNewControlSession(explicit: options.select)
+    }
+
     /// Creates a session in `workspaceID` of `store` with the `session.new` args (cwd default $HOME,
-    /// optional command/name), focuses it when it lands in the frontmost window (so a keymap `session new`
-    /// opens focused like the GUI New Session; a background `--window` target keeps focus), and returns the
-    /// new id. Shared by the id- and name-addressed paths of the `.sessionNew` arm. `at` is the anchor-relative
-    /// insertion slot for `--after`/`--before` (clamped in `AppStore`); nil appends. With `options.noSelect`
-    /// the session is created in the background — `addSession` skips selecting it and the focus call is
-    /// suppressed, leaving the current selection and focus untouched. `options.wait` holds a `--command`
+    /// optional command/name) and returns the new id. Shared by the id- and name-addressed paths of the
+    /// `.sessionNew` arm. `at` is the anchor-relative insertion slot for `--after`/`--before` (clamped in
+    /// `AppStore`); nil appends. SELECTION follows `selectsNewSession` — a background create leaves the
+    /// current selection and focus untouched, and only a selecting create in the FRONTMOST window also
+    /// takes keyboard focus (a `--window`-targeted one never steals it). `options.wait` holds a `--command`
     /// session open after the command exits. `options.shell` is persisted on the session, so every pane it
     /// ever spawns — main, split, scratch, and the same panes after a relaunch — runs the caller's shell.
     func makeSessionResponse(in store: AppStore, workspaceID: UUID,
@@ -596,13 +602,14 @@ final class ControlServer {
         // directory); else $HOME. Mirrors the GUI path (AppActions.resolvedNewSessionCwd).
         let root = AppActions.existingDirectory(store.workspaces.first { $0.id == workspaceID }?.root)
         let cwd = options.cwd ?? root ?? FileManager.default.homeDirectoryForCurrentUser.path
+        let select = selectsNewSession(options)
         guard let session = store.addSession(toWorkspace: workspaceID, cwd: cwd,
                                              command: options.command, name: options.name,
                                              wait: options.wait ?? false, at: index,
-                                             select: !options.noSelect, shell: options.shell) else {
+                                             select: select, shell: options.shell) else {
             return ControlResponse(ok: false, error: "could not create session")
         }
-        if !options.noSelect, store === library.activeStore { actions.focusActiveSession() }
+        if select, store === library.activeStore { actions.focusActiveSession() }
         return ControlResponse(ok: true, result: ControlResult(id: session.id.uuidString))
     }
 

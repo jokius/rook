@@ -28,6 +28,11 @@ extension ControlDispatcher {
             if args?.wait == true, args?.command == nil {
                 return ControlResponse(ok: false, error: "--wait requires --command")
             }
+            // the two selection flags are opposite answers to the same question; taking one silently would
+            // decide where the user's view ends up on a coin toss.
+            if args?.select == true, args?.noSelect == true {
+                return ControlResponse(ok: false, error: "use either --select or --no-select, not both")
+            }
             let shell: String?
             switch parseShell(args?.shell) {
             case .shell(let parsed): shell = parsed
@@ -44,7 +49,9 @@ extension ControlDispatcher {
                 name: args?.name,
                 after: args?.after,
                 before: args?.before,
-                noSelect: args?.noSelect == true,
+                // nil (neither flag) leaves the decision to the app's Settings default.
+                select: (args?.select == true) ? true : (args?.noSelect == true ? false : nil),
+                callerSession: args?.callerSession,
                 shell: shell
             ))
         case .sessionDuplicate:

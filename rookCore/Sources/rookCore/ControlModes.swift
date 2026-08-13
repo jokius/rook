@@ -144,17 +144,23 @@ public struct ControlSessionCreateOptions: Equatable, Sendable {
     public let after: String?
     /// Anchor session to place the new session right BEFORE, the mirror of `after`.
     public let before: String?
-    /// Create the session in the background: skip selecting and focusing it, leaving the current selection
-    /// untouched (the CLI's `--no-select`). Defaults to false — the normal select-and-focus behavior.
-    public let noSelect: Bool
+    /// Whether the new session becomes the selected (and focused) one. THREE-VALUED on purpose:
+    /// `false` is the CLI's `--no-select` (background create), `true` its `--select` (force), and nil
+    /// means the caller said nothing — the app then follows `AppSettings.selectsNewControlSession`,
+    /// whose default leaves the user's view where it is. See that setting for why the default flipped.
+    public let select: Bool?
+    /// The session the CALLER runs in (`rookctl`'s own `ROOK_SESSION_ID`), or nil outside a rook session.
+    /// It names the destination window + workspace for an otherwise unaddressed create; see
+    /// `ControlArgs.callerSession` for the precedence and the silent fallback.
+    public let callerSession: String?
     /// The CALLER's shell (absolute path), already validated for form by the dispatcher; nil leaves the
     /// session on the app's default shell. With `command`, it is the shell the command is wrapped in.
     public let shell: String?
 
     public init(window: String?, cwd: String?, workspace: String?, workspaceName: String?,
                 createWorkspace: Bool?, command: String?, wait: Bool? = nil, name: String?,
-                after: String? = nil, before: String? = nil, noSelect: Bool = false,
-                shell: String? = nil) {
+                after: String? = nil, before: String? = nil, select: Bool? = nil,
+                callerSession: String? = nil, shell: String? = nil) {
         self.window = window
         self.cwd = cwd
         self.workspace = workspace
@@ -165,7 +171,8 @@ public struct ControlSessionCreateOptions: Equatable, Sendable {
         self.name = name
         self.after = after
         self.before = before
-        self.noSelect = noSelect
+        self.select = select
+        self.callerSession = callerSession
         self.shell = shell
     }
 }

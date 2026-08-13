@@ -4,7 +4,10 @@ import XCTest
 final class ControlSurfaceZoomUITests: ControlAPITestCase {
     func testSurfaceZoomRendersAndMouseExitPreservesSplitRatio() throws {
         let originalSessionID = try activeSessionID()
-        let created = try sendCommand(#"{"cmd":"session.new"}"#)
+        // `select` is explicit: only a SELECTED create is pushed onto the window's MRU stack, and the
+        // Ctrl-Tab assertion below needs two candidates — with one the switcher bails in `begin()` and
+        // the zoom gate it is meant to prove would look honored either way.
+        let created = try sendCommand(#"{"cmd":"session.new","args":{"select":true}}"#)
         XCTAssertEqual(created["ok"] as? Bool, true, "creating a second session should succeed: \(created)")
         XCTAssertEqual(try sendCommand(#"{"cmd":"session.select","target":"\#(originalSessionID)"}"#)["ok"] as? Bool, true,
                        "selecting the original session should succeed")
@@ -141,7 +144,10 @@ final class ControlSurfaceZoomUITests: ControlAPITestCase {
                       "the search bar should be up on session A")
 
         // park the selection on a fresh session B, making A a BACKGROUND session with searchActive set.
-        let created = try sendCommand(#"{"cmd":"session.new"}"#)
+        // `select` is explicit: a socket create no longer takes the selection, and an A that stayed
+        // selected would be cleared by the generic active-session search close on zoom enter — never
+        // reaching the background branch (`session.id != selectedSessionID`) this test exists for.
+        let created = try sendCommand(#"{"cmd":"session.new","args":{"select":true}}"#)
         XCTAssertEqual(created["ok"] as? Bool, true, "creating session B should succeed: \(created)")
 
         // zoom A's surface by explicit id — the addressable path that does NOT select A first — then exit.

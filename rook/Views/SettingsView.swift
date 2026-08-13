@@ -121,6 +121,9 @@ private struct GeneralSettingsView: View {
                             .accessibilityIdentifier("settings-new-session-choose")
                     }
                 }
+                Toggle("Switch to sessions created by rookctl", isOn: selectNewControlSession)
+                    .accessibilityIdentifier("settings-select-new-control-session")
+                SettingHint("Off keeps an agent's new session in the background. ⌘T is unaffected.")
                 Toggle("Restore running commands on restart", isOn: restoreRunningCommand)
                     .accessibilityIdentifier("settings-restore-running-command")
                 Toggle("Resume agent conversations", isOn: resumeAgentSessions)
@@ -164,6 +167,13 @@ private struct GeneralSettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    /// 1:1 with the toggle; nil (the default) reads as OFF — a control-created session stays in the
+    /// background — so on → true / off → nil keeps settings.json minimal.
+    private var selectNewControlSession: Binding<Bool> {
+        Binding(get: { model.settings.selectNewControlSession ?? false },
+                set: { model.setSelectNewControlSession($0 ? true : nil) })
     }
 
     /// 1:1 with the toggle; nil (the default) reads as OFF, so on → true / off → nil keeps settings.json

@@ -131,9 +131,19 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// select-and-focus behavior. The read-back is the existing `tree` `active` flag — the new node is not
     /// `active`.
     public var noSelect: Bool?
+    /// For `session.new`: the session the CALLER is running in, stamped by `rookctl` from its own
+    /// `ROOK_SESSION_ID`. It decides where an UNADDRESSED create lands — the caller's own window and
+    /// workspace instead of whatever window is frontmost and whatever workspace the USER is looking at —
+    /// so an agent creating a session while its human browses elsewhere does not scatter sessions across
+    /// the tree. Ignored the moment any explicit addressing is present (`window`/`workspace`/
+    /// `workspaceName`/`after`/`before`), and ignored (not an error) when it names no live session, so a
+    /// stale value degrades to the pre-feature frontmost default.
+    public var callerSession: String?
     /// Text to inject for `session.type` / `quick.type`; the search needle for `session.search`.
     public var text: String?
-    /// Whether `session.type` may select a never-shown session to realize its surface.
+    /// Whether `session.type` may select a never-shown session to realize its surface. For `session.new`
+    /// it is the explicit FORCE-select (the CLI's `--select`), overriding the Settings default and
+    /// mutually exclusive with `noSelect`.
     public var select: Bool?
     /// Broadcast selector for `session.type`: type into the window's FLAGGED working set instead of a
     /// named target. Mutually exclusive with `targets` (a request carrying both is rejected rather than
@@ -353,7 +363,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public init(name: String? = nil, cwd: String? = nil, targets: [String]? = nil,
                 workspace: String? = nil, workspaceName: String? = nil,
                 createWorkspace: Bool? = nil, collapsed: Bool? = nil, minimized: Bool? = nil,
-                noSelect: Bool? = nil, text: String? = nil, select: Bool? = nil, flagged: Bool? = nil,
+                noSelect: Bool? = nil, callerSession: String? = nil,
+                text: String? = nil, select: Bool? = nil, flagged: Bool? = nil,
                 mode: String? = nil,
                 command: String? = nil, shell: String? = nil,
                 wait: Bool? = nil, sizePercent: Int? = nil, full: Bool? = nil,
@@ -383,6 +394,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.collapsed = collapsed
         self.minimized = minimized
         self.noSelect = noSelect
+        self.callerSession = callerSession
         self.text = text
         self.select = select
         self.flagged = flagged

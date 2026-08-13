@@ -340,8 +340,9 @@ final class ControlOverlaySplitUITests: ControlAPITestCase {
         let sessions = try XCTUnwrap(workspaces.first?["sessions"] as? [[String: Any]], "workspace should list sessions")
         let sessionA = try XCTUnwrap(sessions.first?["id"] as? String, "should have a seeded session id")
 
-        // create a second session B; session.new focuses the new session, so re-select A to make B a
-        // background (mounted-but-hidden) deck slot — the exact setup where the overlay opens out of view.
+        // create a second session B; a socket create already leaves it in the background, and the explicit
+        // re-select of A PINS that precondition instead of resting on the default — B has to be a
+        // mounted-but-hidden deck slot, the exact setup where the overlay opens out of view.
         let created = try sendCommand(#"{"cmd":"session.new"}"#)
         let sessionB = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String,
                                      "session.new should return the new id")
@@ -634,8 +635,10 @@ final class ControlOverlaySplitUITests: ControlAPITestCase {
         let ws = try XCTUnwrap((t["workspaces"] as? [[String: Any]])?.first, "should have a workspace")
         let seededID = try XCTUnwrap((ws["sessions"] as? [[String: Any]])?.first?["id"] as? String, "should have a seeded session")
 
-        // create a second session — session.new focuses it, so the seeded one is no longer active.
-        let created = try sendCommand(#"{"cmd":"session.new"}"#)
+        // create a second session and ASK for it to be selected, so the seeded one is no longer active —
+        // a background create would leave the seeded session selected and the assertion below would pass
+        // on a target that never needed selecting, proving nothing.
+        let created = try sendCommand(#"{"cmd":"session.new","args":{"select":true}}"#)
         let newID = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String, "session.new should return an id")
         XCTAssertNotEqual(newID.lowercased(), seededID.lowercased(), "the new session is distinct")
 
@@ -713,10 +716,12 @@ final class ControlOverlaySplitUITests: ControlAPITestCase {
         XCTAssertEqual(empty["ok"] as? Bool, false, "resize with no fraction should fail: \(empty)")
     }
 
-    /// Creates a session via `session.new` and returns its id as a `UUID`. `session.new` focuses the new
-    /// session, so the returned session becomes the active one.
+    /// Creates a session via `session.new` and returns its id as a `UUID`, SELECTED. Every caller builds
+    /// its fixture by creating sessions in order and treating the last one as the active session the
+    /// overlay opens away from, so `select:true` is spelled out: a socket create is a background create
+    /// now, and the moving selection is this helper's job rather than a default it can inherit.
     private func newSession() throws -> UUID {
-        let created = try sendCommand(#"{"cmd":"session.new"}"#)
+        let created = try sendCommand(#"{"cmd":"session.new","args":{"select":true}}"#)
         let idString = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String,
                                      "session.new should return the new id")
         return try XCTUnwrap(UUID(uuidString: idString), "session.new id should be a UUID: \(idString)")

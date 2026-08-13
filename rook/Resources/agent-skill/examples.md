@@ -132,7 +132,9 @@ rookctl session new --command "htop"               # a Homebrew binary needs no 
 rookctl session new --command "clear; ssh user@host"        # shell operators work — this really does clear, then connect
 rookctl session new --command "make test" --wait            # hold the session on the press-any-key prompt after the command exits (--wait needs --command)
 rookctl session new --shell /opt/homebrew/bin/fish          # spawn a specific shell (absolute path); rookctl defaults it to YOUR $SHELL
-rookctl session new --cwd "$HOME/project" --no-select       # background create: appended, but the current session stays selected/focused
+rookctl session new --cwd "$HOME/project"                   # lands in YOUR workspace/window, in the background — the user's view stays put
+rookctl session new --cwd "$HOME/project" --select          # …unless you ask to be taken there
+rookctl session new --workspace active                      # opt back into "wherever the user is looking": active = the visible workspace
 rookctl session duplicate                                   # duplicate the current session into a fresh shell in its cwd, right after it (directory + shell)
 ```
 

@@ -348,13 +348,15 @@ final class ControlAPIUITests: ControlAPITestCase {
         try? FileManager.default.removeItem(atPath: marker)
     }
 
-    // a control session.new (frontmost window) FOCUSES the new session, so real keystrokes reach it: the
-    // command is `head -n1 > marker` (captures one typed line), and we type via the keyboard — the text
-    // only lands if the new session grabbed first responder. Guards the gate-command focus fix.
-    func testSessionNewWithCommandFocusesTheNewSession() throws {
+    // a SELECTING control session.new (frontmost window) FOCUSES the new session, so real keystrokes reach
+    // it: the command is `head -n1 > marker` (captures one typed line), and we type via the keyboard — the
+    // text only lands if the new session grabbed first responder. Guards the gate-command focus fix.
+    // `select` is spelled out because selection over the socket is opt-in now; the subject is the focus
+    // handoff to a --command surface, not which default got it selected.
+    func testSessionNewSelectWithCommandFocusesTheNewSession() throws {
         let marker = NSTemporaryDirectory() + "rook-focus-\(UUID().uuidString).txt"
         let cmd = "head -n1 > \(marker)"
-        let created = try sendCommand(#"{"cmd":"session.new","args":{"command":"\#(cmd)"}}"#)
+        let created = try sendCommand(#"{"cmd":"session.new","args":{"command":"\#(cmd)","select":true}}"#)
         XCTAssertEqual(created["ok"] as? Bool, true, "session.new --command should succeed: \(created)")
 
         // let the surface mount and grab first responder (focusActiveSession's bounded retry), then type.
@@ -506,10 +508,10 @@ final class ControlAPIUITests: ControlAPITestCase {
     }
 
     // session.type without select into a visible, realized session writes its tty to a file — read it back
-    // (the split-test idiom: the surface's own shell is the oracle for "the text actually landed"). A new
-    // session is selected and shown on creation, so its surface is realized — the immediate-inject arm.
+    // (the split-test idiom: the surface's own shell is the oracle for "the text actually landed"). The
+    // create asks for `select` so the session really is the visible one — the immediate-inject arm.
     func testSessionTypeIntoActiveSession() throws {
-        let created = try sendCommand(#"{"cmd":"session.new"}"#)
+        let created = try sendCommand(#"{"cmd":"session.new","args":{"select":true}}"#)
         let result = try XCTUnwrap(created["result"] as? [String: Any], "session.new should carry a result")
         let newID = try XCTUnwrap(result["id"] as? String, "session.new should return the new id")
 
