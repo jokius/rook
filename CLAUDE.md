@@ -146,6 +146,27 @@ The app must build, `swift test` must stay green, and `make lint` must pass afte
   (a change confined to `rookctl` or the app does NOT need it — the hooks call the same baked path) —
   say it, never run the installers yourself.
 
+- **A `make deploy` build is signed with a REAL certificate, and the identity must stay PINNED.**
+  `scripts/build.sh` re-signs the bundle AFTER `xcodebuild` returns — the same ordering
+  `scripts/release.sh` relies on, so Xcode's own final code-sign can't clobber it.
+  `project.yml`'s build phase still signs ad-hoc; that is fine, the re-sign overwrites it.
+  Why it matters: an ad-hoc signature's designated requirement is the CDHASH, which changes on EVERY
+  rebuild, so macOS saw each deploy as a brand-new app — re-asking for every TCC grant (Accessibility,
+  Automation, Screen Recording) and dropping the keychain ACLs.
+  A certificate keys the requirement to the leaf CN + team instead, so the grants survive rebuilds.
+  Identity resolution: `$ROOK_SIGN_IDENTITY` → `git config rook.signIdentity` (per-clone and
+  uncommitted — signing identity is a MACHINE-local choice, never a repo-wide one) → the keychain's
+  `Developer ID Application` → `Apple Development` → ad-hoc.
+  The ad-hoc fallback is load-bearing: CI and fresh clones have no certificate and must still build.
+  **Never switch between two identities casually** — the requirement embeds the leaf CN, so changing it
+  resets the very TCC grants this exists to preserve.
+  An `Apple Development` identity is enough for a locally-built `/Applications` copy: `spctl` reports
+  `rejected` for it, but that check assesses DISTRIBUTION, and Gatekeeper only evaluates QUARANTINED
+  bundles — a locally built one carries no `com.apple.quarantine` xattr.
+  Distribution still needs `Developer ID Application` + notarization via `scripts/release.sh`.
+  An `Apple Development` cert expires in about a year; when it does, `codesign` fails the build loudly
+  rather than silently falling back to ad-hoc.
+
 - **Manage file sizes for real — source files stay under 1000 lines, tests under a hard 2000 (= 2×).**
   In OUR OWN work: when you touch a long file, SPLIT/relocate it along a logical seam rather than growing
   it further — do it as part of the change, WITHOUT asking (the maintainer gave a standing go-ahead:
