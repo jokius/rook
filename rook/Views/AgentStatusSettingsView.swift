@@ -206,12 +206,12 @@ struct AgentStatusSettingsView: View {
                 set: { model.setAutoFollowAttention($0 == .off ? nil : $0.rawValue) })
     }
 
-    /// The quit-time drain budget in seconds; the 5s default maps back to nil so settings.json stays
+    /// The quit-time drain budget in seconds; the default maps back to nil so settings.json stays
     /// minimal, matching the other "unset = default" controls. 0 is the user's off switch and IS stored —
     /// it is a real choice, not the default.
     private var agentQuitGrace: Binding<Double> {
         Binding(get: { model.settings.effectiveAgentQuitGraceSeconds },
-                set: { model.setAgentQuitGraceSeconds($0 == 5 ? nil : $0) })
+                set: { model.setAgentQuitGraceSeconds($0 == AppSettings.defaultAgentQuitGraceSeconds ? nil : $0) })
     }
 
     /// The budget as the stepper shows it: "Off" at 0 (a duration reading "0s" would look like a bug),

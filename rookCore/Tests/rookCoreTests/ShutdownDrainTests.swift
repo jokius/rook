@@ -44,8 +44,10 @@ struct ShutdownDrainTests {
         #expect(ShutdownDrain.quitPromptSuffix(activeCount: 2, graceSeconds: 0) == nil)
     }
 
-    @Test func agentQuitGraceDefaultsToFiveAndHonorsZero() {
-        #expect(AppSettings().effectiveAgentQuitGraceSeconds == 5)
+    @Test func agentQuitGraceDefaultsToFifteenAndHonorsZero() {
+        // 15, not 5: an agent needs time to READ the warning and act on it, not just receive it
+        #expect(AppSettings().effectiveAgentQuitGraceSeconds == 15)
+        #expect(AppSettings().effectiveAgentQuitGraceSeconds == AppSettings.defaultAgentQuitGraceSeconds)
         #expect(AppSettings(agentQuitGraceSeconds: 12).effectiveAgentQuitGraceSeconds == 12)
         // 0 is the user's off switch, not "instantly", and it must survive down to shouldDrain
         #expect(AppSettings(agentQuitGraceSeconds: 0).effectiveAgentQuitGraceSeconds == 0)

@@ -274,8 +274,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// (`effectiveCloseGraceSeconds`, 5). An app-level behavior value read on demand by `AppActions`, NOT a
     /// ghostty key — it never appears in `ghosttyConfigLines()`.
     public var closeGraceSeconds: Double?
-    /// How long a quit waits for mid-turn agents to wrap up, in seconds; nil means the default
-    /// (`effectiveAgentQuitGraceSeconds`, 5) and 0 turns the drain off entirely. Deliberately NOT clamped
+    /// How long a quit waits for mid-turn agents to wrap up, in seconds; nil means
+    /// `defaultAgentQuitGraceSeconds` and 0 turns the drain off entirely. Deliberately NOT clamped
     /// for a logout: a long budget there visibly stalls the system logout, which the Settings copy says
     /// out loud, but the choice stays the user's. An app-level behavior value read on demand by
     /// `AppDelegate`, NOT a ghostty key — it never appears in `ghosttyConfigLines()`.
@@ -442,10 +442,20 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// app target uses.
     public var effectiveCloseGraceSeconds: TimeInterval { closeGraceSeconds ?? 5 }
 
-    /// The quit-time agent drain budget in seconds; `agentQuitGraceSeconds` when set, else the default
-    /// of 5 (safe for a system logout — loginwindow escalates to "rook prevented logout" well before it).
-    /// The single read point the app target uses.
-    public var effectiveAgentQuitGraceSeconds: TimeInterval { agentQuitGraceSeconds ?? 5 }
+    /// The shipped quit-drain budget. 15s, not the 5s this started at: 5 covers the mechanics (the hook
+    /// fires, the message lands) but not the agent — it barely reads the warning before the window dies,
+    /// let alone writes a handoff note. The cost of the larger number is bounded, because the drain ends
+    /// the moment the last agent goes idle rather than sitting out the budget; only an agent that ignores
+    /// the warning entirely makes a quit actually take this long.
+    /// The SINGLE place the default lives — the Settings binding maps this value back to nil, so a change
+    /// here must not be re-spelled at the call sites.
+    public static let defaultAgentQuitGraceSeconds: TimeInterval = 15
+
+    /// The quit-time agent drain budget in seconds; `agentQuitGraceSeconds` when set, else
+    /// `defaultAgentQuitGraceSeconds`. The single read point the app target uses.
+    public var effectiveAgentQuitGraceSeconds: TimeInterval {
+        agentQuitGraceSeconds ?? Self.defaultAgentQuitGraceSeconds
+    }
 
     /// The working directory a new session should open in. A non-blank `workspaceRoot` is a HARD override
     /// (the target workspace's own root directory wins over the global mode); otherwise it resolves the

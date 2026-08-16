@@ -2430,8 +2430,9 @@
               the already-installed <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">PostToolUse</span>
               hook — the one thing a busy agent runs between every tool call — reads it and hands the agent a blocking message: the
               terminal is closing, wrap up. Rook waits up to
-              <strong style="color: #e6e1d7">Settings ▸ Agent Status ▸ Let agents wrap up before quitting</strong> (5s by default,
-              0 turns it off) and closes as soon as every agent has finished rather than sitting out the whole budget. What the
+              <strong style="color: #e6e1d7">Settings ▸ Agent Status ▸ Let agents wrap up before quitting</strong> (15s by default,
+              0 turns it off) and closes as soon as every agent has finished rather than sitting out the whole budget — the number
+              is a ceiling, not a pause you pay on every quit. What the
               agent does with the warning is its own call — a short handoff note, or just stopping cleanly. A system logout skips
               the quit confirmation entirely and drains silently, so Rook no longer parks your logout on a dialog.
               Be clear-eyed about the reach: the warning rides the agent's own hook, so it arrives only <em>between</em> tool calls.

@@ -131,7 +131,13 @@ never two bundles in one window.
   `NSApp.reply(toApplicationShouldTerminate: true)`.
   Host-free half is `ShutdownDrain` in rookCore (predicate, flag path, every string);
   the app target owns only the timer, the sheet, and the file.
-  The budget is `AppSettings.effectiveAgentQuitGraceSeconds` (default 5, `0` disables).
+  The budget is `AppSettings.effectiveAgentQuitGraceSeconds`
+  (`AppSettings.defaultAgentQuitGraceSeconds` = 15, `0` disables).
+  The default lives in that ONE constant — the Settings binding maps the value back to nil,
+  so do not re-spell it at a call site.
+  It went 5 → 15 because 5 only covered the mechanics: the hook fired and the message landed,
+  but the agent had no time to act on it.
+  The ceiling is cheap because the drain ends as soon as the last agent goes idle.
   The channel is a one-line flag file next to the control socket, which the installed `PostToolUse` hook
   reads — see [[notifications]] for why that hook is the ONLY thing a mid-turn agent can observe.
   Three things are load-bearing and easy to break:
